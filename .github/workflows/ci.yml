@@ -300,7 +300,7 @@ jobs:
       - env:
           PUSH: "1"
           CONTAINER_ENGINE: docker
-          QUAY_USER: ${{ secrets.QUAY_USER }}
+          QUAY_USER: ${{ secrets.QUAY_USERNAME }}
           QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
         run: ./ci/scripts/image-push.sh
       - if: failure()
