@@ -172,6 +172,20 @@ install_golangci_lint() {
 	echo "ok  golangci-lint  ${dest}"
 }
 
+install_actionlint() {
+	local ver="${ACTIONLINT_VERSION#v}"
+	local mach tar_arch
+	mach="$(uname -m)"
+	case "${mach}" in
+	x86_64 | amd64) tar_arch="linux_amd64" ;;
+	aarch64 | arm64) tar_arch="linux_arm64" ;;
+	*) die "unsupported architecture for actionlint: ${mach}" ;;
+	esac
+	ensure_release_bin actionlint "${ver}" \
+		"https://github.com/rhysd/actionlint/releases/download/${ACTIONLINT_VERSION}/actionlint_${ver}_${tar_arch}.tar.gz" \
+		actionlint
+}
+
 # Skip the network when the binary already exists (PATH or ~/.local/bin).
 ensure_release_bin() {
 	local name="$1"
@@ -304,6 +318,7 @@ ensure_dir_on_path "${USER_BIN}"
 install_yamllint
 install_markdownlint
 install_golangci_lint
+install_actionlint
 install_go_pkg govulncheck "golang.org/x/vuln/cmd/govulncheck@latest"
 install_gosec
 install_trivy
@@ -312,7 +327,7 @@ install_podman
 
 if [[ "${check_only}" -eq 1 ]]; then
 	missing=0
-	for c in yamllint markdownlint-cli2 golangci-lint govulncheck gosec trivy dive podman go git; do
+	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive podman go git; do
 		if [[ "${c}" == "golangci-lint" ]]; then
 			golangci_bin_ok "${USER_BIN}/golangci-lint" "${GOLANGCI_LINT_VERSION#v}" ||
 				{ have go && golangci_bin_ok "$(go_bin_dir)/golangci-lint" "${GOLANGCI_LINT_VERSION#v}"; } ||

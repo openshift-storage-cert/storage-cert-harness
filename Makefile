@@ -3,7 +3,7 @@ include ci/config/images.env
 BINARY := bin/harness
 PKG := ./...
 
-.PHONY: all build test unittest vet lint lint-yaml lint-md lint-go tidy cover \
+.PHONY: all build test unittest vet lint lint-yaml lint-actions lint-md lint-go tidy cover \
 	run-example run-tr-stor-006 clean ci ci-image replay-smoke image-build \
 	image-contents-check image-scan-trivy image-scan-dive image-scan image-push \
 	secret-scan supply-chain install-tools mirror-ci-tools sync-images set-next-version
@@ -22,6 +22,9 @@ vet:
 
 lint-yaml:
 	./ci/scripts/lint-yaml.sh
+
+lint-actions:
+	./ci/scripts/lint-actions.sh
 
 lint-md:
 	./ci/scripts/lint-md.sh
