@@ -33,9 +33,16 @@ fail() {
 }
 
 # Strip tokens that look numeric but are not SLA bars.
+# This is deliberately a text normalizer rather than a parser: remove syntax
+# whose numbers are known to be metadata, while preserving SLA vocabulary and
+# JSON keys for the matcher below.
 strip_non_sla() {
 	printf '%s\n' "$1" | sed -E \
 		-e 's|https?://[^[:space:]"<>]+||g' \
+		-e 's|//.*$||' \
+		-e 's|#.*$||' \
+		-e 's#"(sla|slas|threshold|thresholds|gate|latency|duration|maxLatency|max_latency|percentile|percentile_value)"[[:space:]]*:#\1:#g' \
+		-e 's|"[^"\\]*(\\.[^"\\]*)*"||g' \
 		-e 's|[[:alnum:]._-]+(/[[:alnum:]._-]+)+(@sha256:[0-9a-f]+)?(:[A-Za-z0-9._+-]+)||g' \
 		-e 's/\bv[0-9]+(\.[0-9]+)+\b//g' \
 		-e 's/\b[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?\b//g' \
@@ -53,10 +60,25 @@ strip_non_sla() {
 		-e 's|decisions/[0-9]+(,[[:space:]]*[0-9]+)*||g'
 }
 
-# Floats, or a standalone 3+ digit integer (:=8080, {"threshold":250}).
-# \b is portable GNU/BSD grep -E; do not use PCRE lookbehind (?<!…).
+# Detect floats in executable code, or integers assigned to SLA-like names.
+# JSON threshold keys are checked separately because quoted keys are stripped.
+# Floats are restricted to assignment/conversion contexts so measured values in
+# table-driven tests do not become false positives. Integer gates are narrower:
+# they require a name containing SLA vocabulary such as threshold or latency.
 has_sla_numeric() {
-	printf '%s\n' "$1" | grep -Eq '[0-9]+\.[0-9]+|\b[0-9]{3,}\b'
+	local body="$1"
+	local code
+	# Most added lines contain no numeric token at all. Avoid starting sed for
+	# those lines; this keeps large documentation and test diffs inexpensive.
+	[[ "${body}" == *[0-9]* ]] || return 1
+	code="$(strip_non_sla "${body}")"
+	if printf '%s\n' "${code}" | grep -Eq '([[:alnum:]_]+[[:space:]]*(:=|=|:)[[:space:]]*|[[:alnum:]_]+\()[0-9]+\.[0-9]+'; then
+		return 0
+	fi
+	if printf '%s\n' "${code}" | grep -Eiq '(^|[^[:alnum:]_])[[:alnum:]_]*(sla|threshold|gate|latency|duration|maxLatency|max_latency|percentile|percentile_value|retries)[[:alnum:]_]*[[:space:]]*(:=|=|:)[[:space:]]*([0-9]{3,}([.][0-9]+)?|[0-9]+[.][0-9]+)([^0-9.]|$)'; then
+		return 0
+	fi
+	return 1
 }
 
 # Testdata JSON is usually tool output (measured values). Only treat it as a
@@ -142,6 +164,7 @@ fail_sla() {
 selftest_case() {
 	local body="$1" want="$2" label="$3"
 	local leftover got=0
+	# Exercise the same normalization and matcher used for every added diff line.
 	if line_has_override "${body}"; then
 		if [[ "${want}" -ne 0 ]]; then
 			echo "SELFTEST FAIL: ${label} (override token should skip)"
@@ -150,7 +173,7 @@ selftest_case() {
 		return 0
 	fi
 	leftover="$(strip_non_sla "${body}")"
-	if has_sla_numeric "${leftover}"; then
+	if has_sla_numeric "${body}"; then
 		got=1
 	fi
 	if [[ "${got}" -ne "${want}" ]]; then
@@ -167,6 +190,8 @@ selftest_case() {
 
 secret_scan_selftest() {
 	local st_err=0
+	# Keep these cases close to the matcher. Each one documents either a value
+	# that must be rejected or a common numeric shape that must remain harmless.
 	# --- pinned image refs: tag/digest, not an SLA bar ---
 	selftest_case 'const DefaultImage = "quay.io/kube-burner/kube-burner:v2.8.1"' 0 "image pin vX.Y.Z" || st_err=1
 	selftest_case 'const DefaultImage = "localhost/kube-burner-ocp:v-src"' 0 "local image tag" || st_err=1
@@ -177,6 +202,14 @@ secret_scan_selftest() {
 	selftest_case 'claim_size: 256Mi' 0 "k8s quantity" || st_err=1
 	selftest_case 'want := map[string]float64{"p50": 6000, "p95": 7000, "p99": 8000, "max": 8200}' 0 "percentile measurements in test" || st_err=1
 	selftest_case 'replicas := 50' 0 "two-digit workload param" || st_err=1
+	selftest_case 'measurement := 99.9' 1 "assigned float at decimal boundary" || st_err=1
+	selftest_case 'measurements := []float64{99.9, 100.1}' 0 "measured float slice" || st_err=1
+	selftest_case 'payload := {"value": 250.0}' 0 "non-threshold JSON-like measurement" || st_err=1
+	selftest_case 'values: {"latency_ms": 250}' 0 "quoted measurement key" || st_err=1
+	selftest_case 'retry_threshold_count := 3' 0 "small SLA-like integer" || st_err=1
+	selftest_case 'max_latency_ms : 1500' 1 "spaced SLA-like assignment" || st_err=1
+	selftest_case 'THRESHOLD: 250' 1 "case-insensitive JSON threshold" || st_err=1
+	selftest_case 'thresholds_by_name: map[string]int{"fast": 250}' 0 "nested threshold map" || st_err=1
 	# --- override tokens: canonical and aliases must suppress a real leak ---
 	selftest_case 'port := 8080 // secret-scan:ok' 0 "comment-token override" || st_err=1
 	selftest_case 'port:=8080 // allow-numeric' 0 "alias allow-numeric" || st_err=1
@@ -194,6 +227,14 @@ secret_scan_selftest() {
 	selftest_case 'const x = 100.0' 1 "SLA-like x.0 float" || st_err=1
 	selftest_case 'passRatio := 0.95' 1 "SLA-like ratio" || st_err=1
 	selftest_case 'Value: f64(2.0)' 1 "fake SLA pointer in tests must be marked" || st_err=1
+	selftest_case '// raw floats — 480 vs 10 — is an explanatory example' 0 "numbers in comments" || st_err=1
+	selftest_case '"480s under 10min", 480, "s", "<", 10, "min"' 0 "numbers in test data" || st_err=1
+	selftest_case '"h": {3600, "time"}, "hour": {3600, "time"}' 0 "unit conversion constants" || st_err=1
+	selftest_case 'end := intParam(tr, "end", intParam(tr, "count", 100))' 0 "workload default" || st_err=1
+	selftest_case '{"threshold":250}' 1 "JSON threshold value" || st_err=1
+	selftest_case '{"threshold": 250.0, "description": "example"}' 1 "JSON decimal threshold" || st_err=1
+	selftest_case 'json := "{\"threshold\":250}"' 0 "threshold text inside string" || st_err=1
+	selftest_case 'url := "https://example.test/api?threshold=250"' 0 "threshold in URL" || st_err=1
 	# --- ECOPROJECT-5404: UUID false positive: sci-notation rule must not eat the
 	# UUID's first hex segment (e.g. 550e8400) before the UUID strip rule runs ---
 	selftest_case 'requestID := "550e8400-e29b-41d4-a716-446655440000"' 0 "UUID whose first segment looks like sci-notation" || st_err=1
@@ -219,6 +260,9 @@ fi
 echo "==> matcher self-test"
 secret_scan_selftest
 
+# The scan has three independent gates: forbidden tracked artifacts, numeric
+# literals introduced by the diff, and token-shaped values in editor config.
+# Keeping them separate makes a failure actionable and avoids broad bypasses.
 # --- tracked forbidden filenames ---
 echo "==> tracked-files  (refuse thresholds.json / report.json / report.md)"
 tracked_hits=0
@@ -282,21 +326,25 @@ else
 			added_lines=$((added_lines + 1))
 			loc_line="${new_line}"
 			new_line=$((new_line + 1))
-			if line_overridden "${cur_file}" "${loc_line}" "${body}"; then
-				overridden=$((overridden + 1))
-				continue
-			fi
-			if [[ -f "${allowlist}" ]] && grep -Fqx "${body}" "${allowlist}" 2>/dev/null; then
-				allowlisted=$((allowlisted + 1))
-				continue
-			fi
 			if is_measurement_json "${cur_file}" && ! json_looks_like_thresholds "${cur_file}"; then
 				# Measured goldens / tool output — not a thresholds document.
 				skipped_json=$((skipped_json + 1))
 				continue
 			fi
-			leftover="$(strip_non_sla "${body}")"
-			if has_sla_numeric "${leftover}"; then
+			if has_sla_numeric "${body}"; then
+				# Normalize only matching candidates so diagnostics do not double the
+				# subprocess cost for every added line.
+				leftover="$(strip_non_sla "${body}")"
+				if [[ -f "${allowlist}" ]] && grep -Fqx "${body}" "${allowlist}" 2>/dev/null; then
+					allowlisted=$((allowlisted + 1))
+					continue
+				fi
+				# Only numeric candidates need the relatively expensive lookup for a
+				# same-line or previous-line override.
+				if line_overridden "${cur_file}" "${loc_line}" "${body}"; then
+					overridden=$((overridden + 1))
+					continue
+				fi
 				fail_sla "${cur_file}" "${loc_line}" "${body}" "${leftover}"
 				sla_hits=$((sla_hits + 1))
 			fi
