@@ -55,7 +55,7 @@ for architecture decision records.
 ## Release artifact
 
 The harness **ships as a container image** ([ADR-0011](decisions/0011-harness-ships-as-container-image.md)):
-`quay.io/eco-special-projects/storage-cert-harness:<image_version>` (`:main` on the
+`quay.io/virtarraycert/storage-cert-harness:<image_version>` (`:main` on the
 default branch). The image includes `harness`, `kube-burner-ocp`, and `virtbench`
 on `PATH`. `harness version` reports the **binary** version track;
 the image tag uses the **image** version track. See [`docs/ci.md` Versioning](docs/ci.md#versioning).

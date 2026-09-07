@@ -440,7 +440,7 @@ uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
 
 The **release artifact** is that image ([ADR-0011](../decisions/0011-harness-ships-as-container-image.md)),
 not the GitLab `bin/harness` binary. Registry:
-`quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
+`quay.io/virtarraycert/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
 Trivy and Dive are **separate parallel CI jobs**. They load

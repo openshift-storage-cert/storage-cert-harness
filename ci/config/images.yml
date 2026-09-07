@@ -7,7 +7,7 @@ variables:
   MD_LINT_IMAGE: "registry.access.redhat.com/ubi9/nodejs-20:9.7"
   BUILDAH_IMAGE: "quay.io/buildah/stable:v1.39"
   CI_TOOLS_IMAGE: "quay.io/virtarraycert/ci_tools"
-  QUAY_IMAGE: "quay.io/eco-special-projects/storage-cert-harness"
+  QUAY_IMAGE: "quay.io/virtarraycert/storage-cert-harness"
   GOLANGCI_LINT_VERSION: "v2.13.1"
   TRIVY_VERSION: "v0.74.0"
   DIVE_VERSION: "v0.12.0"
