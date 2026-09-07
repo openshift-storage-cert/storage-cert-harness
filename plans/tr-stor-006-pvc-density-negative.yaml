@@ -1,0 +1,17 @@
+schema_version: "1"
+name: tr-stor-006-pvc-density-negative
+description: >-
+  Negative test: pvc-density against a non-existent storage class so PVCs never
+  bind. With a short timeout the run fails fast and the harness must report a
+  non-pass verdict (exit non-zero).
+concurrency: 1
+backend: no-such-sc
+select:
+  ids:
+    - TR-STOR-006
+overrides:
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 3
+    claim_size: 256Mi
+    timeout: 3m

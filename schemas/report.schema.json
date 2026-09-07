@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/schemas/report.schema.json",
+  "title": "Certification Report",
+  "description": "Graded run output: one verdict per scorable item (each sla and each check) within a TR. Provenance is stamped for auditability. See decisions/0006.",
+  "type": "object",
+  "required": ["run_id", "provenance", "verdicts", "summary"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "schema_version": { "type": "string", "description": "KB export schema the run consumed" },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "kb_git_commit": { "type": "string" },
+        "kb_commit_date": { "type": "string" },
+        "generated_date": { "type": "string" }
+      }
+    },
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tr", "item", "outcome"],
+        "properties": {
+          "tr": { "type": "string", "description": "TR id" },
+          "item": { "type": "string", "description": "scorable item, e.g. sla:latency_ms@p99 or check:snapshot-restore" },
+          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "reason": { "type": "string" },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "pass", "fail", "error", "skip"],
+      "properties": {
+        "total": { "type": "integer" },
+        "pass": { "type": "integer" },
+        "fail": { "type": "integer" },
+        "error": { "type": "integer" },
+        "skip": { "type": "integer" }
+      }
+    }
+  }
+}

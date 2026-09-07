@@ -1,0 +1,17 @@
+schema_version: "1"
+name: tr-stor-006-pvc-density
+description: >-
+  TR-STOR-006 pvc-density as authored in the KB: high-density PVC provisioning.
+  20 PVC/pod pairs, 256Mi claims. SLA bars are to-be-validated (sla: []) — do not
+  invent thresholds. Replace with the KB export catalog/thresholds when partner
+  bars exist.
+concurrency: 1
+backend: ontap-san
+select:
+  ids:
+    - TR-STOR-006
+overrides:
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 20
+    claim_size: 256Mi

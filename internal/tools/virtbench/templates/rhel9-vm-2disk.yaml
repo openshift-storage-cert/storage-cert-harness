@@ -1,0 +1,99 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel-9-vm
+  labels:
+    app: kubevirt-perf-test
+spec:
+  dataVolumeTemplates:
+    - metadata:
+        name: rhel-9-vm-volume
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: rhel9
+          namespace: openshift-virtualization-os-images
+        storage:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 30Gi
+          storageClassName: {{STORAGE_CLASS_NAME}}
+          volumeMode: Block
+    - metadata:
+        name: rhel-9-vm-data
+      spec:
+        source:
+          blank: {}
+        storage:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 10Gi
+          storageClassName: {{STORAGE_CLASS_NAME}}
+          volumeMode: Block
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: kubevirt-perf-test
+    spec:
+      domain:
+        cpu:
+          cores: 1
+        devices:
+          disks:
+            - name: rootdisk
+              bootOrder: 1
+              disk:
+                bus: virtio
+            - name: datadisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+        features:
+          acpi: {}
+          smm:
+            enabled: true
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+      networks:
+        - name: default
+          pod: {}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: rhel-9-vm-volume
+        - name: datadisk
+          dataVolume:
+            name: rhel-9-vm-data
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: cloud-user
+              password: changeme
+              chpasswd:
+                expire: false
+              ssh_pwauth: true
+              disable_root: false
+              packages:
+                - qemu-guest-agent
+              runcmd:
+                - systemctl enable --now qemu-guest-agent

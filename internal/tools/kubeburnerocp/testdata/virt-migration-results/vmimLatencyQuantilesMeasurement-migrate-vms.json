@@ -1,0 +1,4 @@
+[
+  {"quantileName": "Running", "P99": 800, "P95": 700, "P50": 500, "min": 400, "max": 900, "avg": 550, "metricName": "vmimLatencyQuantilesMeasurement", "jobName": "migrate-vms"},
+  {"quantileName": "Succeeded", "P99": 3000, "P95": 2800, "P50": 2200, "min": 1000, "max": 3200, "avg": 2000, "metricName": "vmimLatencyQuantilesMeasurement", "jobName": "migrate-vms"}
+]

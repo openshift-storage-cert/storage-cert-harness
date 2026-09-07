@@ -1,0 +1,23 @@
+schema_version: "1"
+name: virtbench-bootstorm-live-smoke
+description: >-
+  LIVE 3-VM boot-storm smoke for TR-VIRT-001 against the brnocp cluster on the
+  pure-flasharray-block storage class. No results_dir → the Runner actually execs
+  `virtbench datasource-clone --boot-storm --start 1 --end 3` on the cluster,
+  collects summary_boot_storm_results.json, and grades it. This is a
+  pipeline-proving smoke (3 VMs), NOT the real 100-VM certification gate. Requires
+  the virtbench venv active + VIRTBENCH_REPO exported so the CLI is on PATH and
+  can find its scripts. The harness creates the shared ssh helper pod and cleans
+  up namespaces itself — no manual steps. thresholds.json comes from the private
+  KB export at run time. NOTE: vm_name is intentionally NOT overridden — it must
+  match the bundled template's VM name (rhel-9-vm), which is the adapter default.
+select:
+  ids:
+    - TR-VIRT-001
+overrides:
+  TR-VIRT-001:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: virtbench-smoke

@@ -1,0 +1,16 @@
+schema_version: "1"
+name: virtbench-diskops-replay
+description: >-
+  Offline demo of the virtbench disk-ops scenario (TR-STOR-001) in REPLAY mode.
+  disk-ops writes a different (nested) result shape, disk_ops_results.json, parsed
+  by a dedicated parser — proof that a differently-shaped tool needs only a new
+  Parse closure, not an engine change. pvc_attach_time is graded from the hotplug
+  average API attach time; pvc_attach_latency@p99 is a clean skip (disk-ops emits
+  averages, not percentiles). Real SLA numbers live only in the private KB export;
+  point --thresholds at that file at run time.
+select:
+  ids:
+    - TR-STOR-001
+overrides:
+  TR-STOR-001:
+    results_dir: internal/tools/virtbench/testdata

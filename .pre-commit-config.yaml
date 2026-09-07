@@ -1,0 +1,42 @@
+repos:
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: yamllint (ci/scripts/lint-yaml.sh)
+        language: script
+        entry: ./ci/scripts/lint-yaml.sh
+        files: \.(yml|yaml)$
+        pass_filenames: false
+      - id: lint-md
+        name: markdownlint (ci/scripts/lint-md.sh)
+        language: script
+        entry: ./ci/scripts/lint-md.sh
+        files: \.md$
+        exclude: ^(vendor/|logs/|okf/|skills/|AGENTS\.md|CLAUDE\.md)
+        pass_filenames: false
+      - id: lint-go
+        name: golangci-lint (ci/scripts/lint-go.sh)
+        language: script
+        entry: ./ci/scripts/lint-go.sh
+        files: '\.go$|ci/config/golangci\.yml$|^go\.(mod|sum)$'
+        exclude: ^vendor/
+        pass_filenames: false
+      - id: secret-scan
+        name: secret-scan (ci/scripts/secret-scan.sh)
+        language: script
+        entry: ./ci/scripts/secret-scan.sh
+        pass_filenames: false
+        # yamllint disable-line rule:line-length
+        files: '(internal/(tools|grader)/|plans/|fixtures/|testdata/|\.vscode/|\.cursor/|\.devcontainer/|(^|/)\.env|ci/scripts/secret-scan|ci/config/secret-scan|thresholds\.json|report\.(json|md))'
+      # supply-chain.sh is not a pre-commit hook while GitLab allow_failure is on
+      # (ECOPROJECT-5419 / govulncheck GO-2026-4602). Re-add when that job is gating:
+      #   id: supply-chain
+      #   entry: ./ci/scripts/supply-chain.sh
+      #   pass_filenames: false
+      #   files: '(go\.mod|go\.sum|^vendor/|\.go$|Containerfile)'
+      - id: version-files-locked
+        name: version files locked
+        language: script
+        entry: ./ci/scripts/version-lock-check.sh
+        files: '^(VERSION|NEXT-VERSION|IMAGE-VERSION|NEXT-IMAGE-VERSION)$'
+        pass_filenames: false

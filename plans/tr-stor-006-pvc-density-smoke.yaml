@@ -1,0 +1,16 @@
+schema_version: "1"
+name: tr-stor-006-pvc-density-smoke
+description: >-
+  Fast pvc-density TR-STOR-006 smoke on a live cluster.
+  Small scale: 5 PVC/pod pairs, 256Mi. Use plans/tr-stor-006-pvc-density.yaml for
+  the fuller run.
+concurrency: 1
+backend: ontap-san
+select:
+  ids:
+    - TR-STOR-006
+overrides:
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 5
+    claim_size: 256Mi

@@ -1,0 +1,40 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: vm-{{.Replica}}
+  labels:
+    app: storage-cert-vmsnapshot
+    managed-by: storage-cert-harness
+spec:
+  running: true
+  dataVolumeTemplates:
+    - metadata:
+        name: vmdisk-{{.Replica}}
+      spec:
+        preallocation: true
+        storage:
+          storageClassName: "{{.storageClass}}"
+          resources:
+            requests:
+              storage: {{.diskSize}}
+        source:
+          registry:
+            url: "docker://{{.vmImage}}"
+  template:
+    metadata:
+      labels:
+        app: storage-cert-vmsnapshot
+    spec:
+      domain:
+        resources:
+          requests:
+            memory: 256Mi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: vmdisk-{{.Replica}}

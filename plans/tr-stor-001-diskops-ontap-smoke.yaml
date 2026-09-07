@@ -1,0 +1,19 @@
+schema_version: "1"
+name: tr-stor-001-diskops-ontap-smoke
+description: >-
+  LIVE disk-ops smoke for TR-STOR-001 against ocp-edge114-0 on ontap-san.
+  Minimal scale (2 VMs) — virtbench disk-ops --create-vms --operation hotplug
+  measures pvc_attach_time against the real KB bar. pvc_attach_latency@p99 has a
+  descriptor + bar but disk-ops emits averages, not percentiles, so it surfaces
+  the KB measured_by inconsistency (ADR-0013 validation). Uses the default
+  kubeconfig (this shell's cluster). virtbench creates/cleans up its own VMs.
+backend: ontap-san
+select:
+  ids:
+    - TR-STOR-001
+overrides:
+  TR-STOR-001:
+    start: 1
+    end: 2
+    namespace_prefix: disk-ops
+    operation: hotplug

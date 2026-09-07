@@ -1,0 +1,21 @@
+schema_version: "1"
+name: tr-virt-010-vm-snapshot-scale
+description: >-
+  TR-VIRT-010 VM snapshot scale plan for a live cluster. It creates 25 VMs and
+  requests 50 snapshots in sequential batches. Each batch uses a different VM
+  for each snapshot, so the test does not request concurrent snapshots of the
+  same VM. The report shows requested, ready, failed, success rate, batch
+  completion time, and snapshot_ready_time p99. It needs OpenShift
+  Virtualization, CDI, and a VolumeSnapshotClass on the backend storage class.
+concurrency: 1
+backend: example-array
+select:
+  ids:
+    - TR-VIRT-010
+overrides:
+  TR-VIRT-010:
+    replicas: 25
+    snapshot_count: 50
+    namespace: sc-vs-scale
+    vm_image: quay.io/kubevirt/cirros-container-disk-demo:latest
+    disk_gib: 2

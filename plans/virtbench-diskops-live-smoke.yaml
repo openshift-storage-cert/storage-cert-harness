@@ -1,0 +1,19 @@
+schema_version: "1"
+name: virtbench-diskops-live-smoke
+description: >-
+  LIVE disk-ops smoke for TR-STOR-001 against brnocp on pure-flasharray-block.
+  Execs virtbench disk-ops --create-vms --operation hotplug, measures
+  pvc_attach_time against the real KB gate. pvc_attach_latency@p99 is a clean
+  skip (disk-ops emits averages, not percentiles). No results_dir = live exec.
+  virtbench creates its own VMs (--create-vms) and cleans everything up.
+select:
+  ids:
+    - TR-STOR-001
+overrides:
+  TR-STOR-001:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: disk-ops
+    operation: hotplug

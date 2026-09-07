@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/schemas/backends.schema.json",
+  "title": "Storage Backends",
+  "description": "Named storage-array configurations. Credentials are references (file / k8s_secret / inline), never committed plaintext. Authored in YAML; this schema describes the parsed structure. See decisions/0005.",
+  "type": "object",
+  "required": ["schema_version", "backends"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string" },
+    "backends": { "type": "array", "items": { "$ref": "#/$defs/backend" } }
+  },
+  "$defs": {
+    "backend": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "vendor": { "type": "string" },
+        "storage_class": { "type": "string" },
+        "snapshot_class": { "type": "string" },
+        "params": {
+          "type": "object",
+          "description": "free-form vendor-specific parameters (e.g. Trident svm / management_lif / endpoint); may be empty"
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/secretRef" }
+        }
+      }
+    },
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "exactly one source: file, k8s_secret, or inline (dev only)",
+      "properties": {
+        "file": { "type": "string" },
+        "inline": { "type": "string" },
+        "k8s_secret": {
+          "type": "object",
+          "required": ["name", "key"],
+          "additionalProperties": false,
+          "properties": {
+            "namespace": { "type": "string" },
+            "name": { "type": "string" },
+            "key": { "type": "string" }
+          }
+        }
+      },
+      "oneOf": [
+        { "required": ["file"] },
+        { "required": ["inline"] },
+        { "required": ["k8s_secret"] }
+      ]
+    }
+  }
+}

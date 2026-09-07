@@ -1,0 +1,92 @@
+package clustercheck
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+)
+
+// KubeCLI returns "oc" or "kubectl" if present on PATH, else "".
+func KubeCLI() string {
+	if _, err := exec.LookPath("oc"); err == nil {
+		return "oc"
+	}
+	if _, err := exec.LookPath("kubectl"); err == nil {
+		return "kubectl"
+	}
+	return ""
+}
+
+// ResolveKubeCLIPath returns the absolute, symlink-resolved path of oc/kubectl,
+// suitable for mounting into a tool container. Error if neither is on PATH.
+func ResolveKubeCLIPath() (string, error) {
+	for _, name := range []string{"oc", "kubectl"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			resolved = path
+		}
+		return filepath.Abs(resolved)
+	}
+	return "", fmt.Errorf("clustercheck: need kubectl or oc on PATH")
+}
+
+// Capability is a named cluster prerequisite that emits a core.Finding.
+type Capability struct {
+	Name  string
+	Check func(ctx context.Context, cli string) core.Finding
+}
+
+// CRD returns a Capability that verifies a CRD exists on the cluster.
+func CRD(crdName string) Capability {
+	return Capability{
+		Name: crdName,
+		Check: func(ctx context.Context, cli string) core.Finding {
+			out, err := exec.CommandContext(ctx, cli, "get", "crd", crdName, "-o", "name").CombinedOutput()
+			if err != nil {
+				return core.Finding{Level: "error", Message: fmt.Sprintf("CRD %s not found: %v: %s", crdName, err, strings.TrimSpace(string(out)))}
+			}
+			return core.Finding{Level: "info", Message: fmt.Sprintf("CRD %s present", crdName)}
+		},
+	}
+}
+
+// Predefined capabilities.
+var (
+	// CDI is the Containerized Data Importer (DataVolume) capability.
+	CDI = CRD("datavolumes.cdi.kubevirt.io")
+	// KubeVirt is the KubeVirt/OpenShift Virtualization capability.
+	KubeVirt = CRD("kubevirts.kubevirt.io")
+)
+
+// Preflight runs the shared cluster-prereq flow: warn if no kube CLI, else check each capability plus the StorageClass when set.
+func Preflight(ctx context.Context, caps []Capability, storageClass string) []core.Finding {
+	cli := KubeCLI()
+	if cli == "" {
+		return []core.Finding{{Level: "warn", Message: "neither kubectl nor oc found; skipping cluster prereq checks"}}
+	}
+	var findings []core.Finding
+	for _, c := range caps {
+		findings = append(findings, c.Check(ctx, cli))
+	}
+	if storageClass != "" {
+		findings = append(findings, StorageClassExists(ctx, cli, storageClass))
+	}
+	return findings
+}
+
+// StorageClassExists checks a StorageClass exists on the cluster (warn if absent).
+func StorageClassExists(ctx context.Context, cli, name string) core.Finding {
+	out, err := exec.CommandContext(ctx, cli, "get", "storageclass", name, "-o", "name").CombinedOutput()
+	if err != nil {
+		return core.Finding{Level: "warn", Message: fmt.Sprintf("storage class %q not found on cluster: %s", name, strings.TrimSpace(string(out)))}
+	}
+	return core.Finding{Level: "info", Message: fmt.Sprintf("storage class %q present", name)}
+}

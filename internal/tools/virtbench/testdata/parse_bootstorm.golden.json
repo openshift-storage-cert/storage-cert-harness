@@ -1,0 +1,65 @@
+[
+  {
+    "tr_id": "TR-VIRT-001",
+    "metrics": [
+      {
+        "name": "time_to_running",
+        "value": 3.2,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_running_max",
+        "value": 5.1,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_running_min",
+        "value": 2,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping",
+        "value": 4.4,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_max",
+        "value": 7.8,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_min",
+        "value": 3.1,
+        "unit": "s"
+      },
+      {
+        "name": "vms_total",
+        "value": 100
+      },
+      {
+        "name": "vms_successful",
+        "value": 100
+      },
+      {
+        "name": "vms_failed",
+        "value": 0
+      },
+      {
+        "name": "vm_success_rate",
+        "value": 100,
+        "unit": "%"
+      },
+      {
+        "name": "total_test_duration",
+        "value": 480,
+        "unit": "s"
+      },
+      {
+        "name": "vm_boot_time",
+        "value": 480,
+        "unit": "s"
+      }
+    ],
+    "native": "pass"
+  }
+]

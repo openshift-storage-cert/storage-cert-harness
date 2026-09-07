@@ -1,0 +1,64 @@
+schema_version: "1"
+name: all-implemented-smoke
+description: >-
+  ALL currently-implemented TRs at the smallest scale that still runs, live on
+  ocp-edge114-0 / ontap-san. One TR per registered integration path:
+  virtbench (datasource-clone, boot-storm, num-disks-2, disk-ops),
+  kube-burner (snapshot), kube-burner-ocp (pvc-density, virt-migration,
+  virt-parallel). Validates ADR-0013 end-to-end and surfaces where the KB's
+  automation_tool / metric descriptors have drifted from the harness adapters.
+backend: ontap-san
+concurrency: 1
+select:
+  ids:
+    - TR-STOR-001
+    - TR-STOR-006
+    - TR-VIRT-001
+    - TR-VIRT-002
+    - TR-VIRT-004
+    - TR-VIRT-010
+    - TR-VIRT-018
+    - TR-VIRT-019
+overrides:
+  TR-STOR-001:            # virtbench disk-ops
+    start: 1
+    end: 2
+    namespace_prefix: all-diskops
+    operation: hotplug
+  TR-STOR-006:            # kube-burner-ocp pvc-density
+    workload: pvc-density
+    iterations: 5
+    claim_size: 256Mi
+  TR-VIRT-001:            # virtbench datasource-clone --boot-storm
+    start: 1
+    end: 2
+    namespace_prefix: all-bootstorm
+  TR-VIRT-002:            # virtbench datasource-clone
+    start: 1
+    end: 2
+    namespace_prefix: all-clone
+  TR-VIRT-004:            # kube-burner-ocp virt-migration
+    workload: virt-migration
+    iterations: 1
+    iteration_vms: 2
+    migration_qps: 20
+  TR-VIRT-010:            # kube-burner volumeSnapshotLatency
+    replicas: 2
+    snapshot_count: 2
+    namespace: all-snap
+    vm_image: quay.io/kubevirt/cirros-container-disk-demo:latest
+    disk_gib: 2
+  TR-VIRT-018:            # virtbench datasource-clone --num-disks 2
+    start: 1
+    end: 2
+    num_disks: 2
+    vm_template: internal/tools/virtbench/templates/rhel9-vm-2disk.yaml
+    namespace_prefix: all-vdi
+  TR-VIRT-019:            # kube-burner-ocp virt-parallel
+    workload: virt-parallel
+    initial_vms: 2
+    increment: 0
+    data_volume_count: 1
+    max_iterations: 1
+    vm_image: quay.io/containerdisks/fedora:41
+    skip_migration_job: true

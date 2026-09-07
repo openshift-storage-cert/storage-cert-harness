@@ -1,0 +1,23 @@
+schema_version: "1"
+name: example-performance
+description: >-
+  Level-3 test requirements bound to a named storage backend, with a per-TR
+  param override and a per-tool scheduling override. Illustrates partner-level
+  selection, overrides, scheduling, and backend binding.
+concurrency: 1
+backend: example-array
+select:
+  partner_levels:
+    - 3
+overrides:
+  EX-001:
+    # Params are merged onto the TR's tool params before the run.
+    iodepth: 32
+    runtime_seconds: 120
+scheduling:
+  # Override the example tool's built-in defaults for this run: serialize it and
+  # keep it off the shared array while other array-bound jobs run.
+  example:
+    parallel_safe: false
+    exclusivity_groups:
+      - example-array

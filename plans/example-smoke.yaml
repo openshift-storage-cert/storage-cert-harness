@@ -1,0 +1,9 @@
+schema_version: "1"
+name: example-smoke
+description: >-
+  Smoke plan that exercises the offline `example` tool. Runs against no real
+  cluster and needs no backend or thresholds bundle beyond the fake example.
+concurrency: 2
+select:
+  tools:
+    - example

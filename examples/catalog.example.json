@@ -1,0 +1,76 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "0000000example",
+    "kb_commit_date": "2026-01-01",
+    "generated_date": "2026-01-01"
+  },
+  "test_requirements": [
+    {
+      "id": "EX-001",
+      "title": "Read latency under load stays within budget",
+      "partner_level": 3,
+      "verified": "yes",
+      "automation_tool": "example",
+      "sla_status": "defined",
+      "sla_count": 1,
+      "checks_status": "defined",
+      "checks_count": 0
+    },
+    {
+      "id": "EX-002",
+      "title": "Volume snapshot can be restored",
+      "partner_level": 3,
+      "verified": "yes",
+      "automation_tool": "example",
+      "sla_status": "defined",
+      "sla_count": 0,
+      "checks_status": "defined",
+      "checks_count": 1
+    },
+    {
+      "id": "EX-003",
+      "title": "Sequential read throughput floor (bar not yet set)",
+      "partner_level": 3,
+      "verified": "partial",
+      "automation_tool": "example",
+      "sla_status": "defined",
+      "sla_count": 1,
+      "checks_status": "defined",
+      "checks_count": 0
+    },
+    {
+      "id": "EX-004",
+      "title": "Write IOPS floor (awaiting validation)",
+      "partner_level": 2,
+      "verified": "no",
+      "automation_tool": "example",
+      "sla_status": "to-be-validated",
+      "sla_count": 1,
+      "checks_status": "defined",
+      "checks_count": 0
+    },
+    {
+      "id": "EX-005",
+      "title": "Documented disaster-recovery runbook exists",
+      "partner_level": 3,
+      "verified": "yes",
+      "automation_tool": "manual",
+      "sla_status": "defined",
+      "sla_count": 0,
+      "checks_status": "defined",
+      "checks_count": 1
+    },
+    {
+      "id": "TR-VIRT-010",
+      "title": "VM snapshot creation time (development example)",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "kube-burner",
+      "sla_status": "defined",
+      "sla_count": 1,
+      "checks_status": "to-be-validated",
+      "checks_count": 0
+    }
+  ]
+}

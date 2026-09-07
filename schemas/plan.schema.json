@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/schemas/plan.schema.json",
+  "title": "Test Plan",
+  "description": "A curated, parameterized selection of catalog test requirements plus run settings, per-tool scheduling, and the active backend. Authored in YAML; this schema describes the parsed structure. See decisions/0005 and 0006.",
+  "type": "object",
+  "required": ["schema_version", "name", "select"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "backend": { "type": "string", "description": "name of the active backend (optional)" },
+    "concurrency": { "type": "integer", "minimum": 0 },
+    "select": { "$ref": "#/$defs/selector" },
+    "overrides": {
+      "type": "object",
+      "description": "TR id -> tool param overrides merged onto the selected TR",
+      "additionalProperties": { "type": "object" }
+    },
+    "scheduling": {
+      "type": "object",
+      "description": "tool name -> per-run override of the tool's built-in scheduling defaults",
+      "additionalProperties": { "$ref": "#/$defs/tool_schedule" }
+    }
+  },
+  "$defs": {
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "all": { "type": "boolean" },
+        "ids": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "partner_levels": { "type": "array", "items": { "type": "integer", "enum": [1, 2, 3] } }
+      },
+      "anyOf": [
+        { "properties": { "all": { "const": true } }, "required": ["all"] },
+        { "required": ["ids"] },
+        { "required": ["tools"] },
+        { "required": ["partner_levels"] }
+      ]
+    },
+    "tool_schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parallel_safe": { "type": "boolean" },
+        "exclusivity_groups": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

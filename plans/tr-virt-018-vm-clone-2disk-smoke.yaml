@@ -1,0 +1,20 @@
+schema_version: "1"
+name: tr-virt-018-vm-clone-2disk-smoke
+description: >-
+  LIVE 3-VM datasource-clone smoke for TR-VIRT-018 (VDI Ready badge: VM cloning
+  at scale). Clones VMs with 2 disks each (blank second disk) via the harness
+  2-disk template and grades clone_duration against the real KB gate. The
+  certification run sets count to the full scale; this smoke uses 3.
+  No results_dir = live exec. The harness manages the ssh helper pod and
+  virtbench cleans up namespaces via --cleanup.
+select:
+  ids:
+    - TR-VIRT-018
+overrides:
+  TR-VIRT-018:
+    storage_class: ontap-san
+    start: 1
+    end: 3
+    num_disks: 2
+    vm_template: internal/tools/virtbench/templates/rhel9-vm-2disk.yaml
+    namespace_prefix: virtbench-vdi

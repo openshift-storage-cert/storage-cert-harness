@@ -1,0 +1,10 @@
+{
+  "total_vms": 100,
+  "successful": 100,
+  "failed": 0,
+  "total_test_duration_sec": 480.0,
+  "metrics": [
+    { "metric": "running_time_sec", "avg": 3.2, "max": 5.1, "min": 2.0, "count": 100 },
+    { "metric": "ping_time_sec", "avg": 4.4, "max": 7.8, "min": 3.1, "count": 100 }
+  ]
+}

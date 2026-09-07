@@ -1,0 +1,21 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-019-as-authored",
+    "kb_commit_date": "2026-09-03",
+    "generated_date": "2026-09-03"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-019",
+      "title": "Parallel VM Lifecycle at Progressive Scale",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "kube-burner-ocp",
+      "sla_status": "to-be-validated",
+      "sla_count": 0,
+      "checks_status": "to-be-validated",
+      "checks_count": 0
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+schema_version: "1"
+name: virtbench-datasource-clone-live-smoke
+description: >-
+  LIVE 3-VM datasource-clone smoke for TR-VIRT-002 against brnocp on
+  pure-flasharray-block. Execs virtbench datasource-clone, measures clone
+  duration + time-to-running + time-to-ping against the real KB gates.
+  No results_dir = live exec. The harness manages the ssh helper pod and
+  virtbench cleans up namespaces via --cleanup.
+select:
+  ids:
+    - TR-VIRT-002
+overrides:
+  TR-VIRT-002:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: virtbench-clone

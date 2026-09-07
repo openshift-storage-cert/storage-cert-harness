@@ -1,0 +1,21 @@
+schema_version: "1"
+name: tr-virt-019-parallel-vm-lifecycle
+description: >-
+  TR-VIRT-019 full run: progressive-scale parallel VM lifecycle via virt-parallel.
+  Starts at 5 VMs, adds 5 per iteration, 9 DataVolumes per VM. Runs until failure
+  or max-iterations reached. Exercises create, resize, restart, snapshot, migrate,
+  and delete at each scale tier. Needs OpenShift Virtualization + CDI + a
+  VolumeSnapshotClass on the backend storage class.
+concurrency: 1
+backend: ontap-san
+select:
+  ids:
+    - TR-VIRT-019
+overrides:
+  TR-VIRT-019:
+    workload: virt-parallel
+    initial_vms: 5
+    increment: 5
+    data_volume_count: 9
+    max_iterations: 6
+    vm_image: quay.io/containerdisks/fedora:41

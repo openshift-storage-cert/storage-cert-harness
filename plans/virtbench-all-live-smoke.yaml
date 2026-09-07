@@ -1,0 +1,31 @@
+schema_version: "1"
+name: virtbench-all-live-smoke
+description: >-
+  Run all three virtbench scenarios (TR-VIRT-001, TR-VIRT-002, TR-STOR-001) in a
+  single harness invocation. Demonstrates group-scoped setup: the ssh helper pod
+  is created ONCE before any job and removed ONCE after all three finish.
+select:
+  ids:
+    - TR-VIRT-001
+    - TR-VIRT-002
+    - TR-STOR-001
+overrides:
+  TR-VIRT-001:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: virtbench-smoke
+  TR-VIRT-002:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: virtbench-clone
+  TR-STOR-001:
+    kubeconfig: /home/bodnopoz/work/brnocp-kubeconfig
+    storage_class: pure-flasharray-block
+    start: 1
+    end: 3
+    namespace_prefix: disk-ops
+    operation: hotplug

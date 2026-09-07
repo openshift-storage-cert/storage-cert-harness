@@ -1,0 +1,12 @@
+{
+  "summary": { "total_vms": 100, "total_operations": 100 },
+  "hotplug": {
+    "successful": 100,
+    "failed": 0,
+    "avg_api_attach_time": 8.4,
+    "max_api_attach_time": 12.7,
+    "min_api_attach_time": 5.2,
+    "avg_volume_ready_time": 11.9,
+    "avg_validation_time": 2.1
+  }
+}

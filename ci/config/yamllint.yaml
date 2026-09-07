@@ -1,0 +1,16 @@
+extends: default
+
+ignore: |
+  vendor/
+  logs/
+  dist/
+  .git/
+
+rules:
+  document-start: disable
+  line-length:
+    max: 140
+    allow-non-breakable-inline-mappings: true
+  truthy:
+    allowed-values: ["true", "false", "on", "off", "yes", "no"]
+    check-keys: false

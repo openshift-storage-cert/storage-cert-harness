@@ -1,0 +1,19 @@
+schema_version: "1"
+name: tr-virt-004-virt-migration
+description: >-
+  TR-VIRT-004 mass VM migration (kube-burner-ocp virt-migration): create 50 VMs
+  pinned to one worker node, then live-migrate them all in parallel. Graded on
+  total_migration_duration (<= 30 min, example bar) plus the jobs_passed check
+  (all VMs migrated). Replace the example threshold with the KB export when the
+  partner bar exists.
+concurrency: 1
+backend: ontap-san
+select:
+  ids:
+    - TR-VIRT-004
+overrides:
+  TR-VIRT-004:
+    workload: virt-migration
+    iterations: 1
+    iteration_vms: 50
+    migration_qps: 50

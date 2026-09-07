@@ -1,0 +1,17 @@
+schema_version: "1"
+name: tr-stor-006-pvc-density-negative2
+description: >-
+  Negative test #2: pvc-density against a typo'd storage class (ontap-sann) that
+  does not exist, so PVCs never bind. Short timeout; the harness must report a
+  non-pass verdict (exit non-zero).
+concurrency: 1
+backend: typo-sc
+select:
+  ids:
+    - TR-STOR-006
+overrides:
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 3
+    claim_size: 256Mi
+    timeout: 2m

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/schemas/catalog.schema.json",
+  "title": "KB Catalog (v2.0)",
+  "description": "Publishable KB export: per-Test-Requirement metadata and summary counts, with no threshold numbers. Safe to ship in the public harness repo. Joins with thresholds.json on id and shared provenance.kb_git_commit. See decisions/0006 and 5273.",
+  "type": "object",
+  "required": ["schema_version", "provenance", "test_requirements"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "test_requirements": { "type": "array", "items": { "$ref": "#/$defs/tr" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["kb_git_commit"],
+      "properties": {
+        "kb_git_commit": { "type": "string" },
+        "kb_commit_date": { "type": "string" },
+        "generated_date": { "type": "string" }
+      }
+    },
+    "tr": {
+      "type": "object",
+      "required": ["id", "title", "partner_level"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "partner_level": { "type": "integer", "enum": [1, 2, 3] },
+        "verified": { "type": "string" },
+        "automation_tool": { "type": "string" },
+        "sla_status": { "enum": ["defined", "to-be-validated"] },
+        "sla_count": { "type": "integer", "minimum": 0 },
+        "checks_status": { "enum": ["defined", "to-be-validated"] },
+        "checks_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

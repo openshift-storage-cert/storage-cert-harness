@@ -1,0 +1,17 @@
+schema_version: "1"
+name: virtbench-bootstorm-replay
+description: >-
+  Offline demo of the virtbench boot-storm scenario (TR-VIRT-001) in REPLAY mode.
+  Boot storm is the datasource-clone --boot-storm variant; the runner grades a
+  pre-collected summary_boot_storm_results.json instead of exec-ing the CLI. This
+  plan proves the grader's unit normalization: the KB gate is vm_boot_time < 10
+  min while virtbench reports seconds — the harness converts before comparing.
+  The iops_latency@p99 gate is a clean skip (not measured by this benchmark) and
+  the 1000-VM (<1h) gate is skipped as a different scale. Real SLA numbers live
+  only in the private KB export; point --thresholds at that file at run time.
+select:
+  ids:
+    - TR-VIRT-001
+overrides:
+  TR-VIRT-001:
+    results_dir: internal/tools/virtbench/testdata

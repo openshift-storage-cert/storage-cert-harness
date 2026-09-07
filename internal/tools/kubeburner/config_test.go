@@ -1,0 +1,40 @@
+package kubeburner
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestSnapshotJobsMarkerIsYAMLComment(t *testing.T) {
+	if !strings.HasPrefix(snapshotJobsMarker, "# ") {
+		t.Fatalf("snapshot job marker must be a YAML comment, got %q", snapshotJobsMarker)
+	}
+	asset, err := assets.ReadFile("assets/config.yaml")
+	if err != nil {
+		t.Fatalf("read config asset: %v", err)
+	}
+	if !strings.Contains(string(asset), "\n"+snapshotJobsMarker+"\n") {
+		t.Fatalf("config asset does not contain snapshot job marker %q", snapshotJobsMarker)
+	}
+}
+
+func TestWriteConfigReplacesYAMLCommentMarker(t *testing.T) {
+	dir := t.TempDir()
+	params := Params{Replicas: 2, SnapshotCount: 3, snapshotCountSet: true}
+	if _, err := writeConfig(dir, params); err != nil {
+		t.Fatalf("writeConfig: %v", err)
+	}
+
+	config, err := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(config), snapshotJobsMarker) {
+		t.Fatalf("config still contains snapshot job marker %q", snapshotJobsMarker)
+	}
+	if !strings.Contains(string(config), "name: vmsnapshot-snapshot-1") {
+		t.Fatalf("config does not contain generated snapshot batch: %s", config)
+	}
+}
