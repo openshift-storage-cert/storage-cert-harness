@@ -63,6 +63,10 @@ is_version_bump_push() {
 	if [[ "${GITHUB_REF:-}" == "refs/heads/test-ci" && "${GITHUB_EVENT_NAME:-}" == "push" ]]; then
 		return 0
 	fi
+	if [[ "${GITHUB_REF:-}" == "refs/heads/main" || "${GITHUB_REF:-}" == "refs/heads/test-ci" ]] &&
+		[[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+		return 0
+	fi
 	return 1
 }
 
