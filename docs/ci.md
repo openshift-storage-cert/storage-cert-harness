@@ -162,7 +162,7 @@ Local checkout of main still gets `-sha`.
 - `image-build.sh`: `--build-arg HARNESS_VERSION=$(binary_version)` (binary
   supplied by the build artifact),
   `--build-arg IMAGE_VERSION=$(image_version)` (OCI label),
-  tag `${QUAY_IMAGE}:$(image_version)` and `:main` on main push.
+  tag `${QUAY_IMAGE}:$(image_version)`, `:main`, and `:latest` on main push.
   Write `dist/image-version.txt`.
 
 ### Version flow

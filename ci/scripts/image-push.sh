@@ -22,9 +22,6 @@ done
 eng="$(container_engine)"
 img_ver="$(image_version)"
 branch_tag="main"
-if [[ "${CI_COMMIT_BRANCH:-}" == "test-ci" || "${GITHUB_REF:-}" == "refs/heads/test-ci" ]]; then
-	branch_tag="test-ci"
-fi
 echo "${QUAY_PASSWORD}" | "${eng}" login -u "${QUAY_USER}" --password-stdin quay.io
 
 refs=()
@@ -49,19 +46,17 @@ done
 
 manifest="${QUAY_IMAGE}:${img_ver}"
 branch_manifest="${QUAY_IMAGE}:${branch_tag}"
-if [[ "${eng}" == "buildah" ]]; then
-	buildah manifest rm "${manifest}" 2>/dev/null || true
-	buildah manifest create "${manifest}" "${refs[@]}"
-	buildah manifest push --all "${manifest}" "docker://${manifest}"
-	buildah manifest rm "${branch_manifest}" 2>/dev/null || true
-	buildah manifest create "${branch_manifest}" "${refs[@]}"
-	buildah manifest push --all "${branch_manifest}" "docker://${branch_manifest}"
-else
-	"${eng}" manifest rm "${manifest}" 2>/dev/null || true
-	"${eng}" manifest create "${manifest}" "${refs[@]}"
-	"${eng}" manifest push "${manifest}"
-	"${eng}" manifest rm "${branch_manifest}" 2>/dev/null || true
-	"${eng}" manifest create "${branch_manifest}" "${refs[@]}"
-	"${eng}" manifest push "${branch_manifest}"
-fi
-echo "pushed ${manifest} and ${branch_manifest} (${arches[*]})"
+manifests=("${manifest}" "${branch_manifest}")
+manifests+=("${QUAY_IMAGE}:latest")
+for manifest in "${manifests[@]}"; do
+	if [[ "${eng}" == "buildah" ]]; then
+		buildah manifest rm "${manifest}" 2>/dev/null || true
+		buildah manifest create "${manifest}" "${refs[@]}"
+		buildah manifest push --all "${manifest}" "docker://${manifest}"
+	else
+		"${eng}" manifest rm "${manifest}" 2>/dev/null || true
+		"${eng}" manifest create "${manifest}" "${refs[@]}"
+		"${eng}" manifest push "${manifest}"
+	fi
+done
+echo "pushed ${manifests[*]} (${arches[*]})"
