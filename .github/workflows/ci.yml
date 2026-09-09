@@ -28,9 +28,8 @@ jobs:
     uses: ./.github/workflows/ci-build.yml
 
   smoke:
-    # Intentionally disabled: replay-smoke is not a CI gate. Run locally via
-    # ci/scripts/replay-smoke.sh when needed.
-    if: false
+    # Opt-in only (set vars.CI_RUN_REPLAY_SMOKE=true). Not a CI gate.
+    if: ${{ vars.CI_RUN_REPLAY_SMOKE == 'true' }}
     needs: [build]
     uses: ./.github/workflows/ci-smoke.yml
 

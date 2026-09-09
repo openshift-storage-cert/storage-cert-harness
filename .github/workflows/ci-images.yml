@@ -47,9 +47,8 @@ jobs:
           if-no-files-found: ignore
 
   image-scan-trivy:
-    # Intentionally disabled: scan results are not a CI gate. Run locally via
-    # make image-scan-trivy after make image-build when needed.
-    if: false
+    # Opt-in only (set vars.CI_RUN_IMAGE_SCANS=true). Not a CI gate.
+    if: ${{ vars.CI_RUN_IMAGE_SCANS == 'true' }}
     runs-on: ubuntu-latest
     needs: [image-build]
     steps:
@@ -76,9 +75,8 @@ jobs:
           if-no-files-found: ignore
 
   image-scan-dive:
-    # Intentionally disabled: scan results are not a CI gate. Run locally via
-    # make image-scan-dive after make image-build when needed.
-    if: false
+    # Opt-in only (set vars.CI_RUN_IMAGE_SCANS=true). Not a CI gate.
+    if: ${{ vars.CI_RUN_IMAGE_SCANS == 'true' }}
     runs-on: ubuntu-latest
     needs: [image-build]
     steps:
