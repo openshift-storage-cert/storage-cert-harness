@@ -1,0 +1,38 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-019-as-authored",
+    "kb_commit_date": "2026-09-03",
+    "generated_date": "2026-09-03"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-019",
+      "title": "Parallel VM Lifecycle at Progressive Scale",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "kube-burner-ocp",
+      "sla_status": "to-be-validated",
+      "sla_count": 0,
+      "checks_status": "to-be-validated",
+      "checks_count": 0,
+      "params": {
+        "workload":            {"required": true},
+        "initial_vms":         {"required": false},
+        "increment":           {"required": false},
+        "data_volume_count":   {"required": false},
+        "max_iterations":      {"required": false},
+        "vm_image":            {"required": false},
+        "vm_cpu":              {"required": false},
+        "vm_memory":           {"required": false},
+        "namespace":           {"required": false},
+        "min_vol_size":        {"required": false},
+        "min_vol_inc_size":    {"required": false},
+        "skip_migration_job":  {"required": false, "default": false},
+        "skip_resize_job":     {"required": false, "default": false},
+        "skip_restart_job":    {"required": false, "default": false},
+        "skip_snapshot_job":   {"required": false, "default": false}
+      }
+    }
+  ]
+}

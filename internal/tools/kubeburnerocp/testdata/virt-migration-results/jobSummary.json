@@ -1,0 +1,16 @@
+[
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 1,
+    "uuid": "00000000-0000-0000-0000-000000000002",
+    "passed": true,
+    "jobConfig": {"name": "create-migrating-vms", "jobIterations": 50, "jobType": "create"}
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 1,
+    "uuid": "00000000-0000-0000-0000-000000000002",
+    "passed": true,
+    "jobConfig": {"name": "migrate-vms", "jobIterations": 1, "jobType": "kubevirt"}
+  }
+]

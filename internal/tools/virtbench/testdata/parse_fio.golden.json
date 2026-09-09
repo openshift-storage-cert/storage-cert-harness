@@ -1,0 +1,54 @@
+[
+  {
+    "tr_id": "TR-STOR-002",
+    "metrics": [
+      {
+        "name": "read_latency",
+        "value": 111.111111,
+        "unit": "ms",
+        "percentile": "p99"
+      },
+      {
+        "name": "write_latency",
+        "value": 222.222222,
+        "unit": "ms",
+        "percentile": "p99"
+      },
+      {
+        "name": "read_iops",
+        "value": 1111,
+        "unit": "IOPS"
+      },
+      {
+        "name": "write_iops",
+        "value": 2222,
+        "unit": "IOPS"
+      }
+    ],
+    "native": "pass",
+    "raw": {
+      "_comment": "synthetic FIO fixture data; all measurements are fabricated",
+      "jobs": [
+        {
+          "error": 0,
+          "read": {
+            "iops": 1111,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 111111111
+              }
+            }
+          },
+          "write": {
+            "iops": 2222,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 222222222
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

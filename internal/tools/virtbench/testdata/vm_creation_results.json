@@ -1,0 +1,12 @@
+[
+    { "namespace": "virtbench-1", "running_time_sec": 61.4, "ping_time_sec": 95.0, "success": true, "clone_duration_sec": 31.2 },
+    { "namespace": "virtbench-2", "running_time_sec": 70.1, "ping_time_sec": 100.2, "success": true, "clone_duration_sec": 33.4 },
+    { "namespace": "virtbench-3", "running_time_sec": 72.5, "ping_time_sec": 104.6, "success": true, "clone_duration_sec": 35.0 },
+    { "namespace": "virtbench-4", "running_time_sec": 80.0, "ping_time_sec": 118.0, "success": true, "clone_duration_sec": 40.7 },
+    { "namespace": "virtbench-5", "running_time_sec": 88.3, "ping_time_sec": 130.7, "success": true, "clone_duration_sec": 42.5 },
+    { "namespace": "virtbench-6", "running_time_sec": 95.0, "ping_time_sec": 140.1, "success": true, "clone_duration_sec": 45.9 },
+    { "namespace": "virtbench-7", "running_time_sec": 100.4, "ping_time_sec": 150.3, "success": true, "clone_duration_sec": 48.2 },
+    { "namespace": "virtbench-8", "running_time_sec": 105.9, "ping_time_sec": 158.8, "success": true, "clone_duration_sec": 51.0 },
+    { "namespace": "virtbench-9", "running_time_sec": 108.7, "ping_time_sec": 162.5, "success": true, "clone_duration_sec": 54.6 },
+    { "namespace": "virtbench-10", "running_time_sec": 111.7, "ping_time_sec": 168.9, "success": true, "clone_duration_sec": 58.1 }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "tr_id": "EX-001",
+    "metrics": [
+      {
+        "name": "latency_ms",
+        "value": 0.8,
+        "unit": "ms",
+        "percentile": "p99"
+      }
+    ]
+  },
+  {
+    "tr_id": "EX-002",
+    "checks": {
+      "snapshot-restore": "pass"
+    }
+  },
+  {
+    "tr_id": "EX-003",
+    "metrics": [
+      {
+        "name": "read_throughput",
+        "value": 1200,
+        "unit": "MiB/s"
+      }
+    ]
+  },
+  {
+    "tr_id": "EX-004",
+    "metrics": [
+      {
+        "name": "write_iops",
+        "value": 8000,
+        "unit": "IOPS"
+      }
+    ]
+  }
+]

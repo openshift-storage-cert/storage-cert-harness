@@ -1,0 +1,25 @@
+{
+  "_comment": "FAKE example numbers for development only. Real SLA values are NEVER committed in the clear (decisions/0004); the real thresholds.json is gitignored and delivered at test time. Shares schema_version + provenance.kb_git_commit with catalog.tr-virt-018.json so they join.",
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-018-as-authored",
+    "kb_commit_date": "2026-09-06",
+    "generated_date": "2026-09-06"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-018",
+      "sla": [
+        {
+          "metric": "clone_duration",
+          "type": "latency",
+          "percentile": "p99",
+          "operator": "<=",
+          "value": 360000,
+          "unit": "s",
+          "condition": "1000 VMs, 2 disks each (30Gi rhel9 root + 10Gi blank data), datasource-clone; p99 per-VM clone duration (computed from per-VM samples). Completeness (every VM succeeds) is enforced natively, not gated here."
+        }
+      ]
+    }
+  ]
+}

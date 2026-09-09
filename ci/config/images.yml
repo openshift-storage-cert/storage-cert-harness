@@ -1,0 +1,21 @@
+# Generated from ci/config/images.env by ci/scripts/sync-images-yml.sh. Do not edit.
+# GitLab `image:` is resolved at parse time and cannot source dotenv.
+variables:
+  GO_IMAGE: "registry.access.redhat.com/ubi10/go-toolset:1.26"
+  BUILD_IMAGE: "registry.access.redhat.com/ubi9/python-311:9.8"
+  RUNTIME_IMAGE: "registry.access.redhat.com/ubi9/python-311:9.8"
+  YAML_LINT_IMAGE: "registry.access.redhat.com/ubi9/python-311:9.8"
+  MD_LINT_IMAGE: "registry.access.redhat.com/ubi9/nodejs-20:9.7"
+  BUILDAH_IMAGE: "quay.io/buildah/stable:v1.39"
+  CI_TOOLS_IMAGE: "quay.io/virtarraycert/ci_tools"
+  QUAY_IMAGE: "quay.io/virtarraycert/storage-cert-harness"
+  GOLANGCI_LINT_VERSION: "v2.13.1"
+  TRIVY_VERSION: "v0.74.0"
+  DIVE_VERSION: "v0.12.0"
+  GOSEC_VERSION: "v2.29.0"
+  TRIVY_TAG: "trivy-0.74.0"
+  DIVE_TAG: "dive-v0.12.0"
+  TRIVY_SRC: "docker.io/aquasec/trivy:0.74.0"
+  DIVE_SRC: "docker.io/wagoodman/dive:v0.12.0"
+  TRIVY_IMAGE: "quay.io/virtarraycert/ci_tools:trivy-0.74.0"
+  DIVE_IMAGE: "quay.io/virtarraycert/ci_tools:dive-v0.12.0"

@@ -1,0 +1,79 @@
+schema_version: "1"
+name: level3-internal-minimal
+description: >-
+  Internal smoke-scale selection of the OpenShift Virtualization CSI Partner
+  Certification Level-3 criteria. It is intended to be run with the private
+  thresholds.json supplied out of band; the workload counts are deliberately
+  reduced for development and adapter validation, so this plan is not a
+  certification-scale run.
+backend: example-array
+concurrency: 1
+select:
+  ids:
+    - TR-VIRT-001  # Boot Storm
+    - TR-STOR-002   # Storage IO Latency, load-80
+    - TR-VIRT-004  # Parallel Live Migration
+    - TR-STOR-006   # Provisioning Density
+    - TR-VIRT-007  # VM HA Restart
+    - TR-VIRT-008  # Node Drain
+    - TR-VIRT-010  # Snapshot Creation
+    - TR-VIRT-013  # Per-Node Ceiling
+    - TR-VIRT-018  # Clone at Scale (VDI)
+    - TR-VIRT-019  # Parallel VM Lifecycle
+    - TR-VIRT-027  # Snapshot Depth per Volume
+overrides:
+  TR-STOR-002:
+    num_vms: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    concurrency: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    profile: load-80
+    fio_runtime: 30 # secret-scan:ok - smoke duration, not a certification gate.
+  TR-VIRT-010:
+    replicas: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    snapshot_count: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    namespace: l3-internal-snap
+  TR-VIRT-027:
+    snapshots: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    source_replicas: 1 # secret-scan:ok - smoke workload count, not a certification gate.
+  TR-VIRT-018:
+    iteration_clones: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    use_snapshot: true
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    claim_size: 256Mi
+  TR-VIRT-001:
+    num_vms: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+  TR-VIRT-013:
+    attempt_vms: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    num_disks: 1 # secret-scan:ok - smoke workload count, not a certification gate.
+    node_name: worker-0-0
+  TR-VIRT-004:
+    workload: virt-migration
+    iterations: 1 # secret-scan:ok - workload count, not a certification gate.
+  TR-VIRT-008:
+    start: 1 # secret-scan:ok - smoke workload count, not a certification gate.
+    end: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    target_node: worker-0-0
+    namespace_prefix: l3-internal-drain
+  TR-VIRT-019:
+    workload: virt-parallel
+    initial_vms: 3 # secret-scan:ok - smoke workload count, not a certification gate.
+    increment: 0 # secret-scan:ok - smoke workload count, not a certification gate.
+    data_volume_count: 1 # secret-scan:ok - smoke workload count, not a certification gate.
+    max_iterations: 1 # secret-scan:ok - smoke workload count, not a certification gate.
+    skip_migration_job: true
+  TR-VIRT-007:
+    mode: monitor
+    node: worker-0-0
+variants:
+  TR-VIRT-004:
+    - name: 1-vm
+      params:
+        concurrency: 1
+        iteration_vms: 1
+        migration_qps: 1
+    - name: 2-vms
+      params:
+        concurrency: 2
+        iteration_vms: 2
+        migration_qps: 2

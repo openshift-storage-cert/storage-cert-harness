@@ -1,0 +1,35 @@
+{
+  "_comment": "FAKE example numbers for development only. Real SLA values are NEVER committed in the clear (decisions/0004); the real thresholds.json is gitignored and delivered at test time. Shares schema_version + provenance.kb_git_commit with catalog.tr-virt-008.json so they join.",
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-008-as-authored",
+    "kb_commit_date": "2026-09-03",
+    "generated_date": "2026-09-03"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-008",
+      "sla": [
+        {
+          "metric": "evacuation_time",
+          "type": "duration",
+          "operator": "<=",
+          "value": 3000,
+          "unit": "min",
+          "condition": "All VMs on the drained worker live-migrate off it within the window (measured seconds are unit-normalized against this min gate)"
+        }
+      ],
+      "checks": [
+        {
+          "id": "all-vms-evacuated",
+          "kind": "capability",
+          "name": "All VMs evacuated the drained node",
+          "expectation": "Every VM running on the drained worker is Running on a different node after the drain (none shut down or left behind)",
+          "blocking": true,
+          "status": "defined",
+          "tool": "virtbench vm-ops drain-nodes"
+        }
+      ]
+    }
+  ]
+}

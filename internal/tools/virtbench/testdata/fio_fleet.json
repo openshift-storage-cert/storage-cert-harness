@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "total_vms": 2,
+    "successful": 2,
+    "failed": 0
+  },
+  "results": [
+    {
+      "jobs": [
+        {
+          "error": 0,
+          "read": {
+            "iops": 1111,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 111111111
+              }
+            }
+          },
+          "write": {
+            "iops": 2222,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 222222222
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "jobs": [
+        {
+          "error": 0,
+          "read": {
+            "iops": 3333,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 333333333
+              }
+            }
+          },
+          "write": {
+            "iops": 4444,
+            "lat_ns": {
+              "percentile": {
+                "99.000000": 444444444
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

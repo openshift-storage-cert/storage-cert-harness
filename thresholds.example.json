@@ -1,0 +1,91 @@
+{
+  "_comment": "FAKE numbers for development only. Real SLA values are NEVER committed in the clear (see decisions/0004). The real thresholds.json is gitignored and delivered at test time. This file MUST share schema_version + provenance.kb_git_commit with catalog.example.json so they join.",
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "0000000example",
+    "kb_commit_date": "2026-01-01",
+    "generated_date": "2026-01-01"
+  },
+  "test_requirements": [
+    {
+      "id": "EX-001",
+      "sla": [
+        {
+          "metric": "latency_ms",
+          "type": "latency",
+          "operator": "<=",
+          "value": 2.0,
+          "unit": "ms",
+          "percentile": "p99",
+          "condition": "16 KiB random read, queue depth 32"
+        }
+      ]
+    },
+    {
+      "id": "EX-002",
+      "checks": [
+        {
+          "id": "snapshot-restore",
+          "kind": "capability",
+          "name": "Snapshot / restore round-trip",
+          "expectation": "A volume snapshot restores to a new PVC with identical data",
+          "blocking": true,
+          "status": "defined",
+          "tool": "example"
+        }
+      ]
+    },
+    {
+      "id": "EX-003",
+      "sla": [
+        {
+          "metric": "read_throughput",
+          "type": "throughput",
+          "operator": ">=",
+          "value": null,
+          "unit": "MiB/s",
+          "condition": "bar not yet agreed with the design partner"
+        }
+      ]
+    },
+    {
+      "id": "EX-004",
+      "sla": [
+        {
+          "metric": "write_iops",
+          "type": "count",
+          "operator": ">=",
+          "value": 5000,
+          "unit": "IOPS"
+        }
+      ]
+    },
+    {
+      "id": "EX-005",
+      "checks": [
+        {
+          "id": "dr-runbook",
+          "kind": "manual",
+          "name": "Disaster-recovery runbook",
+          "expectation": "Partner supplies a documented, tested DR runbook",
+          "blocking": false,
+          "status": "defined"
+        }
+      ]
+    },
+    {
+      "id": "TR-VIRT-010",
+      "sla": [
+        {
+          "metric": "snapshot_ready_time",
+          "type": "latency",
+          "operator": "<=",
+          "value": 3,
+          "unit": "s",
+          "percentile": "p99",
+          "condition": "FAKE development-only VM snapshot readiness gate"
+        }
+      ]
+    }
+  ]
+}

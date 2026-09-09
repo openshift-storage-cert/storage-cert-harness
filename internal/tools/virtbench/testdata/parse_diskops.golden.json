@@ -1,0 +1,50 @@
+[
+  {
+    "tr_id": "TR-STOR-001",
+    "metrics": [
+      {
+        "name": "pvc_attach_time",
+        "value": 8.4,
+        "unit": "s"
+      },
+      {
+        "name": "pvc_attach_time_max",
+        "value": 12.7,
+        "unit": "s"
+      },
+      {
+        "name": "pvc_attach_time_min",
+        "value": 5.2,
+        "unit": "s"
+      },
+      {
+        "name": "volume_ready_time",
+        "value": 11.9,
+        "unit": "s"
+      },
+      {
+        "name": "validation_time",
+        "value": 2.1,
+        "unit": "s"
+      },
+      {
+        "name": "ops_total",
+        "value": 100
+      },
+      {
+        "name": "ops_successful",
+        "value": 100
+      },
+      {
+        "name": "ops_failed",
+        "value": 0
+      },
+      {
+        "name": "attach_success_rate",
+        "value": 100,
+        "unit": "%"
+      }
+    ],
+    "native": "pass"
+  }
+]

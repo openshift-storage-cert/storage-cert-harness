@@ -1,0 +1,102 @@
+[
+  {
+    "tr_id": "TR-STOR-002",
+    "metrics": [
+      {
+        "name": "vms_total",
+        "value": 2
+      },
+      {
+        "name": "vms_successful",
+        "value": 2
+      },
+      {
+        "name": "vms_failed",
+        "value": 0
+      },
+      {
+        "name": "vm_success_rate",
+        "value": 100,
+        "unit": "%"
+      },
+      {
+        "name": "read_latency",
+        "value": 333.333333,
+        "unit": "ms",
+        "percentile": "p99"
+      },
+      {
+        "name": "write_latency",
+        "value": 444.444444,
+        "unit": "ms",
+        "percentile": "p99"
+      },
+      {
+        "name": "read_iops",
+        "value": 4444,
+        "unit": "IOPS"
+      },
+      {
+        "name": "write_iops",
+        "value": 6666,
+        "unit": "IOPS"
+      }
+    ],
+    "native": "pass",
+    "raw": {
+      "summary": {
+        "total_vms": 2,
+        "successful": 2,
+        "failed": 0
+      },
+      "results": [
+        {
+          "jobs": [
+            {
+              "error": 0,
+              "read": {
+                "iops": 1111,
+                "lat_ns": {
+                  "percentile": {
+                    "99.000000": 111111111
+                  }
+                }
+              },
+              "write": {
+                "iops": 2222,
+                "lat_ns": {
+                  "percentile": {
+                    "99.000000": 222222222
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "error": 0,
+              "read": {
+                "iops": 3333,
+                "lat_ns": {
+                  "percentile": {
+                    "99.000000": 333333333
+                  }
+                }
+              },
+              "write": {
+                "iops": 4444,
+                "lat_ns": {
+                  "percentile": {
+                    "99.000000": 444444444
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

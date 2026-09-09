@@ -1,0 +1,15 @@
+{
+  "_comment": "FAKE numbers for development only. Real SLA values are NEVER committed in the clear (see decisions/0004). The real thresholds.json is gitignored and delivered at test time.",
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-019-as-authored",
+    "kb_commit_date": "2026-09-03",
+    "generated_date": "2026-09-03"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-019",
+      "sla": []
+    }
+  ]
+}

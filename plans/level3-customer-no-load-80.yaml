@@ -1,0 +1,72 @@
+schema_version: "1"
+name: level3-customer-no-load-80
+description: >-
+  Customer plan for all Level-3 criteria except the data-path load-80 FIO
+  criterion. Supply thresholds.json separately at run time; no SLA values are
+  included in this customer-facing plan.
+overrides:
+  TR-VIRT-001:
+    # Certification profiles use 100 and 1000 VMs in separate runs.
+    num_vms: 100
+  TR-VIRT-004:
+    workload: virt-migration
+    concurrency: 50
+    iterations: 1
+    iteration_vms: 50
+  TR-STOR-006:
+    workload: pvc-density
+    iterations: 1000
+  TR-VIRT-007:
+    mode: monitor
+    # Replace with the worker node that will be failed/fenced.
+    node: "<TARGET_NODE_FOR_FAILURE_RECOVERY>"
+  TR-VIRT-008:
+    # Replace with the node to drain. This is required by the virtbench adapter.
+    target_node: "<TARGET_NODE_TO_DRAIN>"
+    num_vms: 50
+    start: 1
+    end: 50
+  TR-VIRT-010:
+    # Required: choose the customer batch size for snapshot creation.
+    # replicas: <NUMBER_OF_VM_REPLICAS>
+    # snapshot_count: <NUMBER_OF_SNAPSHOTS>
+  TR-VIRT-013:
+    # Replace with the worker node used for the single-node ceiling sweep.
+    node_name: "<TARGET_NODE_FOR_SINGLE_NODE_CEILING>"
+  TR-VIRT-018:
+    iteration_clones: 100
+    use_snapshot: true
+  TR-VIRT-019:
+    # Keep the catalog SLA selector and workload parameters aligned.
+    vms: 20
+    workload: virt-parallel
+    initial_vms: 20
+    increment: 0
+    max_iterations: 1
+select:
+  ids:
+    - TR-VIRT-001  # Boot Storm
+    - TR-VIRT-004  # Parallel Live Migration
+    - TR-STOR-006  # Provisioning Density
+    - TR-VIRT-007  # VM HA Restart
+    - TR-VIRT-008  # Node Drain
+    - TR-VIRT-010  # Snapshot Creation
+    - TR-VIRT-013  # Per-Node Ceiling
+    - TR-VIRT-018  # Clone at Scale (VDI)
+    - TR-VIRT-019  # Parallel VM Lifecycle
+    - TR-VIRT-027  # Snapshot Depth per Volume
+
+# Optional: uncomment this block to run TR-VIRT-004 as two named executions
+# instead of the single default execution above.
+# variants:
+#   TR-VIRT-004:
+#     - name: 20-vms
+#       params:
+#         concurrency: 20
+#         iteration_vms: 20
+#         migration_qps: 20
+#     - name: 50-vms
+#       params:
+#         concurrency: 50
+#         iteration_vms: 50
+#         migration_qps: 50

@@ -1,0 +1,20 @@
+schema_version: "1"
+name: virtbench-fio-live-smoke
+description: >-
+  Live one-VM FIO smoke for TR-STOR-002. It measures p99 4 KiB random read and
+  write latency from raw FIO output. Select the storage backend at run time; the
+  private KB threshold export supplies certification gates.
+select:
+  ids:
+    - TR-STOR-002
+overrides:
+  TR-STOR-002:
+    num_vms: 1
+    namespace_prefix: fio-latency
+    fio_vm_template: internal/tools/virtbench/assets/fio-vm-template.yaml
+    fio_rw: randrw
+    fio_bs: 4k
+    fio_runtime: 30
+    fio_iodepth: 1
+    fio_numjobs: 1
+    fio_size: 1G

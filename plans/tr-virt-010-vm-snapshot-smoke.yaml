@@ -1,0 +1,20 @@
+schema_version: "1"
+name: tr-virt-010-vm-snapshot-smoke
+description: >-
+  Small TR-VIRT-010 VM snapshot smoke plan for a live cluster. It creates 2 VMs
+  and requests 3 snapshots in sequential batches. The report shows requested,
+  ready, failed, success rate, batch completion time, and snapshot_ready_time
+  p99. It needs OpenShift Virtualization, CDI, and a VolumeSnapshotClass on the
+  backend storage class.
+concurrency: 1
+backend: example-array
+select:
+  ids:
+    - TR-VIRT-010
+overrides:
+  TR-VIRT-010:
+    replicas: 2
+    snapshot_count: 3
+    namespace: sc-vs-smoke
+    vm_image: quay.io/kubevirt/cirros-container-disk-demo:latest
+    disk_size: 2Gi

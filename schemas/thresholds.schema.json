@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/schemas/thresholds.schema.json",
+  "title": "KB Thresholds Bundle (v2.0)",
+  "description": "Runtime-supplied SENSITIVE KB export: per-Test-Requirement sla[] numbers and full check definitions. Never committed in the clear (decisions/0004, 5273); delivered at test time only. Joins with catalog.json on id and shared provenance.kb_git_commit.",
+  "type": "object",
+  "required": ["schema_version", "provenance", "test_requirements"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "test_requirements": { "type": "array", "items": { "$ref": "#/$defs/tr" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["kb_git_commit"],
+      "properties": {
+        "kb_git_commit": { "type": "string" },
+        "kb_commit_date": { "type": "string" },
+        "generated_date": { "type": "string" }
+      }
+    },
+    "tr": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "sla": { "type": "array", "items": { "$ref": "#/$defs/sla" } },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "sla": {
+      "type": "object",
+      "required": ["metric", "operator", "value"],
+      "additionalProperties": true,
+      "properties": {
+        "metric": { "type": "string" },
+        "type": { "type": "string", "description": "latency|throughput|duration|count|ratio (advisory; unknown values tolerated)" },
+        "operator": { "enum": ["<=", "<", ">=", ">", "=="] },
+        "value": { "type": ["number", "null"], "description": "null => bar not set => item skipped" },
+        "unit": { "type": "string" },
+        "percentile": { "type": "string" },
+        "condition": { "type": "string" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "description": "capability|suite|scenario|manual (unknown kinds tolerated)" },
+        "name": { "type": "string" },
+        "expectation": { "type": "string" },
+        "blocking": { "type": "boolean" },
+        "status": { "enum": ["defined", "to-be-validated"] },
+        "tool": { "type": "string" },
+        "references": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

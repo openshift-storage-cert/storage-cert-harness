@@ -1,0 +1,21 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-stor-006-as-authored",
+    "kb_commit_date": "2026-08-05",
+    "generated_date": "2026-08-25"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-STOR-006",
+      "title": "PVC Density and Provisioning",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "kube-burner-ocp",
+      "sla_status": "to-be-validated",
+      "sla_count": 0,
+      "checks_status": "to-be-validated",
+      "checks_count": 0
+    }
+  ]
+}

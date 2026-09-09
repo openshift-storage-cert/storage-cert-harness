@@ -1,0 +1,21 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-008-as-authored",
+    "kb_commit_date": "2026-09-03",
+    "generated_date": "2026-09-03"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-008",
+      "title": "Node drain / VM evacuation",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "virtbench vm-ops drain-nodes",
+      "sla_status": "defined",
+      "sla_count": 1,
+      "checks_status": "defined",
+      "checks_count": 1
+    }
+  ]
+}

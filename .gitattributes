@@ -1,0 +1,7 @@
+# AI instruction surfaces stay on internal GitLab. Omit from archives/exports
+# so they are harder to copy onto a public GitHub tree (ECOPROJECT-5274).
+AGENTS.md export-ignore
+CLAUDE.md export-ignore
+skills/ export-ignore
+.cursor/ export-ignore
+.claude/ export-ignore

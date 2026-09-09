@@ -1,0 +1,50 @@
+# Real secret SLA thresholds — NEVER commit in the clear (decisions/0004, 5273).
+# Only the fake thresholds.example.json is tracked.
+/thresholds.json
+thresholds.json
+!thresholds.example.json
+
+# Decrypted output of the future encrypted secrets folder (decisions/0004).
+/secrets/plain/
+
+# Real storage backend configs may carry inline credentials (dev only) or point
+# at local secret files — keep them out of git (decisions/0005). Only the fake
+# backends.example.yaml is tracked.
+backends.yaml
+backends.local.yaml
+*.backends.yaml
+!backends.example.yaml
+
+# Build artifacts
+/bin/
+/dist/
+*.out
+coverage.*
+
+# Run reports — the report's Expected column echoes SLA gate values, which are
+# sensitive (decisions/0004). Never commit run output. --output writes here.
+/out/
+report.json
+report.md
+# virtbench local-exec scratch results (may contain measured run data)
+/virtbench/
+# Local live-image test inputs and outputs; kubeconfig must never be committed.
+/work/
+/work1/
+
+# Local / pre-commit CI logs (keep logs/README.md)
+/logs/**
+!/logs/README.md
+
+# Local CI scratch (layout-check, image-contents-check, etc.)
+/ci-local/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+work1/kubeconfig-ecosys2

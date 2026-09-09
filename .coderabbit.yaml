@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: go
+reviews:
+  profile: assertive
+  high_level_summary: true
+  poem: false
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    drafts: false
+path_instructions:
+  - path: internal/tools/**
+    instructions: |
+      Flag hardcoded numeric SLA or threshold values in Go sources (not testdata/).
+      Every new tool package must include a golden-file parser test (*_test.go plus testdata/).
+      Do not put real SLA numbers in this tree; they belong in the runtime thresholds bundle.
+  - path: "internal/{orchestrator,grader,stages,core,kb}/**"
+    instructions: |
+      Architectural changes should reference an ADR under decisions/. Flag PRs that
+      change ports, scoring, or the KB join without a decisions/ link.
+  - path: decisions/**
+    instructions: |
+      ADRs must follow decisions/template.md (Context, Decision, Options, Consequences).

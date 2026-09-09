@@ -1,0 +1,11 @@
+# Default manual-attestation questions: the unobservable Level-3 requirements a
+# partner declares by hand (a run cannot measure them from the cluster). Override
+# with `run --attestation-questions <file>`. Flat, run-global list — see ADR-0014.
+- claim: reference_architecture_url
+  prompt: Reference Architecture document URL
+  help: Public URL of the partner reference architecture (Level-3 requirement B).
+  required: true
+- claim: published_slas_url
+  prompt: Published SLAs URL
+  help: Where the product's published SLA figures are documented (Level-3 requirement C).
+  required: true

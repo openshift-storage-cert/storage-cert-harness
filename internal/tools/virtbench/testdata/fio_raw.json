@@ -1,0 +1,24 @@
+{
+  "_comment": "synthetic FIO fixture data; all measurements are fabricated",
+  "jobs": [
+    {
+      "error": 0,
+      "read": {
+        "iops": 1111,
+        "lat_ns": {
+          "percentile": {
+            "99.000000": 111111111
+          }
+        }
+      },
+      "write": {
+        "iops": 2222,
+        "lat_ns": {
+          "percentile": {
+            "99.000000": 222222222
+          }
+        }
+      }
+    }
+  ]
+}

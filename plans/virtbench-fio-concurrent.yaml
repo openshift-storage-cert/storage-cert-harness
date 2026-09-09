@@ -1,0 +1,24 @@
+schema_version: "1"
+name: virtbench-fio-concurrent
+description: >-
+  Concurrent 40-VM FIO workload for TR-STOR-002. Each VM runs the 4 KiB random
+  read/write profile when it boots. The report grades the worst per-VM p99; all
+  VMs must produce a successful raw FIO result.
+select:
+  ids:
+    - TR-STOR-002
+overrides:
+  TR-STOR-002:
+    num_vms: 40
+    concurrency: 40
+    # Allows all requested PVCs and VMs to become ready before FIO collection. secret-scan:ok
+    vm_ready_timeout: 1200
+    namespace_prefix: fio-concurrent
+    fio_vm_template: internal/tools/virtbench/assets/fio-vm-template.yaml
+    fio_rw: randrw
+    fio_bs: 4k
+    # FIO runtime is a workload setting, not a certification threshold. secret-scan:ok
+    fio_runtime: 600
+    fio_iodepth: 1
+    fio_numjobs: 1
+    fio_size: 1G

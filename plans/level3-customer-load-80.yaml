@@ -1,0 +1,14 @@
+schema_version: "1"
+name: level3-customer-load-80
+description: >-
+  Customer plan for the Level-3 data-path criterion: 4K random read/write
+  latency under the load-80 profile. Supply thresholds.json separately at run
+  time; no SLA values are included in this customer-facing plan.
+select:
+  ids:
+    - TR-STOR-002
+overrides:
+  TR-STOR-002:
+    profile: load-80
+    # Optional: adjust the VM fleet for the partner's test.
+    # num_vms: <NUMBER_OF_TEST_VMS>

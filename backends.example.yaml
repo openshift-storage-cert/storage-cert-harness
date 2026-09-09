@@ -1,0 +1,58 @@
+schema_version: "1"
+
+# Named storage-array configurations. This file is committed as an EXAMPLE with
+# fake, non-secret values only. Real backends with inline credentials must live
+# in a gitignored file (e.g. backends.local.yaml) — see .gitignore and ADR-0005.
+#
+# Each secret is a reference, never a committed plaintext value. Exactly one of
+# `file`, `k8s_secret`, or `inline` per secret:
+#   file:       path to a file whose contents are the secret (trailing newline trimmed)
+#   k8s_secret: {namespace, name, key} — read from a cluster Secret (resolution
+#               is deferred until internal/kube exists)
+#   inline:     literal value — LOCAL DEV ONLY; keep out of committed files
+backends:
+  # NetApp Trident example: vendor-specifics (svm, management LIF, endpoint) go
+  # in the free-form `params` map. Credentials via file-path references.
+  - name: example-array
+    vendor: netapp-trident
+    storage_class: trident-csi
+    snapshot_class: trident-snapshotclass
+    params:
+      svm: svm-example
+      management_lif: 10.0.0.10
+      endpoint: https://10.0.0.10:443
+    secrets:
+      username:
+        file: /run/secrets/example-array/username
+      password:
+        file: /run/secrets/example-array/password
+
+  # Backend whose credentials come from a Kubernetes Secret (token-style auth).
+  - name: example-array-k8s
+    vendor: generic-csi
+    storage_class: csi-example
+    snapshot_class: csi-example-snapshotclass
+    params: {}
+    secrets:
+      token:
+        k8s_secret:
+          namespace: storage-cert
+          name: example-array-creds
+          key: token
+
+  # A backend may be minimal — storage class only, no params, no secrets.
+  - name: example-array-minimal
+    storage_class: csi-example
+
+  # NetApp ONTAP SAN (Trident) storage class, used by the pvc-density plans.
+  - name: ontap-san
+    vendor: netapp-trident
+    storage_class: ontap-san
+
+  # Non-existent StorageClass so PVCs never bind (pvc-density negative plan).
+  - name: no-such-sc
+    storage_class: harness-nonexistent-sc
+
+  # Typo of a real class so PVCs never bind (pvc-density negative plan #2).
+  - name: typo-sc
+    storage_class: ontap-sann
