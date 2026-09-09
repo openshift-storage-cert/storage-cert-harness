@@ -40,7 +40,7 @@ lint-go:
 	./ci/scripts/lint-go.sh
 
 # GitLab stage: lint
-lint: lint-yaml lint-md lint-go
+lint: lint-yaml lint-actions lint-md lint-go
 
 # GitLab stage: test
 test: unittest secret-scan supply-chain
