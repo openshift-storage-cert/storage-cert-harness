@@ -101,11 +101,8 @@ flowchart TB
   GHA --> Secret
   GHA --> Supply
   GHA --> Build
-  GHA --> Replay
   GHA --> Image
   GHA --> ImageCheck
-  GHA --> ImageTrivy
-  GHA --> ImageDive
 ```
 
 Offline Go: `GOPROXY=off` and `GOFLAGS=-mod=vendor`. Commit `vendor/`.
@@ -245,12 +242,12 @@ requirements pass.
 `.github/workflows/ci.yml` orchestrates six ordered reusable workflows:
 `ci-linters.yml`, `ci-tests.yml`, `ci-build.yml`, `ci-smoke.yml`,
 `ci-images.yml`, and `ci-publish.yml`. The stages run in order as
-linters -> tests -> build -> smoke -> image build/scans -> image push/version
-bump. The linter workflow installs a pinned `actionlint` release and validates
-all `.github/workflows/*.yml` files. The build and image workflows pass the
+linters -> tests -> build -> image build -> image push/version bump.
+`ci-smoke.yml` and the Trivy/Dive jobs inside `ci-images.yml` are present but
+**always skipped** (`if: false`); they are not CI gates. The linter workflow
+installs a pinned `actionlint` release and validates all
+`.github/workflows/*.yml` files. The build and image workflows pass the
 `harness-binary` and `harness-image` artifacts to later stages.
-Replay smoke is an independent rebuild and does not consume `harness-binary`;
-it installs the Go version from `go.mod` before running.
 
 On a successful `main` publish, the `version-bump` job creates the automated
 version-bump PR. The shared `advance-version.sh` script configures the
@@ -264,14 +261,29 @@ The top-level workflow dispatch input is:
 |-------|---------|---------|
 | `publish` | Enable image push and version advancement after the checks pass | `false` |
 
-GitHub always skips `image-scan-trivy` and `image-scan-dive` (`if: false`);
-image build and publish do not depend on them. Run `make image-scan` locally
-when needed. GitLab keeps both scans as `allow_failure` jobs. Image publishing
-and version advancement are restricted to `main`,
-for automatic pushes and manual dispatches with `publish=true`; a `test-ci`
-push cannot publish an image or advance version files. The `secret-scan` job
-uses `fetch-depth: 0` so its merge-base diff scan can inspect the complete
-history.
+**Publish gates (GitHub).** On a push to `main`, `image-push` runs when
+`image-build` succeeds. `replay-smoke`, `image-scan-trivy`, and
+`image-scan-dive` are skipped (`if: false`) and do not gate publish. A manual
+`workflow_dispatch` with `publish=true` can also push from `main`. A `test-ci`
+push cannot publish an image or advance version files.
+
+**Image scans (GitHub vs GitLab vs local).**
+
+| Where | `image-scan-trivy` / `image-scan-dive` | Gates publish? |
+|-------|----------------------------------------|----------------|
+| GitHub Actions | Skipped (`if: false` in `ci-images.yml`) | No |
+| GitLab CI | Run after `image-build`; `allow_failure: true` | No |
+| Local | `make image-scan` / `make ci-image` | N/A |
+
+Run scans locally when you need reports: `make image-build && make image-scan`.
+Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
+`dist/dive-report.txt`. GitLab uploads those paths as job artifacts when the
+scan jobs run. GitHub does **not** run the scan jobs, so it produces no scan
+artifacts and no Code scanning (SARIF) upload — use GitLab artifacts or local
+`dist/` output instead.
+
+The `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can
+inspect the complete history.
 
 ## Image contents
 
@@ -288,14 +300,15 @@ All three must be on `PATH` under `/usr/bin/`. Pins live in
 `ci/config/images.env`. `image-contents-check.sh` verifies each binary is
 present and runnable after every image build (locally and in CI).
 
-`image-push` stays manual on GitHub and main-only on both CI systems;
-`supply-chain` stays allow-failure; `replay-smoke` stays manual.
+`image-push` runs automatically on GitHub `main` pushes; on GitLab it is
+**manual** on `main`. `supply-chain` stays allow-failure; `replay-smoke` is
+manual on GitLab and skipped on GitHub.
 
 ## MR vs main
 
 ```mermaid
 flowchart LR
-  subgraph mr [Every MR]
+  subgraph mr [Every MR / GitLab]
     LintYaml2[lint-yaml + layout-check]
     LintMd2[lint-md]
     LintGo2[lint-go]
@@ -495,9 +508,11 @@ not the GitLab `bin/harness` binary. Registry:
 `quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
-Trivy and Dive are **separate parallel CI jobs**. They load
-`dist/harness-image.tar` from `image-build`. GitHub Trivy also uploads SARIF to
-**Security → Code scanning**.
+On **GitLab**, Trivy and Dive are separate parallel jobs after `image-build`.
+Both load `dist/harness-image.tar`, write reports under `dist/`, and are
+`allow_failure` (they do not block merge or push). On **GitHub**, both jobs are
+skipped (`if: false`); run `make image-scan` locally for the same scripts and
+report paths.
 
 ## Secret scan
 
@@ -556,12 +571,15 @@ Self-tests use `mktemp`.
 | `lint-yaml` | reorder / `layout-check.sh` |
 | `build` | linux/amd64 `bin/harness` + `harness version` == binary track |
 | `image-build` | `linux/amd64` tar + tag == image track + contents-check (`harness`, `kube-burner-ocp`, `virtbench`) |
-| `image-scan-trivy` | loads tar, HIGH/CRITICAL gate |
-| `image-scan-dive` | loads tar, wasted-layer gate |
+| `image-scan-trivy` | loads tar, HIGH/CRITICAL gate (`allow_failure`) |
+| `image-scan-dive` | loads tar, wasted-layer gate (`allow_failure`) |
 
-`image-push` is **not** part of MR tests. On GitHub it runs only for `main`
-pushes or a manual dispatch with `publish=true`. `version-bump` is main-only
-and runs after a successful image push.
+`image-push` is **not** part of MR tests. On GitHub it runs for `main` pushes
+and for a manual dispatch with `publish=true`. On GitLab it is manual on
+`main`. `version-bump` is main-only and runs after a successful image push.
+
+On GitHub, `image-scan-trivy` and `image-scan-dive` are skipped entirely; the
+table above applies to GitLab and local `make image-scan` only.
 
 ## Open items
 
@@ -572,12 +590,22 @@ GitLab `allow_failure` / GitHub `continue-on-error`
 The job still runs and uploads logs on failure; it does not block merge.
 Make it gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
 
-### Replay-smoke job (skipped)
+### Replay-smoke job (skipped on GitHub)
 
 GitLab `when: manual` + `allow_failure` (skipped in the UI unless played; does
 not block later jobs). GitHub always skips the `smoke` job (`if: false`); image
 build and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh`
 locally when needed.
+
+### Image scan jobs (skipped on GitHub)
+
+GitLab runs `image-scan-trivy` and `image-scan-dive` after `image-build` with
+`allow_failure: true` — failures are visible and artifacts are uploaded, but
+they do not block merge or `image-push`. GitHub skips both jobs (`if: false` in
+`ci-images.yml`); `image-build` alone gates `publish`. No GitHub scan logs,
+`dist/trivy-report.*`, or Code scanning (SARIF) results are produced in that
+workflow. Use `make image-build && make image-scan` locally, or GitLab job
+artifacts, when you need scan output.
 
 ### Dedicated CI cluster (live smoke)
 
