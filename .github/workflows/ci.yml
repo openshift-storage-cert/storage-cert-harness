@@ -216,7 +216,7 @@ jobs:
       CONTAINER_ENGINE: docker
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: harness-binary
           path: bin
@@ -240,7 +240,7 @@ jobs:
     continue-on-error: ${{ inputs.allow_scan_fail == true }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: harness-image
           path: dist
@@ -267,7 +267,7 @@ jobs:
     continue-on-error: ${{ inputs.allow_scan_fail == true }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: harness-image
           path: dist
@@ -299,7 +299,7 @@ jobs:
     needs: [image-build, image-scan-trivy, image-scan-dive]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: harness-image
           path: dist
