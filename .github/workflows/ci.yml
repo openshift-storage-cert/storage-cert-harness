@@ -47,6 +47,9 @@ jobs:
       ((github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish == true))
     needs: [images]
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/ci-publish.yml
     with:
       publish: true

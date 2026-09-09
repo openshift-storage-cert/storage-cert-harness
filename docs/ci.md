@@ -249,6 +249,8 @@ linters -> tests -> build -> smoke -> image build/scans -> image push/version
 bump. The linter workflow installs a pinned `actionlint` release and validates
 all `.github/workflows/*.yml` files. The build and image workflows pass the
 `harness-binary` and `harness-image` artifacts to later stages.
+Replay smoke is an independent rebuild and does not consume `harness-binary`;
+it installs the Go version from `go.mod` before running.
 
 On a successful `main` publish, the `version-bump` job creates the automated
 version-bump PR. The shared `advance-version.sh` script configures the

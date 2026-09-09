@@ -11,8 +11,6 @@ on:
         required: true
       QUAY_PASSWORD:
         required: true
-      GITHUB_TOKEN:
-        required: true
       ADMIN_PAT_TOKEN:
         required: true
 
@@ -64,7 +62,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ github.token }}
           commit-message: "chore(release): advance version tracks"
           title: "chore(release): advance version tracks"
           body: "Automated version bump."
@@ -79,4 +77,4 @@ jobs:
         if: steps.cpr.outputs.pull-request-number
         run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --auto --squash --repo ${{ github.repository }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
