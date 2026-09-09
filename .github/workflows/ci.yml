@@ -48,6 +48,7 @@ jobs:
     needs: [images]
     permissions:
       contents: write
+      security-events: write
       pull-requests: write
     uses: ./.github/workflows/ci-publish.yml
     with:
