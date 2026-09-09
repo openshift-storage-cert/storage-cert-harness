@@ -42,7 +42,8 @@ jobs:
 
   publish:
     if: >-
-      needs.images.result == 'success' &&
+      always() &&
+      needs.images.outputs.image-build-success == 'true' &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish == true))

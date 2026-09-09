@@ -2,6 +2,10 @@ name: CI Images
 
 on:
   workflow_call:
+    outputs:
+      image-build-success:
+        description: Whether the image was built and uploaded successfully
+        value: ${{ jobs.image-build.outputs.success }}
 
 permissions:
   contents: read
@@ -14,6 +18,8 @@ env:
 jobs:
   image-build:
     runs-on: ubuntu-latest
+    outputs:
+      success: ${{ steps.report-success.outputs.success }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
@@ -24,11 +30,15 @@ jobs:
       - env:
           CONTAINER_ENGINE: docker
         run: ./ci/scripts/image-build.sh
-      - uses: actions/upload-artifact@v7
+      - id: upload-image
+        uses: actions/upload-artifact@v7
         with:
           name: harness-image
           path: dist/harness-image.tar
           retention-days: 1
+      - id: report-success
+        if: always()
+        run: echo "success=${{ steps.upload-image.outcome == 'success' }}" >> "$GITHUB_OUTPUT"
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
