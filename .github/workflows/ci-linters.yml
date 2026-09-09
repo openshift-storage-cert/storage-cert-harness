@@ -1,0 +1,91 @@
+name: CI Linters
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GOPROXY: "off"
+  GOFLAGS: "-mod=vendor"
+
+jobs:
+  lint-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint
+      - run: ./ci/scripts/lint-yaml.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-lint-yaml
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  lint-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}" \
+            | tar xz -C /usr/local/bin actionlint
+      - run: ./ci/scripts/lint-actions.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-lint-actions
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  lint-md:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - run: npm install --global markdownlint-cli2
+      - run: ./ci/scripts/lint-md.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-lint-md
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  lint-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install golangci-lint
+        run: |
+          set -euo pipefail
+          source ci/scripts/images.sh
+          ver="${GOLANGCI_LINT_VERSION}"
+          rel="golangci-lint-${ver#v}-linux-amd64"
+          mkdir -p "$(go env GOPATH)/bin"
+          curl -sSfL \
+            "https://github.com/golangci/golangci-lint/releases/download/${ver}/${rel}.tar.gz" \
+            | tar xz -C "$(go env GOPATH)/bin" --strip-components=1 "${rel}/golangci-lint"
+      - run: ./ci/scripts/lint-go.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-lint-go
+          path: logs/*.log
+          if-no-files-found: ignore
