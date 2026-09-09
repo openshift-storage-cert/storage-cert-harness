@@ -36,7 +36,7 @@ jobs:
       - run: pip install yamllint
       - run: ./ci/scripts/lint-yaml.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-lint-yaml
           path: logs/*.log
@@ -57,7 +57,7 @@ jobs:
             | tar xz -C /usr/local/bin actionlint
       - run: ./ci/scripts/lint-actions.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-lint-actions
           path: logs/*.log
@@ -73,7 +73,7 @@ jobs:
       - run: npm install --global markdownlint-cli2
       - run: ./ci/scripts/lint-md.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-lint-md
           path: logs/*.log
@@ -99,7 +99,7 @@ jobs:
             | tar xz -C "$(go env GOPATH)/bin" --strip-components=1 "${rel}/golangci-lint"
       - run: ./ci/scripts/lint-go.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-lint-go
           path: logs/*.log
@@ -114,7 +114,7 @@ jobs:
           go-version-file: go.mod
       - run: ./ci/scripts/unittest.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-unittest
           path: logs/*.log
@@ -128,7 +128,7 @@ jobs:
           fetch-depth: 0
       - run: ./ci/scripts/secret-scan.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-secret-scan
           path: logs/*.log
@@ -161,7 +161,7 @@ jobs:
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: ./ci/scripts/supply-chain.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-supply-chain
           path: logs/*.log
@@ -180,13 +180,13 @@ jobs:
         with:
           go-version-file: go.mod
       - run: ./ci/scripts/build.sh
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: harness-binary
           path: bin/harness
           retention-days: 7
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-build
           path: logs/*.log
@@ -203,7 +203,7 @@ jobs:
           go-version-file: go.mod
       - run: ./ci/scripts/replay-smoke.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-replay-smoke
           path: logs/*.log
@@ -222,13 +222,13 @@ jobs:
           path: bin
       - run: chmod +x bin/harness
       - run: ./ci/scripts/image-build.sh
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: harness-image
           path: dist/harness-image.tar
           retention-days: 1
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-image-build
           path: logs/*.log
@@ -255,7 +255,7 @@ jobs:
             | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
       - run: ./ci/scripts/image-scan-trivy.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-image-scan-trivy
           path: logs/*.log
@@ -280,7 +280,7 @@ jobs:
           sudo mv dive /usr/local/bin/
       - run: ./ci/scripts/image-scan-dive.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-image-scan-dive
           path: logs/*.log
@@ -310,7 +310,7 @@ jobs:
           QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
         run: ./ci/scripts/image-push.sh
       - if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: logs-image-push
           path: logs/*.log
