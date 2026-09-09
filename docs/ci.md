@@ -174,7 +174,7 @@ flowchart LR
   dev --> mr --> main --> adv --> next
 ```
 
-### Advance (main only, after image build+scans)
+### Advance (main only, after a successful image push)
 
 `advance-version.sh` — one commit for both tracks so a failed image does not
 consume either number:
@@ -333,12 +333,20 @@ flowchart LR
   end
   subgraph mainline [Push to main]
     SameGates[same gates as MR]
-    ImagePush[push Quay with image_version tag]
+    ImagePushGH[GitHub: image-push automatic]
+    ImagePushGL[GitLab: image-push manual]
     VersionBump[advance-version.sh]
-    SameGates --> ImagePush
-    SameGates --> VersionBump
+    SameGates --> ImagePushGH
+    SameGates --> ImagePushGL
+    ImagePushGH --> VersionBump
+    ImagePushGL --> VersionBump
   end
 ```
+
+On **GitHub**, `image-push` runs automatically after a successful `image-build`
+on every `main` push (see `ci-publish.yml`). On **GitLab**, the same script runs
+from a **manual** `image-push` job on `main`. `version-bump` follows a
+successful push on both hosts.
 
 GitLab CEE runners: **`tags: [itup-alm-x86]`** on every job (same as
 csi-certification-kb) and `default.tags` so a new job cannot omit it. Untagged
@@ -497,12 +505,12 @@ uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
 | `build.sh` | `bin/harness` with `binary_version()` ldflags |
 | `secret-scan.sh` | thresholds/reports; SLA-like numerics in the MR diff; editor/workspace tokens |
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **CI allow-failure** until [ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419). |
-| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). **CI manual**. |
+| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitLab: **manual**. GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (no push). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, `kube-burner-ocp`, `virtbench` are in the image |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
-| `image-push.sh` | Quay push; requires `PUSH=1`. **CI manual on main**. |
+| `image-push.sh` | Quay push; requires `PUSH=1`. GitHub: **automatic** on `main` push (or `workflow_dispatch` with `publish=true`). GitLab: **manual** on `main`. |
 | `mirror-ci-tools.sh` | Retag Trivy/Dive into `quay.io/virtarraycert/ci_tools`. **Not a GitLab job** — run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
 | `advance-version.sh` | Auto-advance both tracks on main push (CI only) |
@@ -579,12 +587,23 @@ Self-tests use `mktemp`.
 | `image-scan-trivy` | loads tar, HIGH/CRITICAL gate (`allow_failure`) |
 | `image-scan-dive` | loads tar, wasted-layer gate (`allow_failure`) |
 
-`image-push` is **not** part of MR tests. On GitHub it runs for `main` pushes
-and for a manual dispatch with `publish=true`. On GitLab it is manual on
-`main`. `version-bump` is main-only and runs after a successful image push.
+`image-push` is **not** part of MR tests. On GitLab it is **manual** on `main`.
+`version-bump` is main-only and runs after a successful image push.
 
-On GitHub, `image-scan-trivy` and `image-scan-dive` are skipped entirely; the
+On GitHub, `image-scan-trivy` and `image-scan-dive` are skipped by default; the
 table above applies to GitLab and local `make image-scan` only.
+
+### GitHub `main` pipeline (publish)
+
+| Job | When | Asserts |
+|-----|------|---------|
+| `image-build` | every `main` push | `linux/amd64` tar uploaded as `harness-image` artifact |
+| `image-push` | after `image-build` succeeds | `image-push.sh` with `PUSH=1` → Quay (`:<version>-amd64`, `:<version>`, `:main`, `:latest`) |
+| `version-bump` | after `image-push` succeeds | `advance-version.sh` → automated PR on `chore/version-bump` |
+
+`image-push` is **automatic** on `main` pushes. A `workflow_dispatch` with
+`publish=true` can also trigger push and version bump without a new commit.
+Neither MR/PR runs nor `test-ci` pushes publish an image.
 
 ## Open items
 
