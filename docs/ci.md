@@ -258,13 +258,11 @@ The workflow dispatch inputs are:
 | Input | Purpose | Default |
 |-------|---------|---------|
 | `publish` | Enable image push and version advancement after the checks pass | `false` |
-| `allow_scan_fail` | Allow Trivy or Dive failure for a test publish | `false` |
 
-Image scans remain blocking by default. Setting `allow_scan_fail` makes the
-Trivy and Dive jobs non-blocking and allows `image-push` and `version-bump` to
-continue when either scan fails. Image publishing and version advancement are
-both restricted to `main`, for automatic pushes and manual dispatches; a
-`test-ci` push cannot publish an image or advance version files. The
+Trivy and Dive scans are non-blocking and upload their logs when they fail, so
+`image-push` and `version-bump` continue after scan failures. Image publishing
+and version advancement are both restricted to `main`, for automatic pushes
+and manual dispatches; a `test-ci` push cannot publish an image or advance version files. The
 `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can inspect
 the complete history.
 

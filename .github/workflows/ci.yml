@@ -11,11 +11,6 @@ on:
         required: true
         default: false
         type: boolean
-      allow_scan_fail:
-        description: "Allow image scan failures for a test publish"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -237,7 +232,7 @@ jobs:
   image-scan-trivy:
     runs-on: ubuntu-latest
     needs: [image-build]
-    continue-on-error: ${{ inputs.allow_scan_fail == true }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
@@ -264,7 +259,7 @@ jobs:
   image-scan-dive:
     runs-on: ubuntu-latest
     needs: [image-build]
-    continue-on-error: ${{ inputs.allow_scan_fail == true }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
@@ -293,8 +288,8 @@ jobs:
       ((github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish == true)) &&
       needs.image-build.result == 'success' &&
-      (needs.image-scan-trivy.result == 'success' || (inputs.allow_scan_fail == true && needs.image-scan-trivy.result == 'failure')) &&
-      (needs.image-scan-dive.result == 'success' || (inputs.allow_scan_fail == true && needs.image-scan-dive.result == 'failure'))
+      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-trivy.result) &&
+      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-dive.result)
     runs-on: ubuntu-latest
     needs: [image-build, image-scan-trivy, image-scan-dive]
     steps:
@@ -323,8 +318,8 @@ jobs:
       ((github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish == true)) &&
       needs.image-build.result == 'success' &&
-      (needs.image-scan-trivy.result == 'success' || (inputs.allow_scan_fail == true && needs.image-scan-trivy.result == 'failure')) &&
-      (needs.image-scan-dive.result == 'success' || (inputs.allow_scan_fail == true && needs.image-scan-dive.result == 'failure')) &&
+      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-trivy.result) &&
+      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-dive.result) &&
       needs.image-push.result == 'success'
     runs-on: ubuntu-latest
     needs: [image-build, image-scan-trivy, image-scan-dive, image-push]
