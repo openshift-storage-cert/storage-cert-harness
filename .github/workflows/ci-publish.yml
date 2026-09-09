@@ -30,6 +30,8 @@ jobs:
       - env:
           PUSH: "1"
           CONTAINER_ENGINE: docker
+          TARGETARCH: amd64
+          IMAGE_TAR: ${{ github.workspace }}/dist/harness-image.tar
           QUAY_USER: ${{ secrets.QUAY_USERNAME }}
           QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
         run: ./ci/scripts/image-push.sh

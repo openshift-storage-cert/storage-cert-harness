@@ -264,8 +264,10 @@ The top-level workflow dispatch input is:
 |-------|---------|---------|
 | `publish` | Enable image push and version advancement after the checks pass | `false` |
 
-Trivy and Dive are always non-blocking; their logs are still uploaded when a
-scan fails. Image publishing and version advancement are restricted to `main`,
+GitHub always skips `image-scan-trivy` and `image-scan-dive` (`if: false`);
+image build and publish do not depend on them. Run `make image-scan` locally
+when needed. GitLab keeps both scans as `allow_failure` jobs. Image publishing
+and version advancement are restricted to `main`,
 for automatic pushes and manual dispatches with `publish=true`; a `test-ci`
 push cannot publish an image or advance version files. The `secret-scan` job
 uses `fetch-depth: 0` so its merge-base diff scan can inspect the complete
@@ -573,9 +575,9 @@ Make it gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
 ### Replay-smoke job (skipped)
 
 GitLab `when: manual` + `allow_failure` (skipped in the UI unless played; does
-not block later jobs). GitHub is disabled unless the `REPLAY_SMOKE_ENABLED`
-repository variable is set to `true`, so the job remains listed as skipped.
-Re-enable it as a normal `on_success` job in a follow-up.
+not block later jobs). GitHub always skips the `smoke` job (`if: false`); image
+build and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh`
+locally when needed.
 
 ### Dedicated CI cluster (live smoke)
 
