@@ -1,0 +1,80 @@
+name: CI Publish
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        required: true
+        type: boolean
+    secrets:
+      QUAY_USERNAME:
+        required: true
+      QUAY_PASSWORD:
+        required: true
+      ADMIN_PAT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  image-push:
+    if: inputs.publish == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: harness-image
+          path: dist
+      - env:
+          PUSH: "1"
+          CONTAINER_ENGINE: docker
+          QUAY_USER: ${{ secrets.QUAY_USERNAME }}
+          QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+        run: ./ci/scripts/image-push.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-image-push
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  version-bump:
+    if: inputs.publish == true
+    needs: [image-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Stage version bump
+        env:
+          VERSION_BUMP_PR: "1"
+        run: ./ci/scripts/advance-version.sh
+      - name: Create Version Bump PR
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          commit-message: "chore(release): advance version tracks"
+          title: "chore(release): advance version tracks"
+          body: "Automated version bump."
+          branch: chore/version-bump
+          base: main
+      - name: Auto-approve PR
+        if: steps.cpr.outputs.pull-request-number
+        run: gh pr review ${{ steps.cpr.outputs.pull-request-number }} --approve --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_PAT_TOKEN }}
+      - name: Auto-merge PR
+        if: steps.cpr.outputs.pull-request-number
+        run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --auto --squash --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}

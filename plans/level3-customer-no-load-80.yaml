@@ -27,9 +27,9 @@ overrides:
     start: 1
     end: 50
   TR-VIRT-010:
-    # Required: choose the customer batch size for snapshot creation.
-    # replicas: <NUMBER_OF_VM_REPLICAS>
-    # snapshot_count: <NUMBER_OF_SNAPSHOTS>
+  # Required: choose the customer batch size for snapshot creation.
+  # replicas: <NUMBER_OF_VM_REPLICAS>
+  # snapshot_count: <NUMBER_OF_SNAPSHOTS>
   TR-VIRT-013:
     # Replace with the worker node used for the single-node ceiling sweep.
     node_name: "<TARGET_NODE_FOR_SINGLE_NODE_CEILING>"

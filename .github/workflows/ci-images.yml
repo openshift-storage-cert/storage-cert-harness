@@ -1,0 +1,89 @@
+name: CI Images
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GOPROXY: "off"
+  GOFLAGS: "-mod=vendor"
+
+jobs:
+  image-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: harness-binary
+          path: bin
+      - run: chmod +x bin/harness
+      - env:
+          CONTAINER_ENGINE: docker
+        run: ./ci/scripts/image-build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: harness-image
+          path: dist/harness-image.tar
+          retention-days: 1
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-image-build
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  image-scan-trivy:
+    runs-on: ubuntu-latest
+    needs: [image-build]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: harness-image
+          path: dist
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install trivy
+        run: |
+          set -euo pipefail
+          source ci/scripts/images.sh
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+      - run: ./ci/scripts/image-scan-trivy.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-image-scan-trivy
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  image-scan-dive:
+    runs-on: ubuntu-latest
+    needs: [image-build]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: harness-image
+          path: dist
+      - name: Install dive
+        run: |
+          set -euo pipefail
+          source ci/scripts/images.sh
+          ver="${DIVE_VERSION#v}"
+          curl -sSfL "https://github.com/wagoodman/dive/releases/download/${DIVE_VERSION}/dive_${ver}_linux_amd64.tar.gz" | tar xz
+          sudo mv dive /usr/local/bin/
+      - run: ./ci/scripts/image-scan-dive.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-image-scan-dive
+          path: logs/*.log
+          if-no-files-found: ignore

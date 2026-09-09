@@ -242,10 +242,15 @@ requirements pass.
 
 ## GitHub Actions
 
-`.github/workflows/ci.yml` runs the same `ci/scripts/*.sh` checks as GitLab and
-adds `lint-actions`, which installs a pinned `actionlint` release and validates
-all `.github/workflows/*.yml` files. The build job depends on the YAML, Actions,
-Markdown, Go, unit-test, and secret-scan jobs.
+`.github/workflows/ci.yml` orchestrates six ordered reusable workflows:
+`ci-linters.yml`, `ci-tests.yml`, `ci-build.yml`, `ci-smoke.yml`,
+`ci-images.yml`, and `ci-publish.yml`. The stages run in order as
+linters -> tests -> build -> smoke -> image build/scans -> image push/version
+bump. The linter workflow installs a pinned `actionlint` release and validates
+all `.github/workflows/*.yml` files. The build and image workflows pass the
+`harness-binary` and `harness-image` artifacts to later stages.
+Replay smoke is an independent rebuild and does not consume `harness-binary`;
+it installs the Go version from `go.mod` before running.
 
 On a successful `main` publish, the `version-bump` job creates the automated
 version-bump PR. The shared `advance-version.sh` script configures the
@@ -253,18 +258,18 @@ version-bump PR. The shared `advance-version.sh` script configures the
 local runs preserve the developer's Git identity. The resulting commit is not
 cryptographically signed by the current CI setup.
 
-The workflow dispatch inputs are:
+The top-level workflow dispatch input is:
 
 | Input | Purpose | Default |
 |-------|---------|---------|
 | `publish` | Enable image push and version advancement after the checks pass | `false` |
 
-Trivy and Dive scans are non-blocking and upload their logs when they fail, so
-`image-push` and `version-bump` continue after scan failures. Image publishing
-and version advancement are both restricted to `main`, for automatic pushes
-and manual dispatches; a `test-ci` push cannot publish an image or advance version files. The
-`secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can inspect
-the complete history.
+Trivy and Dive are always non-blocking; their logs are still uploaded when a
+scan fails. Image publishing and version advancement are restricted to `main`,
+for automatic pushes and manual dispatches with `publish=true`; a `test-ci`
+push cannot publish an image or advance version files. The `secret-scan` job
+uses `fetch-depth: 0` so its merge-base diff scan can inspect the complete
+history.
 
 ## Image contents
 
@@ -552,9 +557,9 @@ Self-tests use `mktemp`.
 | `image-scan-trivy` | loads tar, HIGH/CRITICAL gate |
 | `image-scan-dive` | loads tar, wasted-layer gate |
 
-`image-push` stays manual and is **not** part of MR tests. On GitHub it runs
-only for `main` pushes or a manual dispatch with `publish=true`. `version-bump`
-is main-only and runs after a successful image push.
+`image-push` is **not** part of MR tests. On GitHub it runs only for `main`
+pushes or a manual dispatch with `publish=true`. `version-bump` is main-only
+and runs after a successful image push.
 
 ## Open items
 
@@ -568,8 +573,9 @@ Make it gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
 ### Replay-smoke job (skipped)
 
 GitLab `when: manual` + `allow_failure` (skipped in the UI unless played; does
-not block later jobs). GitHub `if: false` (job listed as skipped). Re-enable
-as a normal `on_success` job in a follow-up.
+not block later jobs). GitHub is disabled unless the `REPLAY_SMOKE_ENABLED`
+repository variable is set to `true`, so the job remains listed as skipped.
+Re-enable it as a normal `on_success` job in a follow-up.
 
 ### Dedicated CI cluster (live smoke)
 

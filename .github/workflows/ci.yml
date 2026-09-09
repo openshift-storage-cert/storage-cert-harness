@@ -1,5 +1,4 @@
-# Same ci/scripts/*.sh scripts as GitLab. Pin action versions (not @master).
-name: ci
+name: CI
 
 on:
   pull_request:
@@ -16,344 +15,42 @@ permissions:
   contents: read
   security-events: write
 
-env:
-  GOPROXY: "off"
-  GOFLAGS: "-mod=vendor"
-
 jobs:
-  lint-yaml:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - run: pip install yamllint
-      - run: ./ci/scripts/lint-yaml.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-lint-yaml
-          path: logs/*.log
-          if-no-files-found: ignore
+  linters:
+    uses: ./.github/workflows/ci-linters.yml
 
-  lint-actions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install actionlint
-        env:
-          ACTIONLINT_VERSION: "1.7.12"
-        run: |
-          set -euo pipefail
-          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -sSfL \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}" \
-            | tar xz -C /usr/local/bin actionlint
-      - run: ./ci/scripts/lint-actions.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-lint-actions
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  lint-md:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-      - run: npm install --global markdownlint-cli2
-      - run: ./ci/scripts/lint-md.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-lint-md
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  lint-go:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: Install golangci-lint
-        run: |
-          set -euo pipefail
-          # shellcheck source=ci/scripts/images.sh
-          source ci/scripts/images.sh
-          ver="${GOLANGCI_LINT_VERSION}"
-          rel="golangci-lint-${ver#v}-linux-amd64"
-          mkdir -p "$(go env GOPATH)/bin"
-          curl -sSfL \
-            "https://github.com/golangci/golangci-lint/releases/download/${ver}/${rel}.tar.gz" \
-            | tar xz -C "$(go env GOPATH)/bin" --strip-components=1 "${rel}/golangci-lint"
-      - run: ./ci/scripts/lint-go.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-lint-go
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  unittest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: ./ci/scripts/unittest.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-unittest
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - run: ./ci/scripts/secret-scan.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-secret-scan
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  supply-chain:
-    runs-on: ubuntu-latest
-    # Temporary: allowed to fail (ECOPROJECT-5419). Make gating after GO-2026-4602.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: Install govulncheck
-        env:
-          GOPROXY: https://proxy.golang.org,direct
-          GOFLAGS: ""
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: |
-          set -euo pipefail
-          source ci/scripts/images.sh
-          curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh \
-            | sh -s -- -b "$(go env GOPATH)/bin" "${GOSEC_VERSION}"
-      - run: |
-          set -euo pipefail
-          source ci/scripts/images.sh
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
-      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - run: ./ci/scripts/supply-chain.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-supply-chain
-          path: logs/*.log
-          if-no-files-found: ignore
+  tests:
+    needs: [linters]
+    uses: ./.github/workflows/ci-tests.yml
 
   build:
-    runs-on: ubuntu-latest
-    needs: [lint-yaml, lint-actions, lint-md, lint-go, unittest, secret-scan]
-    env:
-      GOOS: linux
-      GOARCH: amd64
-      CGO_ENABLED: "0"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: ./ci/scripts/build.sh
-      - uses: actions/upload-artifact@v7
-        with:
-          name: harness-binary
-          path: bin/harness
-          retention-days: 7
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-build
-          path: logs/*.log
-          if-no-files-found: ignore
+    needs: [tests]
+    uses: ./.github/workflows/ci-build.yml
 
-  replay-smoke:
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test-ci') && github.event_name == 'push'
-    runs-on: ubuntu-latest
+  smoke:
+    if: vars.REPLAY_SMOKE_ENABLED == 'true'
     needs: [build]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: ./ci/scripts/replay-smoke.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-replay-smoke
-          path: logs/*.log
-          if-no-files-found: ignore
+    uses: ./.github/workflows/ci-smoke.yml
 
-  image-build:
-    runs-on: ubuntu-latest
-    needs: [build]
-    env:
-      CONTAINER_ENGINE: docker
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v6
-        with:
-          name: harness-binary
-          path: bin
-      - run: chmod +x bin/harness
-      - run: ./ci/scripts/image-build.sh
-      - uses: actions/upload-artifact@v7
-        with:
-          name: harness-image
-          path: dist/harness-image.tar
-          retention-days: 1
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-image-build
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  image-scan-trivy:
-    runs-on: ubuntu-latest
-    needs: [image-build]
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
-        with:
-          name: harness-image
-          path: dist
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: Install trivy
-        run: |
-          set -euo pipefail
-          source ci/scripts/images.sh
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
-      - run: ./ci/scripts/image-scan-trivy.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-image-scan-trivy
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  image-scan-dive:
-    runs-on: ubuntu-latest
-    needs: [image-build]
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
-        with:
-          name: harness-image
-          path: dist
-      - name: Install dive
-        run: |
-          set -euo pipefail
-          source ci/scripts/images.sh
-          ver="${DIVE_VERSION#v}"
-          curl -sSfL "https://github.com/wagoodman/dive/releases/download/${DIVE_VERSION}/dive_${ver}_linux_amd64.tar.gz" | tar xz
-          sudo mv dive /usr/local/bin/
-      - run: ./ci/scripts/image-scan-dive.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-image-scan-dive
-          path: logs/*.log
-          if-no-files-found: ignore
-
-  image-push:
+  images:
     if: >-
       always() &&
-      github.ref == 'refs/heads/main' &&
-      ((github.event_name == 'push') ||
-      (github.event_name == 'workflow_dispatch' && inputs.publish == true)) &&
-      needs.image-build.result == 'success' &&
-      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-trivy.result) &&
-      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-dive.result)
-    runs-on: ubuntu-latest
-    needs: [image-build, image-scan-trivy, image-scan-dive]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
-        with:
-          name: harness-image
-          path: dist
-      - env:
-          PUSH: "1"
-          CONTAINER_ENGINE: docker
-          QUAY_USER: ${{ secrets.QUAY_USERNAME }}
-          QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
-        run: ./ci/scripts/image-push.sh
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-image-push
-          path: logs/*.log
-          if-no-files-found: ignore
+      needs.build.result == 'success' &&
+      (needs.smoke.result == 'success' || needs.smoke.result == 'skipped')
+    needs: [build, smoke]
+    uses: ./.github/workflows/ci-images.yml
 
-  version-bump:
+  publish:
     if: >-
-      always() &&
+      needs.images.result == 'success' &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'push') ||
-      (github.event_name == 'workflow_dispatch' && inputs.publish == true)) &&
-      needs.image-build.result == 'success' &&
-      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-trivy.result) &&
-      contains(fromJSON('["success", "failure", "skipped"]'), needs.image-scan-dive.result) &&
-      needs.image-push.result == 'success'
-    runs-on: ubuntu-latest
-    needs: [image-build, image-scan-trivy, image-scan-dive, image-push]
+      (github.event_name == 'workflow_dispatch' && inputs.publish == true))
+    needs: [images]
     permissions:
       contents: write
       pull-requests: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: Stage version bump
-        env:
-          VERSION_BUMP_PR: "1"
-        run: ./ci/scripts/advance-version.sh
-      - name: Create Version Bump PR
-        id: cpr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(release): advance version tracks"
-          title: "chore(release): advance version tracks"
-          body: "Automated version bump."
-          branch: chore/version-bump
-          base: main
-      - name: Auto-approve PR
-        if: steps.cpr.outputs.pull-request-number
-        run: gh pr review ${{ steps.cpr.outputs.pull-request-number }} --approve --repo ${{ github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_PAT_TOKEN }}
-      - name: Auto-merge PR
-        if: steps.cpr.outputs.pull-request-number
-        run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --auto --squash --repo ${{ github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/ci-publish.yml
+    with:
+      publish: true
+    secrets: inherit

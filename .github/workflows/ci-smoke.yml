@@ -1,0 +1,27 @@
+name: CI Smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GOPROXY: "off"
+  GOFLAGS: "-mod=vendor"
+
+jobs:
+  replay-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: ./ci/scripts/replay-smoke.sh
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-replay-smoke
+          path: logs/*.log
+          if-no-files-found: ignore
