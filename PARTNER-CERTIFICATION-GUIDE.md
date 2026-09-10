@@ -218,7 +218,10 @@ certification-results/
 Each `report.junit.xml` is a machine-readable result for that run. The
 no-load report is the merged certification report. Each `run.log` contains the
 harness log and the stdout/stderr emitted by the integrated tools. Use
-`--verbose` to include debug-level harness messages.
+`--verbose` (or `-v`) to include debug-level harness messages, including the
+currently running and still-queued test list. Normal progress messages report
+completed and remaining test counts; the final progress message lists passed,
+failed, errored, and skipped tests.
 
 Either command may return a failure status when one or more certification
 criteria fail. Review the reports and logs in both output directories; reports

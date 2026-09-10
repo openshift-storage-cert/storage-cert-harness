@@ -43,6 +43,7 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	if err != nil {
 		return core.Report{}, err
 	}
+	progress := newProgressTracker(rc.Logger, selected)
 
 	var scorable []core.TestRequirement
 	var verdicts []core.Verdict
@@ -50,10 +51,12 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	for _, tr := range selected {
 		if !runnable(tr) {
 			verdicts = append(verdicts, notScorable(tr)...)
+			progress.complete(tr, core.OutcomeSkip)
 			continue
 		}
 		if missing := missingRequiredParams(tr); len(missing) > 0 {
 			verdicts = append(verdicts, errTR(tr, fmt.Sprintf("required param(s) not supplied and have no default: %s (set them in the plan's overrides)", strings.Join(missing, ", ")))...)
+			progress.complete(tr, core.OutcomeError)
 			continue
 		}
 		scorable = append(scorable, tr)
@@ -67,6 +70,9 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	for _, s := range setups {
 		if err := s.provider.Setup(ctx, rc, s.trs); err != nil {
 			verdicts = append(verdicts, errTRs(s.trs, "setup ["+s.label+"]: "+err.Error())...)
+			for _, tr := range s.trs {
+				progress.complete(tr, core.OutcomeError)
+			}
 			scorable = withoutTRs(scorable, s.trs)
 			continue
 		}
@@ -85,7 +91,7 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 
 	var mu sync.Mutex
 	schedule(cfg.Concurrency, jobs, func(j job) {
-		vs, ms := runToolExecutions(ctx, j, rc, g)
+		vs, ms := runToolExecutions(ctx, j, rc, g, progress)
 		mu.Lock()
 		verdicts = append(verdicts, vs...)
 		measurements = append(measurements, ms...)
@@ -536,7 +542,7 @@ func ResolveExecutions(trs []core.TestRequirement, cfg config.Config) ([]core.Te
 
 // Keep ordinary multi-TR batching; named variants get independent pipelines.
 // All executions for this tool stay inside its scheduling lock.
-func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader) ([]core.Verdict, []core.Measurement) {
+func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader, progress *progressTracker) ([]core.Verdict, []core.Measurement) {
 	var ordinary []core.TestRequirement
 	for _, tr := range j.trs {
 		if tr.Variant == "" {
@@ -548,7 +554,13 @@ func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Gr
 	if len(ordinary) > 0 {
 		batch := j
 		batch.trs = ordinary
+		for _, tr := range ordinary {
+			progress.start(tr)
+		}
 		v, m := runJob(ctx, batch, rc, g)
+		for _, tr := range ordinary {
+			progress.complete(tr, summarizeTR(v, tr))
+		}
 		vs = append(vs, v...)
 		ms = append(ms, m...)
 	}
@@ -561,11 +573,14 @@ func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Gr
 		variantRC.WorkDir = filepath.Join(rc.WorkDir, "variants", hex.EncodeToString([]byte(tr.ID)), hex.EncodeToString([]byte(tr.Variant)))
 		if err := os.MkdirAll(variantRC.WorkDir, 0o750); err != nil {
 			vs = append(vs, errTR(tr, "variant workdir: "+err.Error())...)
+			progress.complete(tr, core.OutcomeError)
 			continue
 		}
 		batch := j
 		batch.trs = []core.TestRequirement{tr}
+		progress.start(tr)
 		v, m := runJob(ctx, batch, &variantRC, g)
+		progress.complete(tr, summarizeTR(v, tr))
 		vs = append(vs, v...)
 		ms = append(ms, m...)
 	}
