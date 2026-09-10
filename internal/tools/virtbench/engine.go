@@ -400,7 +400,8 @@ func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, 
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
 		}
 		start := intParam(tr, "start", 1)
-		end := intParam(tr, "end", intParam(tr, "count", 100))
+		end := intParam(tr, "iteration_clones", 100) // TR-VIRT-018
+		end = intParam(tr, "num_vms", end)           // TR-VIRT-001
 
 		args := clusterArgs(tr)
 		args = append(args, "datasource-clone",
@@ -888,13 +889,13 @@ func strParamOr(tr core.TestRequirement, key, def string) string {
 	return def
 }
 
-func intParam(tr core.TestRequirement, key string, def int) int {
+func intParam(tr core.TestRequirement, key string, fallback int) int {
 	if tr.Params == nil {
-		return def
+		return fallback
 	}
 	v, ok := tr.Params[key]
 	if !ok {
-		return def
+		return fallback
 	}
 	switch n := v.(type) {
 	case int:
@@ -908,5 +909,5 @@ func intParam(tr core.TestRequirement, key string, def int) int {
 			return i
 		}
 	}
-	return def
+	return fallback
 }
