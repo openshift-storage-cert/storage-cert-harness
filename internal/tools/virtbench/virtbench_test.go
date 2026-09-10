@@ -626,3 +626,27 @@ func TestReplayDir(t *testing.T) {
 		t.Errorf("replayDir = %q, want empty", d)
 	}
 }
+
+func TestStageTemplateRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "templates")
+	resultsDir := filepath.Join(root, "results")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "outside.yaml")
+	if err := os.WriteFile(secret, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	template := filepath.Join(sourceDir, "vm.yaml")
+	if err := os.Symlink(secret, template); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := stageTemplate(resultsDir, template); err == nil {
+		t.Fatal("stageTemplate accepted a symlink escaping the source directory")
+	}
+}

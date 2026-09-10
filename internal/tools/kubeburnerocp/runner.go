@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,7 +61,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 		seen[p.Workload] = true
 
 		subdir := filepath.Join(resultsDir, tr.ID)
-		if err := os.MkdirAll(subdir, 0o755); err != nil {
+		if err := os.MkdirAll(subdir, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
 			runs[i].RunErr = err.Error()
 			continue
 		}
@@ -108,7 +109,7 @@ func buildRunCmd(ctx context.Context, rc *core.RunCtx, args []string, resultsDir
 	if err != nil {
 		return nil, fmt.Errorf("kube-burner-ocp: kube-burner-ocp not on PATH: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, path, args...)
+	cmd := exec.CommandContext(ctx, path, args...) // #nosec G204 -- path comes from LookPath and args are harness-generated.
 	cmd.Dir = filepath.Join(resultsDir, subdir)
 	rc.Logger.Info("kube-burner-ocp: running host binary", "path", path)
 	return cmd, nil
@@ -145,13 +146,18 @@ func (collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, _ st
 
 func findCollectedMetrics(root string) (map[string][]byte, error) {
 	data := make(map[string][]byte)
-	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil || info.IsDir() {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rootFS.Close() }()
+	err = fs.WalkDir(rootFS.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
 			return walkErr
 		}
-		name := info.Name()
+		name := entry.Name()
 		if name == "jobSummary.json" || strings.Contains(name, "Quantiles") {
-			content, err := os.ReadFile(path)
+			content, err := rootFS.ReadFile(path)
 			if err != nil {
 				return err
 			}

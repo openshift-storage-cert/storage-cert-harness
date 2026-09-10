@@ -266,10 +266,10 @@ func newRunCmd() *cobra.Command {
 			var logFile *os.File
 			var err error
 			if outputDir != "" {
-				if err := os.MkdirAll(outputDir, 0o755); err != nil {
+				if err := os.MkdirAll(outputDir, 0o755); err != nil { // #nosec G301 -- output is an operator-selected report directory.
 					return err
 				}
-				logFile, err = os.Create(filepath.Join(outputDir, "run.log"))
+				logFile, err = os.Create(filepath.Join(outputDir, "run.log")) // #nosec G304 -- output directory is operator-selected.
 				if err != nil {
 					return err
 				}
@@ -534,7 +534,7 @@ func isInteractive(f *os.File) bool {
 }
 
 func writeFile(path string, fn func(*os.File) error) error {
-	f, err := os.Create(path)
+	f, err := os.Create(path) // #nosec G304 -- report path is an operator-selected output path.
 	if err != nil {
 		return err
 	}
@@ -543,7 +543,7 @@ func writeFile(path string, fn func(*os.File) error) error {
 }
 
 func writeReportFiles(outputDir string, rep core.Report, attestations []core.Attestation) error {
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil { // #nosec G301 -- output is an operator-selected report directory.
 		return err
 	}
 	if len(attestations) > 0 {
@@ -565,7 +565,7 @@ func writeReportFiles(outputDir string, rep core.Report, attestations []core.Att
 // core.Attestation entries. These are self-reported, unobservable claims only
 // (ADR-0014).
 func loadAttestations(path string) ([]core.Attestation, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- attestation path is an operator-selected input path.
 	if err != nil {
 		return nil, fmt.Errorf("attestations: %w", err)
 	}

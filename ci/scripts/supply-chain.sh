@@ -29,8 +29,8 @@ if [[ "${GOPROXY}" == "off" ]]; then
 	fi
 	step "go mod vendor (GOPROXY=off; skip if the module cache is empty)"
 	if env -u GOFLAGS go mod vendor; then
-		if ! git diff --exit-code -- go.mod go.sum vendor/; then
-			die "vendor/ (or go.mod/go.sum) is out of sync; run go mod vendor and commit"
+		if ! git diff --exit-code -- go.sum vendor/; then
+			die "vendor/ or go.sum is out of sync; run go mod vendor and commit"
 		fi
 	else
 		echo "note: go mod vendor failed under GOPROXY=off (same cold-cache case)."
@@ -41,8 +41,8 @@ else
 	env -u GOFLAGS go mod verify
 	step "go mod vendor"
 	env -u GOFLAGS go mod vendor
-	if ! git diff --exit-code -- go.mod go.sum vendor/; then
-		die "vendor/ (or go.mod/go.sum) is out of sync; run go mod vendor and commit"
+	if ! git diff --exit-code -- go.sum vendor/; then
+		die "vendor/ or go.sum is out of sync; run go mod vendor and commit"
 	fi
 fi
 

@@ -21,6 +21,12 @@ func TestLoadQuestionsDefault(t *testing.T) {
 	}
 }
 
+func TestLoadQuestionsRejectsPathTraversal(t *testing.T) {
+	if _, err := LoadQuestions("../go.mod"); err == nil {
+		t.Fatal("expected path traversal to be rejected")
+	}
+}
+
 func TestPromptDeclinedGate(t *testing.T) {
 	qs, _ := LoadQuestions("")
 	atts, err := Prompt(context.Background(), qs, strings.NewReader("n\n"), &strings.Builder{})

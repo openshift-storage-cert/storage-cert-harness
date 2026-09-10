@@ -104,7 +104,7 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 // ReadJSON loads a previously written report.json. Used by `run --continue-from`
 // to reuse a prior run's environment and append to its verdicts. See ADR-0014.
 func ReadJSON(path string) (core.Report, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- report path is an operator-selected input.
 	if err != nil {
 		return core.Report{}, fmt.Errorf("read report %s: %w", path, err)
 	}

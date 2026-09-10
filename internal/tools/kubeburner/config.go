@@ -28,7 +28,7 @@ func writeConfig(dir string, params Params) (string, error) {
 		}
 		dst := filepath.Join(dir, rel)
 		if d.IsDir() {
-			return os.MkdirAll(dst, 0o755)
+			return os.MkdirAll(dst, 0o755) // #nosec G301 -- generated assets are shared with the tool container.
 		}
 		b, err := assets.ReadFile(p)
 		if err != nil {
@@ -37,7 +37,7 @@ func writeConfig(dir string, params Params) (string, error) {
 		if rel == "config.yaml" {
 			b = []byte(strings.Replace(string(b), snapshotJobsMarker, snapshotJobs(params), 1))
 		}
-		return os.WriteFile(dst, b, 0o644)
+		return os.WriteFile(dst, b, 0o600)
 	})
 	if err != nil {
 		return "", fmt.Errorf("kube-burner: write config assets: %w", err)

@@ -86,7 +86,7 @@ func drainProvision(ctx context.Context, rc *core.RunCtx, _ *core.Bag, tr core.T
 	tmplPath := filepath.Join(resultsRoot, drainTemplateFile)
 	if custom := strParamOr(tr, "vm_template", ""); custom != "" {
 		tmplPath = custom
-	} else if err := os.WriteFile(tmplPath, []byte(renderDrainVMTemplate(target)), 0o644); err != nil {
+	} else if err := os.WriteFile(tmplPath, []byte(renderDrainVMTemplate(target)), 0o600); err != nil {
 		return fmt.Errorf("virtbench: drain: write vm template: %w", err)
 	}
 

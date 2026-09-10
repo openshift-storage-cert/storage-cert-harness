@@ -43,7 +43,7 @@ type Doc struct {
 
 // Load reads and validates catalog.json from path.
 func Load(path string) (*Doc, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- catalog path is an operator-selected input.
 	if err != nil {
 		return nil, fmt.Errorf("catalog: read %s: %w", path, err)
 	}

@@ -67,7 +67,7 @@ func (provisioner) Provision(_ context.Context, rc *core.RunCtx, bag *core.Bag, 
 		dir = os.TempDir()
 	}
 	resultsDir := strings.TrimRight(dir, "/") + "/" + resultsSubdir
-	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+	if err := os.MkdirAll(resultsDir, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
 		return fmt.Errorf("kube-burner: results dir: %w", err)
 	}
 	bag.Set("results_dir", resultsDir)

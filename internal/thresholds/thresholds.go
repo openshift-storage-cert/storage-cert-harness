@@ -32,7 +32,7 @@ type Doc struct {
 
 // Load reads, validates, and version-checks a thresholds bundle from path.
 func Load(path string) (*Doc, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- thresholds path is an operator-selected input.
 	if err != nil {
 		return nil, fmt.Errorf("thresholds: read %s: %w", path, err)
 	}

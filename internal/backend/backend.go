@@ -25,7 +25,7 @@ type Set struct {
 
 // Load reads and validates a backends YAML file.
 func Load(path string) (*Set, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- backend path is an operator-selected input.
 	if err != nil {
 		return nil, fmt.Errorf("read backends %s: %w", path, err)
 	}
