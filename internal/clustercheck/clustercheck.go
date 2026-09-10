@@ -49,7 +49,7 @@ func CRD(crdName string) Capability {
 	return Capability{
 		Name: crdName,
 		Check: func(ctx context.Context, cli string) core.Finding {
-			out, err := exec.CommandContext(ctx, cli, "get", "crd", crdName, "-o", "name").CombinedOutput()
+			out, err := exec.CommandContext(ctx, cli, "get", "crd", crdName, "-o", "name").CombinedOutput() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
 			if err != nil {
 				return core.Finding{Level: "error", Message: fmt.Sprintf("CRD %s not found: %v: %s", crdName, err, strings.TrimSpace(string(out)))}
 			}
@@ -84,7 +84,7 @@ func Preflight(ctx context.Context, caps []Capability, storageClass string) []co
 
 // StorageClassExists checks a StorageClass exists on the cluster (warn if absent).
 func StorageClassExists(ctx context.Context, cli, name string) core.Finding {
-	out, err := exec.CommandContext(ctx, cli, "get", "storageclass", name, "-o", "name").CombinedOutput()
+	out, err := exec.CommandContext(ctx, cli, "get", "storageclass", name, "-o", "name").CombinedOutput() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
 	if err != nil {
 		return core.Finding{Level: "warn", Message: fmt.Sprintf("storage class %q not found on cluster: %s", name, strings.TrimSpace(string(out)))}
 	}

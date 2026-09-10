@@ -6,12 +6,12 @@ package backend
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // SupportedSchemaVersion is the backends-file schema this build understands.
@@ -25,7 +25,7 @@ type Set struct {
 
 // Load reads and validates a backends YAML file.
 func Load(path string) (*Set, error) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read backends %s: %w", path, err)
 	}
@@ -122,7 +122,7 @@ func Resolve(b core.Backend, kube KubeSecretReader, logger *slog.Logger) (*core.
 func resolveRef(backendName, key string, ref core.SecretRef, kube KubeSecretReader, logger *slog.Logger) (string, error) {
 	switch {
 	case ref.File != "":
-		data, err := os.ReadFile(ref.File)
+		data, err := safefs.ReadFile(ref.File)
 		if err != nil {
 			return "", fmt.Errorf("backend %q secret %q: read file: %w", backendName, key, err)
 		}

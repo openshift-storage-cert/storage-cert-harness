@@ -4,8 +4,9 @@
 package artifacts
 
 import (
-	"os"
 	"path/filepath"
+
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // Store persists run artifacts.
@@ -21,10 +22,7 @@ type FSStore struct {
 // Put writes data to Base/name, creating parent directories.
 func (s FSStore) Put(name string, data []byte) (string, error) {
 	p := filepath.Join(s.Base, name)
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(p, data, 0o644); err != nil {
+	if err := safefs.WriteFile(p, data, 0o600); err != nil {
 		return "", err
 	}
 	return p, nil

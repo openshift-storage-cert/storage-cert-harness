@@ -2,6 +2,8 @@ package attestation
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -18,6 +20,27 @@ func TestLoadQuestionsDefault(t *testing.T) {
 		if q.Claim == "" || q.Prompt == "" {
 			t.Fatalf("malformed default question: %+v", q)
 		}
+	}
+}
+
+func TestLoadQuestionsRejectsPathTraversal(t *testing.T) {
+	if _, err := LoadQuestions("../go.mod"); err == nil {
+		t.Fatal("expected path traversal to be rejected")
+	}
+}
+
+func TestLoadQuestionsAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "questions.yaml")
+	if err := os.WriteFile(path, []byte("- claim: test\n  prompt: Test?\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	qs, err := LoadQuestions(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(qs) != 1 || qs[0].Claim != "test" {
+		t.Fatalf("unexpected questions: %+v", qs)
 	}
 }
 

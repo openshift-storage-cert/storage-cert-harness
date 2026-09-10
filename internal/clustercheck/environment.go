@@ -160,7 +160,7 @@ func collectCSIDriver(ctx context.Context, cli, name string) core.CSIDriverInfo 
 // ---- small helpers ----
 
 func runText(ctx context.Context, cli string, args ...string) string {
-	out, err := exec.CommandContext(ctx, cli, args...).Output()
+	out, err := exec.CommandContext(ctx, cli, args...).Output() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
 	if err != nil {
 		return ""
 	}
@@ -168,7 +168,7 @@ func runText(ctx context.Context, cli string, args ...string) string {
 }
 
 func runJSON(ctx context.Context, cli string, v any, args ...string) error {
-	out, err := exec.CommandContext(ctx, cli, args...).Output()
+	out, err := exec.CommandContext(ctx, cli, args...).Output() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
 	if err != nil {
 		return err
 	}

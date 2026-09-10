@@ -1,6 +1,6 @@
 module gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness
 
-go 1.26
+go 1.26.5
 
 require (
 	github.com/spf13/cobra v1.10.2

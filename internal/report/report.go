@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // Build assembles a Report from verdicts and provenance, computing the summary,
@@ -104,7 +104,7 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 // ReadJSON loads a previously written report.json. Used by `run --continue-from`
 // to reuse a prior run's environment and append to its verdicts. See ADR-0014.
 func ReadJSON(path string) (core.Report, error) {
-	b, err := os.ReadFile(path)
+	b, err := safefs.ReadFile(path)
 	if err != nil {
 		return core.Report{}, fmt.Errorf("read report %s: %w", path, err)
 	}

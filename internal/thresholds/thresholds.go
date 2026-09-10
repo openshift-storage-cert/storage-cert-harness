@@ -7,9 +7,9 @@ package thresholds
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // SupportedSchemaVersion is the export schema this build understands.
@@ -32,7 +32,7 @@ type Doc struct {
 
 // Load reads, validates, and version-checks a thresholds bundle from path.
 func Load(path string) (*Doc, error) {
-	b, err := os.ReadFile(path)
+	b, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("thresholds: read %s: %w", path, err)
 	}

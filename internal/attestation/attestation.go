@@ -12,12 +12,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 //go:embed questions.yaml
@@ -34,10 +35,15 @@ type Question struct {
 
 // LoadQuestions returns the attestation questions. With an empty path it returns
 // the bundled defaults; otherwise it reads the override file (same YAML shape).
+// path may be absolute or relative to the working directory; ".." components are
+// rejected, but any other resolved path is accepted as an operator-selected input.
 func LoadQuestions(path string) ([]Question, error) {
 	data := defaultQuestions
 	if path != "" {
-		b, err := os.ReadFile(path)
+		if pathContainsDotDot(path) {
+			return nil, fmt.Errorf("attestation questions: path traversal rejected")
+		}
+		b, err := safefs.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("attestation questions: %w", err)
 		}
@@ -134,7 +140,7 @@ func WriteFile(path string, atts []core.Attestation) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	return safefs.WriteFile(path, append(b, '\n'), 0o600)
 }
 
 func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
@@ -155,4 +161,13 @@ func isYes(s string) bool {
 	default:
 		return false
 	}
+}
+
+func pathContainsDotDot(path string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }

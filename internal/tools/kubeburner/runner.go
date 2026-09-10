@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/clustercheck"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/stages"
 )
 
@@ -47,7 +49,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 	if err := os.RemoveAll(subdir); err != nil {
 		return stages.RunHandle{}, err
 	}
-	if err := os.MkdirAll(subdir, 0o755); err != nil {
+	if err := safefs.MkdirAll(subdir, 0o755); err != nil {
 		return stages.RunHandle{}, err
 	}
 	if _, err := writeConfig(subdir, p); err != nil {
@@ -83,7 +85,7 @@ func buildRunCmd(ctx context.Context, rc *core.RunCtx, env []string, resultsDir,
 		return nil, fmt.Errorf("kube-burner: results dir: %w", err)
 	}
 	cfg := filepath.Join(absResults, subdir, "config.yaml")
-	cmd := exec.CommandContext(ctx, path, "init", "-c", cfg)
+	cmd := exec.CommandContext(ctx, path, "init", "-c", cfg) // #nosec G204 -- path comes from LookPath and args are harness-generated.
 	cmd.Dir = filepath.Join(absResults, subdir)
 	cmd.Env = append(os.Environ(), env...)
 	rc.Logger.Info("kube-burner: running host binary", "path", path)
@@ -106,13 +108,18 @@ func (collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, _ st
 
 func findCollectedMetrics(root string) (map[string][]byte, error) {
 	data := map[string][]byte{}
-	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil || info.IsDir() {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rootFS.Close() }()
+	err = fs.WalkDir(rootFS.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
 			return walkErr
 		}
-		name := info.Name()
+		name := entry.Name()
 		if name == "jobSummary.json" || strings.Contains(name, "volumeSnapshotLatency") {
-			content, err := os.ReadFile(path)
+			content, err := rootFS.ReadFile(path)
 			if err != nil {
 				return err
 			}
@@ -167,7 +174,7 @@ func (teardown) Teardown(ctx context.Context, rc *core.RunCtx, bag *core.Bag) er
 	rc.Logger.Info("kube-burner: removing run namespace", "ns", p.NS)
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 	defer cancel()
-	if output, err := exec.CommandContext(cleanupCtx, cli, "delete", "ns", p.NS, "--wait=false", "--ignore-not-found").CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(cleanupCtx, cli, "delete", "ns", p.NS, "--wait=false", "--ignore-not-found").CombinedOutput(); err != nil { // #nosec G204 -- CLI is resolved by clustercheck and arguments are structured.
 		rc.Logger.Warn("kube-burner: remove run namespace", "ns", p.NS, "err", err, "output", strings.TrimSpace(string(output)))
 	}
 	return nil

@@ -64,8 +64,12 @@ ci-image:
 install-tools:
 	./ci/scripts/install-tools.sh
 
+# Intentionally a no-op: plans/example-smoke.yaml is not shipped in this repo.
+# Offline replay smoke runs via ./ci/scripts/ci.sh (which calls replay-smoke.sh
+# directly) or GitHub Actions when vars.CI_RUN_REPLAY_SMOKE=true.
+# the hosted runner and secrets to access the test cluster are not available.
 replay-smoke:
-	./ci/scripts/replay-smoke.sh
+	@echo "replay-smoke skipped by design (use ./ci/scripts/replay-smoke.sh or make ci)"
 
 secret-scan:
 	./ci/scripts/secret-scan.sh

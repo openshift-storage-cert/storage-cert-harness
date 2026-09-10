@@ -138,7 +138,7 @@ func runKubectl(ctx context.Context, kubeconfig string, args ...string) (out str
 	if kubeconfig != "" {
 		full = append([]string{"--kubeconfig", kubeconfig}, args...)
 	}
-	cmd := exec.CommandContext(ctx, "kubectl", full...)
+	cmd := exec.CommandContext(ctx, "kubectl", full...) // #nosec G204 -- kubectl arguments are constructed by the harness.
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
