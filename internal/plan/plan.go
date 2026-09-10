@@ -5,12 +5,12 @@ package plan
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 
 	"gopkg.in/yaml.v3"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/config"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // SupportedSchemaVersion is the plan schema this build understands.
@@ -54,7 +54,7 @@ type ToolSchedule struct {
 
 // Load reads and validates a plan YAML file.
 func Load(path string) (*Plan, error) {
-	data, err := os.ReadFile(path) // #nosec G304 -- plan path is an operator-selected input.
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read plan %s: %w", path, err)
 	}

@@ -6,9 +6,9 @@ package catalog
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // SupportedSchemaVersion is the export schema this build understands.
@@ -43,7 +43,7 @@ type Doc struct {
 
 // Load reads and validates catalog.json from path.
 func Load(path string) (*Doc, error) {
-	b, err := os.ReadFile(path) // #nosec G304 -- catalog path is an operator-selected input.
+	b, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: read %s: %w", path, err)
 	}

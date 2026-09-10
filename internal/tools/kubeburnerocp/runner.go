@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/stages"
 )
 
@@ -61,7 +62,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 		seen[p.Workload] = true
 
 		subdir := filepath.Join(resultsDir, tr.ID)
-		if err := os.MkdirAll(subdir, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
+		if err := safefs.MkdirAll(subdir, 0o755); err != nil {
 			runs[i].RunErr = err.Error()
 			continue
 		}

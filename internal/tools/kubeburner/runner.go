@@ -13,6 +13,7 @@ import (
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/clustercheck"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/stages"
 )
 
@@ -48,7 +49,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 	if err := os.RemoveAll(subdir); err != nil {
 		return stages.RunHandle{}, err
 	}
-	if err := os.MkdirAll(subdir, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
+	if err := safefs.MkdirAll(subdir, 0o755); err != nil {
 		return stages.RunHandle{}, err
 	}
 	if _, err := writeConfig(subdir, p); err != nil {

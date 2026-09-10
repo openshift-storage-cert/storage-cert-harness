@@ -12,12 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 //go:embed questions.yaml
@@ -37,12 +37,7 @@ type Question struct {
 func LoadQuestions(path string) ([]Question, error) {
 	data := defaultQuestions
 	if path != "" {
-		root, err := os.OpenRoot(".")
-		if err != nil {
-			return nil, fmt.Errorf("attestation questions: open root: %w", err)
-		}
-		defer func() { _ = root.Close() }()
-		b, err := root.ReadFile(path)
+		b, err := safefs.ReadRelative(".", path)
 		if err != nil {
 			return nil, fmt.Errorf("attestation questions: %w", err)
 		}
@@ -139,7 +134,7 @@ func WriteFile(path string, atts []core.Attestation) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o600)
+	return safefs.WriteFile(path, append(b, '\n'), 0o600)
 }
 
 func readLine(ctx context.Context, r *bufio.Reader) (string, error) {

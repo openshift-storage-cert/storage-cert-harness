@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/stages"
 )
 
@@ -125,7 +126,7 @@ func (p provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.B
 		root = "."
 	}
 	root = filepath.Join(root, "virtbench")
-	if err := os.MkdirAll(root, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
+	if err := safefs.MkdirAll(root, 0o755); err != nil {
 		return fmt.Errorf("virtbench: create results dir: %w", err)
 	}
 	bag.Set("replay", false)
@@ -207,7 +208,7 @@ func (c collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, h 
 	if err != nil {
 		return core.LogBundle{}, err
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path was found under the rooted results directory.
+	data, err := safefs.ReadUnder(root, path)
 	if err != nil {
 		return core.LogBundle{}, fmt.Errorf("virtbench: read results: %w", err)
 	}
@@ -216,7 +217,7 @@ func (c collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, h 
 	bundle := map[string][]byte{c.sc.ResultFile: data}
 	if c.sc.DetailFile != "" {
 		if dp, err := findResult(root, c.sc.DetailFile); err == nil {
-			if dd, err := os.ReadFile(dp); err == nil { // #nosec G304 -- path was found under the rooted results directory.
+			if dd, err := safefs.ReadUnder(root, dp); err == nil {
 				bundle[c.sc.DetailFile] = dd
 				refs = append(refs, dp)
 			}
@@ -236,7 +237,7 @@ func collectFIOResults(root string, replay bool) ([]string, []byte, error) {
 	}
 	results := make([]json.RawMessage, 0, len(paths))
 	for _, path := range paths {
-		data, err := os.ReadFile(path) // #nosec G304 -- path was found under the rooted results directory.
+		data, err := safefs.ReadUnder(root, path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("virtbench: read fio result %q: %w", path, err)
 		}
@@ -253,7 +254,7 @@ func collectFIOResults(root string, replay bool) ([]string, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	summary, err := os.ReadFile(summaryPath) // #nosec G304 -- path was found under the rooted results directory.
+	summary, err := safefs.ReadUnder(root, summaryPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("virtbench: read fio summary: %w", err)
 	}
@@ -483,26 +484,12 @@ func diskOpsArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement,
 // file in place, so it must run against a throwaway copy in the workdir — never
 // the repo template, which would get mutated (and its placeholder clobbered).
 func stageTemplate(resultsRoot, tmpl string) (string, error) {
-	absTmpl, err := filepath.Abs(tmpl)
-	if err != nil {
-		return "", fmt.Errorf("resolve vm_template %q: %w", tmpl, err)
-	}
-	srcRoot, err := os.OpenRoot(filepath.Dir(absTmpl))
-	if err != nil {
-		return "", fmt.Errorf("open vm_template directory: %w", err)
-	}
-	defer func() { _ = srcRoot.Close() }()
-	data, err := srcRoot.ReadFile(filepath.Base(absTmpl))
+	data, err := safefs.ReadFile(tmpl)
 	if err != nil {
 		return "", fmt.Errorf("read vm_template %q: %w", tmpl, err)
 	}
 	dst := filepath.Join(resultsRoot, filepath.Base(tmpl))
-	dstRoot, err := os.OpenRoot(resultsRoot)
-	if err != nil {
-		return "", fmt.Errorf("open results directory: %w", err)
-	}
-	defer func() { _ = dstRoot.Close() }()
-	if err := dstRoot.WriteFile(filepath.Base(tmpl), data, 0o600); err != nil {
+	if err := safefs.WriteFile(dst, data, 0o600); err != nil {
 		return "", fmt.Errorf("stage vm_template: %w", err)
 	}
 	return filepath.Abs(dst)

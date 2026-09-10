@@ -9,6 +9,7 @@ import (
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/clustercheck"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 // snapshotCRD is the KubeVirt VirtualMachineSnapshot capability this tool needs.
@@ -67,7 +68,7 @@ func (provisioner) Provision(_ context.Context, rc *core.RunCtx, bag *core.Bag, 
 		dir = os.TempDir()
 	}
 	resultsDir := strings.TrimRight(dir, "/") + "/" + resultsSubdir
-	if err := os.MkdirAll(resultsDir, 0o755); err != nil { // #nosec G301 -- results are intentionally readable by the tool container.
+	if err := safefs.MkdirAll(resultsDir, 0o755); err != nil {
 		return fmt.Errorf("kube-burner: results dir: %w", err)
 	}
 	bag.Set("results_dir", resultsDir)

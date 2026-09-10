@@ -15,7 +15,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	"strings"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 )
 
 //go:embed templates/rhel9-vm-drain.yaml
@@ -86,7 +86,7 @@ func drainProvision(ctx context.Context, rc *core.RunCtx, _ *core.Bag, tr core.T
 	tmplPath := filepath.Join(resultsRoot, drainTemplateFile)
 	if custom := strParamOr(tr, "vm_template", ""); custom != "" {
 		tmplPath = custom
-	} else if err := os.WriteFile(tmplPath, []byte(renderDrainVMTemplate(target)), 0o600); err != nil {
+	} else if err := safefs.WriteFile(tmplPath, []byte(renderDrainVMTemplate(target)), 0o600); err != nil {
 		return fmt.Errorf("virtbench: drain: write vm template: %w", err)
 	}
 

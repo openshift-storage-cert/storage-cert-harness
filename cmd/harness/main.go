@@ -31,6 +31,7 @@ import (
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/plan"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/registry"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/report"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/thresholds"
 
 	// Tool integrations — add a line here to compile in a new tool.
@@ -263,21 +264,28 @@ func newRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run selected certification tests and emit a report",
 		RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
-			var logFile *os.File
-			var err error
+			var logFile io.WriteCloser
+			var closeLog func()
 			if outputDir != "" {
-				if err := os.MkdirAll(outputDir, 0o755); err != nil { // #nosec G301 -- output is an operator-selected report directory.
-					return err
-				}
-				logFile, err = os.Create(filepath.Join(outputDir, "run.log")) // #nosec G304 -- output directory is operator-selected.
+				root, err := safefs.OpenRootDir(outputDir, 0o755)
 				if err != nil {
 					return err
+				}
+				f, err := root.OpenFile("run.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+				if err != nil {
+					_ = root.Close()
+					return err
+				}
+				logFile = f
+				closeLog = func() {
+					_ = f.Close()
+					_ = root.Close()
 				}
 				defer func() {
 					if runErr != nil {
 						_, _ = fmt.Fprintf(logFile, "error: %v\n", runErr)
 					}
-					_ = logFile.Close()
+					closeLog()
 				}()
 			}
 			logger := newLoggerWithOutput(verbose, logFile)
@@ -533,31 +541,25 @@ func isInteractive(f *os.File) bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func writeFile(path string, fn func(*os.File) error) error {
-	f, err := os.Create(path) // #nosec G304 -- report path is an operator-selected output path.
-	if err != nil {
-		return err
-	}
-	defer f.Close() //nolint:errcheck // follow-up: check Close error
-	return fn(f)
-}
-
 func writeReportFiles(outputDir string, rep core.Report, attestations []core.Attestation) error {
-	if err := os.MkdirAll(outputDir, 0o755); err != nil { // #nosec G301 -- output is an operator-selected report directory.
-		return err
-	}
 	if len(attestations) > 0 {
 		if err := attestation.WriteFile(filepath.Join(outputDir, "attestations.json"), attestations); err != nil {
 			return err
 		}
 	}
-	if err := writeFile(filepath.Join(outputDir, "report.json"), func(f *os.File) error { return report.WriteJSON(f, rep) }); err != nil {
+	if err := safefs.WriteWriter(filepath.Join(outputDir, "report.json"), 0o600, func(w io.Writer) error {
+		return report.WriteJSON(w, rep)
+	}); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(outputDir, "report.md"), func(f *os.File) error { return report.WriteMarkdown(f, rep) }); err != nil {
+	if err := safefs.WriteWriter(filepath.Join(outputDir, "report.md"), 0o600, func(w io.Writer) error {
+		return report.WriteMarkdown(w, rep)
+	}); err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(outputDir, "report.junit.xml"), func(f *os.File) error { return (report.JUnitExporter{}).Export(f, rep) })
+	return safefs.WriteWriter(filepath.Join(outputDir, "report.junit.xml"), 0o600, func(w io.Writer) error {
+		return (report.JUnitExporter{}).Export(w, rep)
+	})
 }
 
 // loadAttestations reads a partner attestation file of the form
@@ -565,7 +567,7 @@ func writeReportFiles(outputDir string, rep core.Report, attestations []core.Att
 // core.Attestation entries. These are self-reported, unobservable claims only
 // (ADR-0014).
 func loadAttestations(path string) ([]core.Attestation, error) {
-	b, err := os.ReadFile(path) // #nosec G304 -- attestation path is an operator-selected input path.
+	b, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("attestations: %w", err)
 	}
