@@ -12,6 +12,7 @@ import (
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/plan"
+	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/registry"
 )
 
 func readFixtures(t *testing.T, names ...string) map[string][]byte {
@@ -26,6 +27,19 @@ func readFixtures(t *testing.T, names ...string) map[string][]byte {
 		data[n] = b
 	}
 	return data
+}
+
+func TestRegistrationProvidesTR027(t *testing.T) {
+	integration, ok := registry.Get("kube-burner")
+	if !ok {
+		t.Fatal("kube-burner integration is not registered")
+	}
+	if !slices.Contains(integration.Provides, "TR-VIRT-027") {
+		t.Fatalf("provides %v, want TR-VIRT-027", integration.Provides)
+	}
+	if _, ok := integration.Evaluators["TR-VIRT-027"]; !ok {
+		t.Fatal("TR-VIRT-027 evaluator is not registered")
+	}
 }
 
 func metricAt(res core.TestResult, name, pct string) (float64, bool) {
@@ -69,6 +83,43 @@ func TestParseResults_Golden(t *testing.T) {
 		{Name: MetricSnapshotFailedCount, Value: 0, Unit: "count"},
 		{Name: MetricSnapshotSuccessRate, Value: 100, Unit: "%"},
 		{Name: MetricSnapshotBatchCompletionTime, Value: 1, Unit: "s"},
+	} {
+		if !slices.Contains(res.Metrics, want) {
+			t.Errorf("missing metric %+v in %+v", want, res.Metrics)
+		}
+	}
+}
+
+func TestParseResults_TR027ReportsSnapshotsPerVolume(t *testing.T) {
+	data := readFixtures(t,
+		"jobSummary.json",
+		"volumeSnapshotLatencyQuantilesMeasurement-vmsnapshot-snapshot.json",
+		"volumeSnapshotLatencyMeasurement-vmsnapshot-snapshot.json")
+	res, err := parseResults("TR-VIRT-027", data, 3)
+	if err != nil {
+		t.Fatalf("parseResults: %v", err)
+	}
+	if !slices.Contains(res.Metrics, core.Metric{Name: MetricSnapshotsPerVolume, Value: 3, Unit: "count"}) {
+		t.Fatalf("missing snapshots-per-volume metric in %+v", res.Metrics)
+	}
+}
+
+func TestParseResults_TR027QuantilesOnlyUsesPassingJobCount(t *testing.T) {
+	data := readFixtures(t,
+		"jobSummary.json",
+		"volumeSnapshotLatencyQuantilesMeasurement-vmsnapshot-snapshot.json")
+	res, err := parseResults("TR-VIRT-027", data, 3)
+	if err != nil {
+		t.Fatalf("parseResults: %v", err)
+	}
+	if res.Native != core.OutcomePass {
+		t.Fatalf("native=%s, want pass", res.Native)
+	}
+	for _, want := range []core.Metric{
+		{Name: MetricSnapshotReadyCount, Value: 3, Unit: "count"},
+		{Name: MetricSnapshotFailedCount, Value: 0, Unit: "count"},
+		{Name: MetricSnapshotSuccessRate, Value: 100, Unit: "%"},
+		{Name: MetricSnapshotsPerVolume, Value: 3, Unit: "count"},
 	} {
 		if !slices.Contains(res.Metrics, want) {
 			t.Errorf("missing metric %+v in %+v", want, res.Metrics)
@@ -283,6 +334,19 @@ func TestParams_SnapshotCountDefaultsToReplicas(t *testing.T) {
 	p := resolveParams([]core.TestRequirement{{Params: map[string]any{"replicas": 3}}})
 	if p.Replicas != 3 || p.SnapshotCount != 3 || p.validate() != nil {
 		t.Fatalf("replica default = %+v, want valid replicas=3 snapshot_count=3", p)
+	}
+}
+
+func TestParams_TR027UsesCanonicalSnapshotNames(t *testing.T) {
+	p := resolveParams([]core.TestRequirement{{Params: map[string]any{
+		"replicas":       1,
+		"snapshot_count": 250,
+	}}})
+	if p.Replicas != 1 || p.SnapshotCount != 250 || !p.snapshotCountSet {
+		t.Fatalf("params = %+v, want replicas=1 snapshot_count=250", p)
+	}
+	if err := p.validate(); err != nil {
+		t.Fatalf("validate: %v", err)
 	}
 }
 

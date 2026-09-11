@@ -32,8 +32,8 @@ overrides:
     snapshot_count: 3
     namespace: l3-internal-snap
   TR-VIRT-027:
-    snapshots: 3
-    source_replicas: 1
+    snapshot_count: 3
+    replicas: 1
   TR-VIRT-018:
     iteration_clones: 3
     use_snapshot: true
