@@ -42,7 +42,9 @@ results for submission:
 The output directory contains `report.junit.xml`, `report.json`, `report.md`,
 and `run.log`. `run.log` contains harness log messages and stdout/stderr from
 the kube-burner and kube-burner-ocp subprocesses. virtbench output is included
-through the harness logger. Submit `report.junit.xml` and `run.log` together;
+through the harness logger. During a run, progress messages show completed and
+remaining plan executions; add `--verbose` (or `-v`) to include running and
+queued test lists. Submit `report.junit.xml` and `run.log` together;
 the work directory also contains the tool-generated result artifacts.
 
 ## How it works
