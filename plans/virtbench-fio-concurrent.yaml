@@ -14,7 +14,6 @@ overrides:
     # Allows all requested PVCs and VMs to become ready before FIO collection.
     vm_ready_timeout: 1200
     namespace_prefix: fio-concurrent
-    fio_vm_template: internal/tools/virtbench/assets/fio-vm-template.yaml
     fio_rw: randrw
     fio_bs: 4k
     # FIO runtime is a workload setting.

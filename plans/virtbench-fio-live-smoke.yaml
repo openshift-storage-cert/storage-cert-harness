@@ -11,7 +11,6 @@ overrides:
   TR-STOR-002:
     num_vms: 1
     namespace_prefix: fio-latency
-    fio_vm_template: internal/tools/virtbench/assets/fio-vm-template.yaml
     fio_rw: randrw
     fio_bs: 4k
     fio_runtime: 30

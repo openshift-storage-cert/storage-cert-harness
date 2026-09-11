@@ -25,6 +25,7 @@ package virtbench
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -55,6 +56,15 @@ const (
 	// --vm-template. See decisions/0008.
 	defaultVMName = "rhel-9-vm"
 )
+
+const fioVMTemplateFile = "fio-vm-template.yaml"
+
+// fioVMTemplate is compiled into the harness so live FIO runs do not depend on
+// the source repository being mounted or on a plan knowing an internal path.
+// A plan may still provide fio_vm_template to use a custom VM definition.
+//
+//go:embed assets/fio-vm-template.yaml
+var fioVMTemplate string
 
 // teardownBudget bounds the best-effort cleanup, which runs on a fresh context so
 // it still happens when the run ctx was cancelled.
@@ -533,11 +543,7 @@ func fioArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, res
 		if bs != "4k" {
 			return nil, fmt.Errorf("virtbench: %s: fio_bs must be 4k for read/write latency", tr.ID)
 		}
-		template, err := fioTemplate(tr)
-		if err != nil {
-			return nil, err
-		}
-		staged, err := stageTemplate(resultsRoot, template)
+		staged, err := stageFIOTemplate(resultsRoot, tr)
 		if err != nil {
 			return nil, fmt.Errorf("virtbench: %s: %w", tr.ID, err)
 		}
@@ -806,10 +812,29 @@ func fioValidate(tr core.TestRequirement) error {
 	return err
 }
 
+// stageFIOTemplate stages the embedded default or a caller-supplied custom
+// template into the run workdir. virtbench mutates the staged file while
+// substituting the storage class, so neither the embedded bytes nor a custom
+// source file are ever passed to it directly.
+func stageFIOTemplate(resultsRoot string, tr core.TestRequirement) (string, error) {
+	template, err := fioTemplate(tr)
+	if err != nil {
+		return "", err
+	}
+	if template == "" {
+		dst := filepath.Join(resultsRoot, fioVMTemplateFile)
+		if err := safefs.WriteFile(dst, []byte(fioVMTemplate), 0o600); err != nil {
+			return "", fmt.Errorf("stage embedded fio vm template: %w", err)
+		}
+		return filepath.Abs(dst)
+	}
+	return stageTemplate(resultsRoot, template)
+}
+
 func fioTemplate(tr core.TestRequirement) (string, error) {
 	template := strParamOr(tr, "fio_vm_template", "")
 	if template == "" {
-		return "", fmt.Errorf("virtbench: %s: fio_vm_template required to collect p99 latency", tr.ID)
+		return "", nil
 	}
 	path, err := filepath.Abs(template)
 	if err != nil {

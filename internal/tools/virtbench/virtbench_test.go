@@ -279,7 +279,7 @@ func TestPreflightChecksFIOCommand(t *testing.T) {
 	}
 }
 
-func TestPreflightRequiresFIOP99Template(t *testing.T) {
+func TestPreflightUsesEmbeddedFIOP99Template(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, binary)
 	if err := os.WriteFile(binaryPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -287,13 +287,13 @@ func TestPreflightRequiresFIOP99Template(t *testing.T) {
 	}
 	t.Setenv("PATH", dir)
 	findings, err := (preflight{sc: Scenario{Validate: fioValidate}}).Check(
-		context.Background(), &core.RunCtx{}, nil, []core.TestRequirement{{ID: "TR-STOR-002", Params: map[string]any{"storage_class": "sc"}}},
+		context.Background(), &core.RunCtx{}, nil, []core.TestRequirement{{ID: "TR-STOR-002", Params: map[string]any{"storage_class": "sc", "num_vms": 1}}},
 	)
 	if err != nil {
 		t.Fatalf("preflight: %v", err)
 	}
-	if len(findings) != 2 || findings[1].Level != "error" {
-		t.Fatalf("findings = %+v, want FIO template error", findings)
+	if len(findings) != 1 || findings[0].Level == "error" {
+		t.Fatalf("findings = %+v, want no FIO template error", findings)
 	}
 }
 
@@ -486,6 +486,28 @@ func TestBuildArgsFIO(t *testing.T) {
 		"storage_class": "sc", "num_vms": 0,
 	}}, "/work/res"); err == nil {
 		t.Error("zero FIO VM count: want error, got nil")
+	}
+
+	defaultResultsDir := t.TempDir()
+	defaultTR := core.TestRequirement{ID: "TR-STOR-002", Params: map[string]any{
+		"storage_class": "ocs-storagecluster-ceph-rbd",
+		"num_vms":       1,
+		"fio_bs":        "4k",
+	}}
+	got, err = fioArgs("fio-latency")(&core.RunCtx{}, defaultTR, defaultResultsDir)
+	if err != nil {
+		t.Fatalf("build args with embedded template: %v", err)
+	}
+	staged := filepath.Join(defaultResultsDir, fioVMTemplateFile)
+	data, err := os.ReadFile(staged)
+	if err != nil {
+		t.Fatalf("read staged embedded template: %v", err)
+	}
+	if string(data) != fioVMTemplate {
+		t.Fatal("staged embedded template differs from the compiled template")
+	}
+	if !strings.Contains(strings.Join(got, " "), "--vm-template "+staged) {
+		t.Fatalf("FIO args do not use staged embedded template: %v", got)
 	}
 }
 
