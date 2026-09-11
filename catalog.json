@@ -429,7 +429,7 @@
       "verified": "accepted"
     },
     {
-      "automation_tool": "kube-burner (volumeSnapshotLatency, single-source replicas=250)",
+      "automation_tool": "kube-burner",
       "category": "Control path",
       "checks": [],
       "checks_count": 0,
@@ -437,11 +437,11 @@
       "description": "Create a single volume, then create 250 snapshots of that same volume, keeping them all live at once, and confirm every snapshot reaches ready-to-use.",
       "id": "TR-VIRT-027",
       "params": {
-        "snapshots": {
+        "snapshot_count": {
           "default": 250,
           "required": true
         },
-        "source_replicas": {
+        "replicas": {
           "default": 1
         }
       },
@@ -449,7 +449,7 @@
       "sla": [
         {
           "measured_by": [
-            "kube-burner (volumeSnapshotLatency, single-source replicas=250)"
+            "kube-burner"
           ],
           "metric": "snapshots_per_volume",
           "type": "count",

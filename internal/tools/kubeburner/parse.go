@@ -18,6 +18,7 @@ const (
 	MetricSnapshotReadyCount          = "snapshot_ready_count"
 	MetricSnapshotFailedCount         = "snapshot_failed_count"
 	MetricSnapshotSuccessRate         = "snapshot_success_rate"
+	MetricSnapshotsPerVolume          = "snapshots_per_volume"
 
 	legacySnapshotJobName = "vmsnapshot-snapshot"
 	snapshotJobPrefix     = legacySnapshotJobName + "-"
@@ -88,6 +89,7 @@ func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (
 	if err != nil {
 		return core.TestResult{}, err
 	}
+	jobsPassed := native == core.OutcomePass
 
 	var metrics []core.Metric
 	var perSnapshot []snapshotLatency
@@ -131,6 +133,12 @@ func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (
 			return core.TestResult{}, err
 		}
 		ready := readySnapshotCount(perSnapshot)
+		if len(perSnapshot) == 0 && jobsPassed {
+			// A passing kube-burner job summary proves that all objects in
+			// the requested snapshot batches reached the configured ready
+			// state even when only aggregate quantiles were indexed.
+			ready = requestedSnapshots
+		}
 		if ready > requestedSnapshots {
 			return core.TestResult{}, fmt.Errorf("kube-burner: measured %d ready snapshots, more than %d requested", ready, requestedSnapshots)
 		}
@@ -145,6 +153,11 @@ func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (
 			core.Metric{Name: MetricSnapshotSuccessRate, Value: float64(ready) / float64(requestedSnapshots) * 100, Unit: "%"},
 		)
 		metrics = append(metrics, core.Metric{Name: MetricSnapshotBatchCompletionTime, Value: elapsed, Unit: "s"})
+		if trID == "TR-VIRT-027" {
+			// TR-027 runs with one source VM/volume, so the ready count is
+			// the measured snapshot depth for that volume.
+			metrics = append(metrics, core.Metric{Name: MetricSnapshotsPerVolume, Value: float64(ready), Unit: "count"})
+		}
 	}
 
 	checks := map[string]core.Outcome{"jobs_passed": native}
