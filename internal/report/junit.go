@@ -14,14 +14,16 @@ import (
 // attestations become dedicated suites; verdicts are grouped into one suite per
 // partner level. See ADR-0014.
 func writeJUnit(w io.Writer, r core.Report, hardwareAtRoot bool) error {
-	root := juSuites{Name: "csi-cert-harness"}
+	root := juSuites{Name: "csi-cert-harness", Properties: runProperties(r)}
 
 	// --- environment: hardware ---
 	hwProps := &juProps{}
 	hwProps.add("nodes", strconv.Itoa(r.Environment.Hardware.Nodes))
 	addFacts(hwProps, r.Environment.Hardware.Facts)
 	if hardwareAtRoot {
-		root.Properties = hwProps
+		for _, p := range hwProps.Property {
+			root.Properties.add(p.Name, p.Value)
+		}
 	} else {
 		root.Suites = append(root.Suites, juSuite{Name: "environment-hardware", Properties: hwProps})
 	}
@@ -175,6 +177,44 @@ func writeJUnit(w io.Writer, r core.Report, hardwareAtRoot bool) error {
 	}
 	_, err := io.WriteString(w, "\n")
 	return err
+}
+
+// runProperties is deliberately small and stable. JUnit consumers use these
+// fields to decide whether the run is clean; report.json remains the detailed
+// source for incident diagnostics and full run composition.
+func runProperties(r core.Report) *juProps {
+	p := &juProps{}
+	p.add("harness.junit_profile_version", "1")
+	p.add("harness.run_id", r.RunID)
+	p.add("harness.status", string(r.Status))
+	p.add("harness.health", string(r.Health))
+	p.add("harness.certifiable", strconv.FormatBool(r.Certifiable))
+	p.add("harness.incidents_present", strconv.FormatBool(len(r.Incidents) > 0))
+	p.add("harness.incident_count", strconv.Itoa(len(r.Incidents)))
+	p.add("harness.report_json", "report.json")
+	p.add("harness.composition.parts_count", strconv.Itoa(r.Composition.PartsCount))
+	if r.CompletionReason != "" {
+		p.add("harness.completion_reason", r.CompletionReason)
+	}
+	var parts []string
+	for _, part := range r.Composition.Parts {
+		parts = append(parts, part.PartID)
+	}
+	if len(parts) > 0 {
+		p.add("harness.composition.parts", join(parts))
+	}
+	if len(r.Incidents) > 0 {
+		var ids []string
+		for _, incident := range r.Incidents {
+			if incident.ID != "" {
+				ids = append(ids, incident.ID)
+			}
+		}
+		if len(ids) > 0 {
+			p.add("harness.incident_ids", join(ids))
+		}
+	}
+	return p
 }
 
 // secs formats a duration in seconds for a JUnit time attribute.

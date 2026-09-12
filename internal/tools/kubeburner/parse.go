@@ -159,6 +159,13 @@ func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (
 			metrics = append(metrics, core.Metric{Name: MetricSnapshotsPerVolume, Value: float64(ready), Unit: "count"})
 		}
 	}
+	if requestedSnapshots == 0 && trID == "TR-VIRT-027" {
+		// Explicit reduced mode: the source volume was provisioned, but no
+		// snapshots were requested. Keep the result measurable and make the
+		// intentional reduction visible as a failed 250-snapshot requirement.
+		native = core.OutcomeFail
+		metrics = append(metrics, core.Metric{Name: MetricSnapshotsPerVolume, Value: 0, Unit: "count"})
+	}
 
 	checks := map[string]core.Outcome{"jobs_passed": native}
 	raw, _ := json.Marshal(map[string]any{

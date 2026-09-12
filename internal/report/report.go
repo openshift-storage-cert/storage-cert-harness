@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/safefs"
@@ -18,7 +19,18 @@ import (
 // the per-level rollup, and the certified level. Each verdict's Level (stamped by
 // the orchestrator) drives the rollup. See ADR-0014.
 func Build(runID, schemaVersion string, prov core.Provenance, verdicts []core.Verdict) core.Report {
-	r := core.Report{RunID: runID, SchemaVersion: schemaVersion, Provenance: prov, Verdicts: verdicts}
+	r := core.Report{
+		RunID:         runID,
+		Status:        core.RunStatusComplete,
+		Health:        core.RunHealthHealthy,
+		SchemaVersion: schemaVersion,
+		Provenance:    prov,
+		Composition: core.RunComposition{
+			PartsCount: 1,
+			Parts:      []core.RunPart{{PartID: runID, Kind: "initial", Status: core.RunStatusComplete}},
+		},
+		Verdicts: verdicts,
+	}
 	r.Summary.Total = len(verdicts)
 	for _, v := range verdicts {
 		switch v.Outcome {
@@ -33,7 +45,93 @@ func Build(runID, schemaVersion string, prov core.Provenance, verdicts []core.Ve
 		}
 	}
 	r.Levels, r.Summary.CertifiedLevel = rollupLevels(verdicts)
+	RefreshLifecycle(&r)
 	return r
+}
+
+// NewRunning creates the durable report shell written before tool execution
+// begins. It is intentionally useful without any verdicts: if the process is
+// killed later, this file still identifies the selected work and run part.
+func NewRunning(runID, schemaVersion string, prov core.Provenance, selected []core.TestRequirement, kind, startedAt string) core.Report {
+	if startedAt == "" {
+		startedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	r := core.Report{
+		RunID:         runID,
+		Status:        core.RunStatusRunning,
+		Health:        core.RunHealthHealthy,
+		Certifiable:   false,
+		SchemaVersion: schemaVersion,
+		Provenance:    prov,
+		Composition: core.RunComposition{
+			PartsCount: 1,
+			Parts:      []core.RunPart{{PartID: runID, Kind: kind, StartedAt: startedAt, Status: core.RunStatusRunning}},
+		},
+	}
+	for _, tr := range selected {
+		run := core.RunExecution{TR: tr.ID, Variant: tr.Variant, State: core.ExecutionQueued}
+		r.Executions = append(r.Executions, run)
+	}
+	return r
+}
+
+// RefreshLifecycle derives the run-health and certification flags from the
+// lifecycle status, verdict summary, and incidents. A completed run may be
+// degraded yet still certifiable when incidents are explicitly non-blocking.
+func RefreshLifecycle(r *core.Report) {
+	if r == nil {
+		return
+	}
+	if r.Status == "" {
+		r.Status = core.RunStatusComplete
+	}
+	if len(r.Composition.Parts) == 0 && r.RunID != "" {
+		r.Composition.Parts = []core.RunPart{{PartID: r.RunID, Kind: "initial", Status: r.Status}}
+	}
+	r.Composition.PartsCount = len(r.Composition.Parts)
+	if r.Status == core.RunStatusRunning {
+		r.Health = core.RunHealthHealthy
+		if len(r.Incidents) > 0 {
+			r.Health = core.RunHealthDegraded
+		}
+		r.Certifiable = false
+		return
+	}
+	if r.Status == core.RunStatusComplete {
+		r.Health = core.RunHealthHealthy
+		for _, incident := range r.Incidents {
+			r.Health = core.RunHealthDegraded
+			if incident.BlocksCertification {
+				r.Certifiable = false
+				return
+			}
+		}
+		r.Certifiable = r.Summary.Fail == 0 && r.Summary.Error == 0
+		return
+	}
+	r.Health = core.RunHealthUnhealthy
+	r.Certifiable = false
+}
+
+// Finalize marks a snapshot terminal and updates its current run part.
+func Finalize(r *core.Report, status core.RunStatus, reason, endedAt string) {
+	if r == nil {
+		return
+	}
+	if endedAt == "" {
+		endedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	r.Status = status
+	r.CompletionReason = reason
+	if len(r.Composition.Parts) == 0 {
+		r.Composition.Parts = []core.RunPart{{PartID: r.RunID}}
+	}
+	part := &r.Composition.Parts[len(r.Composition.Parts)-1]
+	part.Status = status
+	part.EndedAt = endedAt
+	part.Reason = reason
+	r.Composition.PartsCount = len(r.Composition.Parts)
+	RefreshLifecycle(r)
 }
 
 // rollupLevels groups verdicts by partner level and computes the certified level.
@@ -143,6 +241,15 @@ func Merge(base, next core.Report) (core.Report, error) {
 
 	merged := Build(base.RunID, schema, prov, verdicts)
 	merged.Measurements = dedupeMeasurements(append(append([]core.Measurement{}, base.Measurements...), next.Measurements...))
+	merged.Composition = mergeComposition(base, next)
+	merged.Executions = mergeExecutions(base.Executions, next.Executions)
+	merged.Incidents = mergeIncidents(base.Incidents, next.Incidents)
+	merged.Warnings = append(append([]string{}, base.Warnings...), next.Warnings...)
+	merged.Status = next.Status
+	if merged.Status == "" {
+		merged.Status = core.RunStatusComplete
+	}
+	merged.CompletionReason = next.CompletionReason
 
 	merged.Environment = base.Environment
 	if emptyEnv(base.Environment) {
@@ -152,7 +259,78 @@ func Merge(base, next core.Report) (core.Report, error) {
 	if len(merged.Attestations) == 0 {
 		merged.Attestations = next.Attestations
 	}
+	RefreshLifecycle(&merged)
 	return merged, nil
+}
+
+func mergeComposition(base, next core.Report) core.RunComposition {
+	parts := make([]core.RunPart, 0, len(base.Composition.Parts)+len(next.Composition.Parts))
+	seen := map[string]bool{}
+	add := func(r core.Report) {
+		if len(r.Composition.Parts) == 0 && r.RunID != "" {
+			status := r.Status
+			if status == "" {
+				status = core.RunStatusComplete
+			}
+			r.Composition.Parts = []core.RunPart{{PartID: r.RunID, Status: status}}
+		}
+		for _, p := range r.Composition.Parts {
+			if p.PartID == "" {
+				continue
+			}
+			if seen[p.PartID] {
+				for i := range parts {
+					if parts[i].PartID == p.PartID {
+						parts[i] = p
+					}
+				}
+				continue
+			}
+			seen[p.PartID] = true
+			parts = append(parts, p)
+		}
+	}
+	add(base)
+	add(next)
+	return core.RunComposition{PartsCount: len(parts), Parts: parts}
+}
+
+func mergeExecutions(base, next []core.RunExecution) []core.RunExecution {
+	byKey := map[string]core.RunExecution{}
+	for _, e := range append(append([]core.RunExecution{}, base...), next...) {
+		byKey[e.TR+"\x00"+e.Variant+"\x00"+e.Scenario] = e
+	}
+	out := make([]core.RunExecution, 0, len(byKey))
+	for _, e := range byKey {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TR != out[j].TR {
+			return out[i].TR < out[j].TR
+		}
+		if out[i].Variant != out[j].Variant {
+			return out[i].Variant < out[j].Variant
+		}
+		return out[i].Scenario < out[j].Scenario
+	})
+	return out
+}
+
+func mergeIncidents(base, next []core.Incident) []core.Incident {
+	seen := map[string]bool{}
+	var out []core.Incident
+	for _, incident := range append(append([]core.Incident{}, base...), next...) {
+		key := incident.ID
+		if key == "" {
+			key = incident.Type + "\x00" + incident.TR + "\x00" + incident.Message
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, incident)
+	}
+	return out
 }
 
 func dedupeVerdicts(vs []core.Verdict) []core.Verdict {
@@ -233,6 +411,9 @@ func WriteJSON(w io.Writer, r core.Report) error {
 func WriteMarkdown(w io.Writer, r core.Report) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Certification report %s\n\n", r.RunID)
+	fmt.Fprintf(&b, "- Status: %s\n", r.Status)
+	fmt.Fprintf(&b, "- Health: %s\n", r.Health)
+	fmt.Fprintf(&b, "- Certifiable: %t\n", r.Certifiable)
 	fmt.Fprintf(&b, "- Provenance: schema %s", r.SchemaVersion)
 	if r.Provenance.KBGitCommit != "" {
 		fmt.Fprintf(&b, ", KB commit %s", r.Provenance.KBGitCommit)
@@ -248,6 +429,25 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 	fmt.Fprintf(&b, "- Certified level: %d\n", r.Summary.CertifiedLevel)
 	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip (of %d)\n\n",
 		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.Total)
+	if len(r.Composition.Parts) > 0 {
+		b.WriteString("## Run composition\n\n")
+		fmt.Fprintf(&b, "Composed from %d run part(s).\n\n", r.Composition.PartsCount)
+		b.WriteString("| Part | Kind | Status | Started | Ended | Reason |\n")
+		b.WriteString("|------|------|--------|---------|-------|--------|\n")
+		for _, p := range r.Composition.Parts {
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", p.PartID, p.Kind, p.Status, p.StartedAt, p.EndedAt, p.Reason)
+		}
+		b.WriteString("\n")
+	}
+	if len(r.Incidents) > 0 {
+		b.WriteString("## Run incidents\n\n")
+		b.WriteString("| ID | Severity | Type | TR | Stage | Resolved | Message | Impact |\n")
+		b.WriteString("|----|----------|------|----|-------|----------|---------|--------|\n")
+		for _, incident := range r.Incidents {
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %t | %s | %s |\n", incident.ID, incident.Severity, incident.Type, incident.TR, incident.Stage, incident.Resolved, incident.Message, incident.Impact)
+		}
+		b.WriteString("\n")
+	}
 	scenarios := false
 	for _, v := range r.Verdicts {
 		if v.Scenario != "" {

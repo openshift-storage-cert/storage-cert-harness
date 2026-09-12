@@ -58,7 +58,7 @@ func newRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newVersionCmd(), newListCmd(), newValidateCmd(), newPreflightCmd(), newRunCmd(), newAttestCmd())
+	root.AddCommand(newVersionCmd(), newListCmd(), newValidateCmd(), newPreflightCmd(), newRunCmd(), newAttestCmd(), newRecoverCmd(), newSimulateReportCmd())
 	return root
 }
 
@@ -258,7 +258,9 @@ func newRunCmd() *cobra.Command {
 		noAttestations   bool
 		scenario         string
 		continueFrom     string
+		retryFailed      bool
 		skipEnv          bool
+		runTimeout       time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -366,6 +368,11 @@ func newRunCmd() *cobra.Command {
 				}
 				prior = &p
 			}
+			if prior != nil {
+				before := len(selected)
+				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, retryFailed)
+				logger.Info("continue-from: selecting incomplete executions", "previously_selected", before, "resuming", len(selected), "skipped_completed", before-len(selected), "scenario", cfg.Scenario)
+			}
 			var attestations []core.Attestation
 			switch {
 			case prior != nil && len(prior.Attestations) > 0:
@@ -391,9 +398,54 @@ func newRunCmd() *cobra.Command {
 				logger.Warn("no attestations provided and not interactive; skipping (use --attestations or --no-attestations to silence)")
 			}
 
-			rep, err := orchestrator.Run(ctx, cfg, trs, cat.Provenance, cat.SchemaVersion, rc)
+			partKind := "initial"
+			if prior != nil {
+				partKind = "resume"
+			}
+			startedAt := time.Now().UTC().Format(time.RFC3339)
+			initial := report.NewRunning(runID, cat.SchemaVersion, cat.Provenance, selected, partKind, startedAt)
+			for i := range initial.Executions {
+				initial.Executions[i].Scenario = cfg.Scenario
+			}
+			if prior != nil {
+				initial.Attestations = prior.Attestations
+				merged, mergeErr := report.Merge(*prior, initial)
+				if mergeErr != nil {
+					return mergeErr
+				}
+				initial = merged
+			} else {
+				initial.Attestations = attestations
+			}
+			checkpoint := newReportCheckpoint(outputDir, initial)
+			if outputDir != "" {
+				checkpoint.Save(initial)
+				if checkpointErr := checkpoint.Err(); checkpointErr != nil {
+					return fmt.Errorf("write initial report checkpoint: %w", checkpointErr)
+				}
+			}
+			finalOutputWritten := false
+			defer func() {
+				if !finalOutputWritten && runErr != nil {
+					checkpoint.Finalize(core.RunStatusPartial, runErr.Error())
+				}
+			}()
+
+			rc.PartKind = partKind
+			rc.Checkpoint = checkpoint.Save
+			rc.RecordIncident = checkpoint.RecordIncident
+			runCtx := ctx
+			var cancelRun context.CancelFunc
+			if runTimeout > 0 {
+				runCtx, cancelRun = context.WithTimeout(ctx, runTimeout)
+				defer cancelRun()
+			}
+			rep, err := orchestrator.Run(runCtx, cfg, trs, cat.Provenance, cat.SchemaVersion, rc)
 			if err != nil {
 				return err
+			}
+			if checkpointErr := checkpoint.Err(); checkpointErr != nil {
+				return fmt.Errorf("write report checkpoint: %w", checkpointErr)
 			}
 
 			// Optionally continue from a prior report: reuse its environment (no
@@ -439,11 +491,15 @@ func newRunCmd() *cobra.Command {
 				if err := writeReportFiles(outputDir, rep, savedAttestations); err != nil {
 					return err
 				}
+				finalOutputWritten = true
 			}
 			if err := report.WriteMarkdown(cmd.OutOrStdout(), rep); err != nil {
 				return err
 			}
 
+			if rep.Status != core.RunStatusComplete {
+				return fmt.Errorf("run did not complete: status=%s reason=%s", rep.Status, rep.CompletionReason)
+			}
 			if rep.Summary.Fail > 0 || rep.Summary.Error > 0 {
 				return fmt.Errorf("certification failed: %d fail, %d error", rep.Summary.Fail, rep.Summary.Error)
 			}
@@ -464,7 +520,9 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noAttestations, "no-attestations", false, "do not prompt for manual attestations")
 	cmd.Flags().StringVar(&scenario, "scenario", "", "run label stamped onto every verdict (e.g. under-pressure); overrides the plan")
 	cmd.Flags().StringVar(&continueFrom, "continue-from", "", "path to a prior report.json to reuse its environment and merge this run into")
+	cmd.Flags().BoolVar(&retryFailed, "retry-failed", false, "with --continue-from, rerun previously completed fail/error executions")
 	cmd.Flags().BoolVar(&skipEnv, "skip-env", false, "skip cluster environment collection")
+	cmd.Flags().DurationVar(&runTimeout, "timeout", 0, "cancel the run after this duration (0 means no harness timeout)")
 	cmd.Flags().StringSliceVar(&cfg.Filter.Tools, "tool", nil, "restrict to these automation tools")
 	cmd.Flags().StringSliceVar(&cfg.Filter.IDs, "id", nil, "restrict to these TR ids")
 	cmd.Flags().IntSliceVar(&cfg.Filter.PartnerLevels, "partner-level", nil, "restrict to these partner levels (1|2|3)")
@@ -542,22 +600,23 @@ func isInteractive(f *os.File) bool {
 }
 
 func writeReportFiles(outputDir string, rep core.Report, attestations []core.Attestation) error {
+	report.RefreshLifecycle(&rep)
 	if len(attestations) > 0 {
 		if err := attestation.WriteFile(filepath.Join(outputDir, "attestations.json"), attestations); err != nil {
 			return err
 		}
 	}
-	if err := safefs.WriteWriter(filepath.Join(outputDir, "report.json"), 0o600, func(w io.Writer) error {
+	if err := safefs.WriteWriterAtomic(filepath.Join(outputDir, "report.json"), 0o600, func(w io.Writer) error {
 		return report.WriteJSON(w, rep)
 	}); err != nil {
 		return err
 	}
-	if err := safefs.WriteWriter(filepath.Join(outputDir, "report.md"), 0o600, func(w io.Writer) error {
+	if err := safefs.WriteWriterAtomic(filepath.Join(outputDir, "report.md"), 0o600, func(w io.Writer) error {
 		return report.WriteMarkdown(w, rep)
 	}); err != nil {
 		return err
 	}
-	return safefs.WriteWriter(filepath.Join(outputDir, "report.junit.xml"), 0o600, func(w io.Writer) error {
+	return safefs.WriteWriterAtomic(filepath.Join(outputDir, "report.junit.xml"), 0o600, func(w io.Writer) error {
 		return (report.JUnitExporter{}).Export(w, rep)
 	})
 }
