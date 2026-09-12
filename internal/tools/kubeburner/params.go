@@ -70,10 +70,14 @@ func resolveParams(trs []core.TestRequirement) Params {
 }
 
 func (p Params) validate() error {
+	return p.validateFor("")
+}
+
+func (p Params) validateFor(trID string) error {
 	if p.Replicas < 1 {
 		return fmt.Errorf("kube-burner: param %q must be >= 1", "replicas")
 	}
-	if p.SnapshotCount < 1 {
+	if p.SnapshotCount < 0 || (p.SnapshotCount == 0 && trID != "TR-VIRT-027") {
 		return fmt.Errorf("kube-burner: param %q must be >= 1", "snapshot_count")
 	}
 	return nil

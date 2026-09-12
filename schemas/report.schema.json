@@ -4,9 +4,13 @@
   "title": "Certification Report",
   "description": "Graded run output: one verdict per scorable item (each sla and each check) within a TR. Provenance is stamped for auditability. See decisions/0006.",
   "type": "object",
-  "required": ["run_id", "provenance", "verdicts", "summary"],
+  "required": ["run_id", "status", "health", "certifiable", "provenance", "composition", "verdicts", "summary"],
   "properties": {
     "run_id": { "type": "string" },
+    "status": { "enum": ["running", "complete", "partial", "failed", "abandoned"] },
+    "health": { "enum": ["healthy", "degraded", "unhealthy"] },
+    "certifiable": { "type": "boolean" },
+    "completion_reason": { "type": "string" },
     "schema_version": { "type": "string", "description": "KB export schema the run consumed" },
     "provenance": {
       "type": "object",
@@ -14,6 +18,70 @@
         "kb_git_commit": { "type": "string" },
         "kb_commit_date": { "type": "string" },
         "generated_date": { "type": "string" }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "required": ["parts_count"],
+      "properties": {
+        "parts_count": { "type": "integer", "minimum": 0 },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["part_id", "status"],
+            "properties": {
+              "part_id": { "type": "string" },
+              "kind": { "type": "string" },
+              "started_at": { "type": "string" },
+              "ended_at": { "type": "string" },
+              "status": { "enum": ["running", "complete", "partial", "failed", "abandoned"] },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "executions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tr", "state"],
+        "properties": {
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "scenario": { "type": "string" },
+          "state": { "enum": ["queued", "running", "completed", "aborted"] },
+          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "stage": { "type": "string" },
+          "started_at": { "type": "string" },
+          "ended_at": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "severity": { "type": "string" },
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "tool": { "type": "string" },
+          "stage": { "type": "string" },
+          "message": { "type": "string" },
+          "started_at": { "type": "string" },
+          "ended_at": { "type": "string" },
+          "duration_s": { "type": "number" },
+          "resolved": { "type": "boolean" },
+          "blocks_certification": { "type": "boolean" },
+          "impact": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
       }
     },
     "verdicts": {
