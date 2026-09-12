@@ -44,8 +44,31 @@ and `run.log`. `run.log` contains harness log messages and stdout/stderr from
 the kube-burner and kube-burner-ocp subprocesses. virtbench output is included
 through the harness logger. During a run, progress messages show completed and
 remaining plan executions; add `--verbose` (or `-v`) to include running and
-queued test lists. Submit `report.junit.xml` and `run.log` together;
-the work directory also contains the tool-generated result artifacts.
+queued test lists. Submit `report.junit.xml` and `report.json` together;
+the JUnit file carries the clean/degraded/incomplete summary and points to the
+JSON file for incident details. Include `run.log` and the work directory's
+tool-generated result artifacts as supporting evidence.
+
+The JUnit root properties include `harness.status`, `harness.health`,
+`harness.certifiable`, `harness.incidents_present`,
+`harness.composition.parts_count`, and `harness.report_json`.
+
+Reports are checkpointed atomically while a run is active. If a process is
+interrupted, the last `report.json` remains marked `running`, `partial`, or
+`abandoned` instead of disappearing. Recover a stale checkpoint with:
+
+```sh
+./bin/harness recover --output ./out/certification-run
+```
+
+Use `--timeout 2h` (or another Go duration) to turn a run-wide deadline into a
+recorded cancellation incident and a partial report.
+
+The offline scenario generator exercises report consumers without a cluster:
+
+```sh
+./bin/harness simulate-report --output ./out/report-scenarios
+```
 
 ## How it works
 
@@ -161,5 +184,9 @@ all variants contribute to certification grading. Keep the plan with the report
 for parameter provenance: resolved parameter maps are not serialized, since tool
 parameters may include sensitive configuration. Existing plans need no changes.
 
-When using `--continue-from`, distinct variants are retained. Repeating the same
-TR, scenario and variant replaces its earlier results.
+When using `--continue-from`, every completed execution for the matching
+scenario is skipped, including completed failures. Running and queued
+executions are run. Use `--retry-failed` when failed/error executions should be
+rerun explicitly. Distinct variants and scenarios are retained, and a rerun of
+the same TR, scenario, variant, and item replaces its earlier result while the
+run-part history remains in the composed report.

@@ -48,6 +48,122 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	var scorable []core.TestRequirement
 	var verdicts []core.Verdict
 	var measurements []core.Measurement
+	var resultsMu sync.Mutex
+	var stateMu sync.Mutex
+	var incidentMu sync.Mutex
+	startedAt := time.Now().UTC().Format(time.RFC3339)
+	partKind := rc.PartKind
+	if partKind == "" {
+		partKind = "initial"
+	}
+	executionStates := make(map[string]core.RunExecution, len(selected))
+	for _, tr := range selected {
+		label := core.ExecutionLabel(tr.ID, tr.Variant)
+		executionStates[label] = core.RunExecution{TR: tr.ID, Variant: tr.Variant, Scenario: cfg.Scenario, State: core.ExecutionQueued}
+	}
+	incidents := []core.Incident{}
+
+	levelOf := make(map[string]int, len(selected))
+	for _, tr := range selected {
+		levelOf[tr.ID] = tr.PartnerLevel
+	}
+
+	checkpointSnapshot := func(status core.RunStatus) core.Report {
+		resultsMu.Lock()
+		vs := append([]core.Verdict(nil), verdicts...)
+		ms := append([]core.Measurement(nil), measurements...)
+		resultsMu.Unlock()
+		for i := range vs {
+			vs[i].Level = levelOf[vs[i].TR]
+			vs[i].Scenario = cfg.Scenario
+		}
+		for i := range ms {
+			ms[i].Level = levelOf[ms[i].TR]
+			ms[i].Scenario = cfg.Scenario
+		}
+		r := report.Build(rc.RunID, schemaVersion, prov, vs)
+		r.Status = status
+		r.Composition = core.RunComposition{PartsCount: 1, Parts: []core.RunPart{{
+			PartID: rc.RunID, Kind: partKind, StartedAt: startedAt, Status: status,
+		}}}
+		stateMu.Lock()
+		for _, execution := range executionStates {
+			r.Executions = append(r.Executions, execution)
+		}
+		stateMu.Unlock()
+		sort.Slice(r.Executions, func(i, j int) bool {
+			if r.Executions[i].TR != r.Executions[j].TR {
+				return r.Executions[i].TR < r.Executions[j].TR
+			}
+			return r.Executions[i].Variant < r.Executions[j].Variant
+		})
+		incidentMu.Lock()
+		r.Incidents = append([]core.Incident(nil), incidents...)
+		incidentMu.Unlock()
+		r.Measurements, r.Warnings = report.SelectMeasurements(selected, ms, cfg.ExtraMetrics, cfg.ReportMetrics)
+		report.RefreshLifecycle(&r)
+		return r
+	}
+	checkpoint := func(status core.RunStatus) {
+		if rc.Checkpoint != nil {
+			rc.Checkpoint(checkpointSnapshot(status))
+		}
+	}
+	recordIncident := func(incident core.Incident) {
+		incidentMu.Lock()
+		if incident.ID == "" {
+			incident.ID = fmt.Sprintf("incident-%03d", len(incidents)+1)
+		}
+		incidents = append(incidents, incident)
+		incidentMu.Unlock()
+	}
+	externalIncidentRecorder := rc.RecordIncident
+	rc.RecordIncident = func(incident core.Incident) {
+		recordIncident(incident)
+		if externalIncidentRecorder != nil {
+			externalIncidentRecorder(incident)
+		}
+	}
+	externalStageRecorder := rc.SetStage
+	rc.SetStage = func(stage string, trs []core.TestRequirement) {
+		stateMu.Lock()
+		for _, tr := range trs {
+			label := core.ExecutionLabel(tr.ID, tr.Variant)
+			execution := executionStates[label]
+			execution.Stage = stage
+			executionStates[label] = execution
+		}
+		stateMu.Unlock()
+		checkpoint(core.RunStatusRunning)
+		if externalStageRecorder != nil {
+			externalStageRecorder(stage, trs)
+		}
+	}
+	progress.onStateChange = func(label string, state progressState, outcome core.Outcome) {
+		stateMu.Lock()
+		execution := executionStates[label]
+		switch state {
+		case progressRunning:
+			execution.State = core.ExecutionRunning
+			execution.StartedAt = time.Now().UTC().Format(time.RFC3339)
+		case progressComplete:
+			execution.State = core.ExecutionCompleted
+			execution.Outcome = outcome
+			execution.Stage = "complete"
+			execution.EndedAt = time.Now().UTC().Format(time.RFC3339)
+		case progressAborted:
+			execution.State = core.ExecutionAborted
+			execution.Outcome = outcome
+			execution.Reason = "run ended before execution completed"
+			execution.EndedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		executionStates[label] = execution
+		stateMu.Unlock()
+		if state == progressRunning {
+			checkpoint(core.RunStatusRunning)
+		}
+	}
+	checkpoint(core.RunStatusRunning)
 	for _, tr := range selected {
 		if !runnable(tr) {
 			verdicts = append(verdicts, notScorable(tr)...)
@@ -61,6 +177,7 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 		}
 		scorable = append(scorable, tr)
 	}
+	checkpoint(core.RunStatusRunning)
 
 	// Run scoped setup (run → group) once each before the job loop; a failed
 	// setup errors its in-scope TRs and skips their jobs. Successful setups are
@@ -68,16 +185,22 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	setups := activeSetups(scorable)
 	var ranSetups []scopedSetup
 	for _, s := range setups {
+		rc.SetStage("setup:"+s.label, s.trs)
 		if err := s.provider.Setup(ctx, rc, s.trs); err != nil {
 			verdicts = append(verdicts, errTRs(s.trs, "setup ["+s.label+"]: "+err.Error())...)
 			for _, tr := range s.trs {
-				progress.complete(tr, core.OutcomeError)
+				if ctx.Err() != nil {
+					progress.abort(tr, core.OutcomeError)
+				} else {
+					progress.complete(tr, core.OutcomeError)
+				}
 			}
 			scorable = withoutTRs(scorable, s.trs)
 			continue
 		}
 		ranSetups = append(ranSetups, s)
 	}
+	checkpoint(core.RunStatusRunning)
 	defer func() {
 		for i := len(ranSetups) - 1; i >= 0; i-- {
 			if err := ranSetups[i].provider.Teardown(ctx, rc, ranSetups[i].trs); err != nil {
@@ -89,13 +212,13 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	jobs := groupByTool(scorable, cfg.Scheduling)
 	g := grader.New()
 
-	var mu sync.Mutex
 	schedule(cfg.Concurrency, jobs, func(j job) {
 		vs, ms := runToolExecutions(ctx, j, rc, g, progress)
-		mu.Lock()
+		resultsMu.Lock()
 		verdicts = append(verdicts, vs...)
 		measurements = append(measurements, ms...)
-		mu.Unlock()
+		resultsMu.Unlock()
+		checkpoint(core.RunStatusRunning)
 	})
 
 	sort.Slice(verdicts, func(i, k int) bool {
@@ -121,10 +244,6 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	})
 	// Stamp each verdict/measurement with its TR's partner level so the report can
 	// roll up by level and compute the certified level (ADR-0014).
-	levelOf := make(map[string]int, len(selected))
-	for _, tr := range selected {
-		levelOf[tr.ID] = tr.PartnerLevel
-	}
 	for i := range verdicts {
 		verdicts[i].Level = levelOf[verdicts[i].TR]
 		verdicts[i].Scenario = cfg.Scenario
@@ -133,8 +252,37 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 		measurements[i].Level = levelOf[measurements[i].TR]
 		measurements[i].Scenario = cfg.Scenario
 	}
-	rep := report.Build(rc.RunID, schemaVersion, prov, verdicts) // schemaVersion stamped
-	rep.Measurements, rep.Warnings = report.SelectMeasurements(selected, measurements, cfg.ExtraMetrics, cfg.ReportMetrics)
+	stateMu.Lock()
+	allTerminal := true
+	for label, execution := range executionStates {
+		if execution.State == core.ExecutionRunning {
+			execution.State = core.ExecutionAborted
+			execution.Reason = "run ended before execution completed"
+			execution.EndedAt = time.Now().UTC().Format(time.RFC3339)
+			executionStates[label] = execution
+		}
+		if executionStates[label].State != core.ExecutionCompleted && executionStates[label].State != core.ExecutionAborted {
+			allTerminal = false
+		}
+	}
+	stateMu.Unlock()
+	status := core.RunStatusComplete
+	reason := ""
+	if ctx.Err() != nil {
+		status = core.RunStatusPartial
+		reason = ctx.Err().Error()
+		recordIncident(core.Incident{ID: "run-cancelled", Type: "cancellation", Severity: "error", Message: ctx.Err().Error(), StartedAt: time.Now().UTC().Format(time.RFC3339), BlocksCertification: true, Impact: "run did not complete all selected executions"})
+	} else if !allTerminal {
+		status = core.RunStatusPartial
+		reason = "run ended with queued executions"
+		recordIncident(core.Incident{ID: "run-incomplete", Type: "incomplete", Severity: "error", Message: reason, BlocksCertification: true, Impact: "selected executions were not completed"})
+	}
+	rep := checkpointSnapshot(status)
+	if reason != "" {
+		report.Finalize(&rep, status, reason, time.Now().UTC().Format(time.RFC3339))
+	} else {
+		report.Finalize(&rep, status, "", time.Now().UTC().Format(time.RFC3339))
+	}
 	for _, warning := range rep.Warnings {
 		if rc.Logger != nil {
 			rc.Logger.Warn(warning)
@@ -182,6 +330,72 @@ func SelectTRs(all []core.TestRequirement, f config.Filter) []core.TestRequireme
 		out = append(out, tr)
 	}
 	return out
+}
+
+// ResumeExecutions removes executions that already reached a terminal completed
+// state in a prior report. It is the true continuation mode: failed results are
+// preserved rather than silently rerun. Use ResumeExecutionsWithOptions with
+// retryFailed when a caller explicitly wants to retry fail/error results.
+func ResumeExecutions(selected []core.TestRequirement, prior core.Report, scenario string) []core.TestRequirement {
+	return ResumeExecutionsWithOptions(selected, prior, scenario, false)
+}
+
+// ResumeExecutionsWithOptions is ResumeExecutions with an explicit failed-test
+// retry policy. Scenario is part of the identity: a load80 execution must not
+// satisfy a non-load80 continuation.
+func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Report, scenario string, retryFailed bool) []core.TestRequirement {
+	completed := map[string]bool{}
+	failed := map[string]bool{}
+	knownExecutions := map[string]bool{}
+	for _, execution := range prior.Executions {
+		if execution.Scenario != scenario {
+			continue
+		}
+		key := executionKey(execution.TR, execution.Variant, execution.Scenario)
+		knownExecutions[key] = true
+		if execution.State == core.ExecutionCompleted {
+			completed[key] = true
+			if execution.Outcome == core.OutcomeFail || execution.Outcome == core.OutcomeError {
+				failed[key] = true
+			}
+		}
+	}
+
+	// Reports written before persisted execution state existed can still resume
+	// safely: any item-level verdict means that execution reached a terminal
+	// result in that report.
+	for _, verdict := range prior.Verdicts {
+		if verdict.Scenario != scenario {
+			continue
+		}
+		key := executionKey(verdict.TR, verdict.Variant, verdict.Scenario)
+		// New reports persist execution state for every selected item. An
+		// aborted/queued/running execution may already have cancellation
+		// verdicts, but it must remain resumable. Use legacy verdict fallback
+		// only when no execution record exists.
+		if knownExecutions[key] {
+			continue
+		}
+		completed[key] = true
+		switch verdict.Outcome {
+		case core.OutcomeFail, core.OutcomeError:
+			failed[key] = true
+		}
+	}
+
+	out := make([]core.TestRequirement, 0, len(selected))
+	for _, tr := range selected {
+		key := executionKey(tr.ID, tr.Variant, scenario)
+		skip := completed[key] && !(retryFailed && failed[key])
+		if !skip {
+			out = append(out, tr)
+		}
+	}
+	return out
+}
+
+func executionKey(tr, variant, scenario string) string {
+	return tr + "\x00" + variant + "\x00" + scenario
 }
 
 // missingRequiredParams returns the names of a TR's required params that have no
@@ -393,10 +607,14 @@ func runJob(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader) (verd
 	bag := core.NewBag()
 
 	if ti.Teardown != nil {
-		defer func() { _ = ti.Teardown.Teardown(ctx, rc, bag) }()
+		defer func() {
+			rc.SetStage("teardown", j.trs)
+			_ = ti.Teardown.Teardown(ctx, rc, bag)
+		}()
 	}
 
 	if ti.Preflight != nil {
+		rc.SetStage("preflight", j.trs)
 		findings, err := ti.Preflight.Check(ctx, rc, bag, j.trs)
 		if err != nil {
 			return errTRs(j.trs, "preflight: "+err.Error()), nil
@@ -408,12 +626,14 @@ func runJob(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader) (verd
 		}
 	}
 	if ti.Provisioner != nil {
+		rc.SetStage("provision", j.trs)
 		if err := ti.Provisioner.Provision(ctx, rc, bag, j.trs); err != nil {
 			return errTRs(j.trs, "provision: "+err.Error()), nil
 		}
 	}
 	var handle stages.RunHandle
 	if ti.Runner != nil {
+		rc.SetStage("run", j.trs)
 		h, err := ti.Runner.Run(ctx, rc, bag, j.trs)
 		if err != nil {
 			return errTRs(j.trs, "run: "+err.Error()), nil
@@ -422,6 +642,7 @@ func runJob(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader) (verd
 	}
 	var logs core.LogBundle
 	if ti.LogCollector != nil {
+		rc.SetStage("collect", j.trs)
 		lb, err := ti.LogCollector.Collect(ctx, rc, bag, handle)
 		if err != nil {
 			return errTRs(j.trs, "collect: "+err.Error()), nil
@@ -430,6 +651,7 @@ func runJob(ctx context.Context, j job, rc *core.RunCtx, g *grader.Grader) (verd
 	}
 	var results []core.TestResult
 	if ti.ResultParser != nil {
+		rc.SetStage("parse", j.trs)
 		rs, err := ti.ResultParser.Parse(ctx, rc, bag, logs)
 		if err != nil {
 			return errTRs(j.trs, "parse: "+err.Error()), nil
@@ -559,7 +781,11 @@ func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Gr
 		}
 		v, m := runJob(ctx, batch, rc, g)
 		for _, tr := range ordinary {
-			progress.complete(tr, summarizeTR(v, tr))
+			if ctx.Err() != nil {
+				progress.abort(tr, core.OutcomeError)
+			} else {
+				progress.complete(tr, summarizeTR(v, tr))
+			}
 		}
 		vs = append(vs, v...)
 		ms = append(ms, m...)
@@ -573,14 +799,22 @@ func runToolExecutions(ctx context.Context, j job, rc *core.RunCtx, g *grader.Gr
 		variantRC.WorkDir = filepath.Join(rc.WorkDir, "variants", hex.EncodeToString([]byte(tr.ID)), hex.EncodeToString([]byte(tr.Variant)))
 		if err := os.MkdirAll(variantRC.WorkDir, 0o750); err != nil {
 			vs = append(vs, errTR(tr, "variant workdir: "+err.Error())...)
-			progress.complete(tr, core.OutcomeError)
+			if ctx.Err() != nil {
+				progress.abort(tr, core.OutcomeError)
+			} else {
+				progress.complete(tr, core.OutcomeError)
+			}
 			continue
 		}
 		batch := j
 		batch.trs = []core.TestRequirement{tr}
 		progress.start(tr)
 		v, m := runJob(ctx, batch, &variantRC, g)
-		progress.complete(tr, summarizeTR(v, tr))
+		if ctx.Err() != nil {
+			progress.abort(tr, core.OutcomeError)
+		} else {
+			progress.complete(tr, summarizeTR(v, tr))
+		}
 		vs = append(vs, v...)
 		ms = append(ms, m...)
 	}

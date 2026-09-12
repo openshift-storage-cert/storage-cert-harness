@@ -48,6 +48,7 @@ backends:
   - name: ontap-san
     vendor: netapp-trident
     storage_class: ontap-san
+    snapshot_class: csi-trident-volumesnapshotclass
 
   # Non-existent StorageClass so PVCs never bind (pvc-density negative plan).
   - name: no-such-sc

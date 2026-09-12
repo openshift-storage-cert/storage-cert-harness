@@ -19,6 +19,91 @@ const (
 	OutcomeSkip  Outcome = "skip"
 )
 
+// RunStatus describes the lifecycle state of the complete harness run.
+type RunStatus string
+
+const (
+	RunStatusRunning   RunStatus = "running"
+	RunStatusComplete  RunStatus = "complete"
+	RunStatusPartial   RunStatus = "partial"
+	RunStatusFailed    RunStatus = "failed"
+	RunStatusAbandoned RunStatus = "abandoned"
+)
+
+// RunHealth describes whether the execution itself was clean, independently of
+// the pass/fail outcomes of individual certification checks.
+type RunHealth string
+
+const (
+	RunHealthHealthy   RunHealth = "healthy"
+	RunHealthDegraded  RunHealth = "degraded"
+	RunHealthUnhealthy RunHealth = "unhealthy"
+)
+
+// ExecutionState is the persisted state of one selected TR execution. It is
+// intentionally separate from Verdict: a queued or interrupted execution may
+// have no graded verdicts yet.
+type ExecutionState string
+
+const (
+	ExecutionQueued    ExecutionState = "queued"
+	ExecutionRunning   ExecutionState = "running"
+	ExecutionCompleted ExecutionState = "completed"
+	ExecutionAborted   ExecutionState = "aborted"
+)
+
+// RunExecution records progress for one selected TR/variant.
+type RunExecution struct {
+	TR        string         `json:"tr"`
+	Variant   string         `json:"variant,omitempty"`
+	Scenario  string         `json:"scenario,omitempty"`
+	State     ExecutionState `json:"state"`
+	Outcome   Outcome        `json:"outcome,omitempty"`
+	Stage     string         `json:"stage,omitempty"`
+	StartedAt string         `json:"started_at,omitempty"`
+	EndedAt   string         `json:"ended_at,omitempty"`
+	Reason    string         `json:"reason,omitempty"`
+}
+
+// RunPart identifies one harness process/invocation that contributed to a
+// composed report. A resumed run adds another part rather than erasing the
+// original execution history.
+type RunPart struct {
+	PartID    string    `json:"part_id"`
+	Kind      string    `json:"kind,omitempty"` // initial | resume | recovery | retry
+	StartedAt string    `json:"started_at,omitempty"`
+	EndedAt   string    `json:"ended_at,omitempty"`
+	Status    RunStatus `json:"status"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+// RunComposition describes how many independent run parts produced a report.
+type RunComposition struct {
+	PartsCount int       `json:"parts_count"`
+	Parts      []RunPart `json:"parts,omitempty"`
+}
+
+// Incident records an abnormal run condition, such as a stage timeout or a
+// cancelled execution. Details belong in JSON; JUnit exposes only summary flags
+// and the report.json filename.
+type Incident struct {
+	ID                  string  `json:"id"`
+	Type                string  `json:"type"`
+	Severity            string  `json:"severity,omitempty"`
+	TR                  string  `json:"tr,omitempty"`
+	Variant             string  `json:"variant,omitempty"`
+	Tool                string  `json:"tool,omitempty"`
+	Stage               string  `json:"stage,omitempty"`
+	Message             string  `json:"message"`
+	StartedAt           string  `json:"started_at,omitempty"`
+	EndedAt             string  `json:"ended_at,omitempty"`
+	DurationS           float64 `json:"duration_s,omitempty"`
+	Resolved            bool    `json:"resolved,omitempty"`
+	BlocksCertification bool    `json:"blocks_certification,omitempty"`
+	Impact              string  `json:"impact,omitempty"`
+	Evidence            string  `json:"evidence,omitempty"`
+}
+
 // KB status values (catalog sla_status/checks_status, and per-check status).
 const (
 	StatusDefined       = "defined"
@@ -167,16 +252,23 @@ type Finding struct {
 
 // Report is the certification run output.
 type Report struct {
-	RunID         string        `json:"run_id"`
-	SchemaVersion string        `json:"schema_version,omitempty"`
-	Provenance    Provenance    `json:"provenance"`             // where the requirements came from (KB)
-	Environment   Environment   `json:"environment"`            // where the run executed (cluster) — ADR-0014
-	Attestations  []Attestation `json:"attestations,omitempty"` // self-reported, unobservable-only — ADR-0014
-	Verdicts      []Verdict     `json:"verdicts"`
-	Measurements  []Measurement `json:"measurements,omitempty"` // catalog metrics plus requested extras
-	Warnings      []string      `json:"warnings,omitempty"`     // informational; never affects grading
-	Levels        []LevelRollup `json:"levels,omitempty"`       // verdicts grouped by partner level
-	Summary       Summary       `json:"summary"`
+	RunID            string         `json:"run_id"`
+	Status           RunStatus      `json:"status"`
+	Health           RunHealth      `json:"health"`
+	Certifiable      bool           `json:"certifiable"`
+	CompletionReason string         `json:"completion_reason,omitempty"`
+	SchemaVersion    string         `json:"schema_version,omitempty"`
+	Provenance       Provenance     `json:"provenance"`             // where the requirements came from (KB)
+	Environment      Environment    `json:"environment"`            // where the run executed (cluster) — ADR-0014
+	Attestations     []Attestation  `json:"attestations,omitempty"` // self-reported, unobservable-only — ADR-0014
+	Composition      RunComposition `json:"composition"`
+	Executions       []RunExecution `json:"executions,omitempty"`
+	Incidents        []Incident     `json:"incidents,omitempty"`
+	Verdicts         []Verdict      `json:"verdicts"`
+	Measurements     []Measurement  `json:"measurements,omitempty"` // catalog metrics plus requested extras
+	Warnings         []string       `json:"warnings,omitempty"`     // informational; never affects grading
+	Levels           []LevelRollup  `json:"levels,omitempty"`       // verdicts grouped by partner level
+	Summary          Summary        `json:"summary"`
 }
 
 // Measurement is a value the tool measured, surfaced in the report whether or not
@@ -281,9 +373,10 @@ type Attestation struct {
 // context.Context (cancellation/deadlines). A live Kubernetes client will be
 // added here once internal/kube is implemented.
 type RunCtx struct {
-	RunID   string
-	WorkDir string
-	Logger  *slog.Logger
+	RunID    string
+	PartKind string // initial | resume | recovery | retry
+	WorkDir  string
+	Logger   *slog.Logger
 	// LogOutput receives subprocess stdout/stderr when the CLI is configured to
 	// persist a complete run log. It is deliberately not part of the report.
 	LogOutput io.Writer
@@ -291,6 +384,15 @@ type RunCtx struct {
 	// secrets already resolved. It is optional (may be nil / empty). See
 	// decisions/0005.
 	Backend *ResolvedBackend
+	// Checkpoint receives durable report snapshots while a run is in progress.
+	// The callback must be safe for concurrent calls from scheduled tools.
+	Checkpoint func(Report)
+	// RecordIncident records a run-level incident without requiring a concrete
+	// report implementation in the orchestrator or tool adapters.
+	RecordIncident func(Incident)
+	// SetStage marks the stage currently executing for one or more TRs. The
+	// callback is used to make a stale checkpoint explain where the run stopped.
+	SetStage func(string, []TestRequirement)
 }
 
 // ToolOutput mirrors a subprocess stream to the terminal and, when configured,

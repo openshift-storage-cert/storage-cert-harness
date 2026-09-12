@@ -11,7 +11,8 @@ import (
 // execution level. Named variants are separate executions, while a TR's
 // individual SLA/check verdicts are intentionally not counted separately.
 type progressTracker struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	onStateChange func(label string, state progressState, outcome core.Outcome)
 
 	mu       sync.Mutex
 	order    []string
@@ -25,6 +26,7 @@ const (
 	progressQueued progressState = iota
 	progressRunning
 	progressComplete
+	progressAborted
 )
 
 func newProgressTracker(logger *slog.Logger, trs []core.TestRequirement) *progressTracker {
@@ -72,6 +74,9 @@ func (p *progressTracker) start(tr core.TestRequirement) {
 		"queued", queued,
 	)
 	p.mu.Unlock()
+	if p.onStateChange != nil {
+		p.onStateChange(label, progressRunning, "")
+	}
 }
 
 func (p *progressTracker) complete(tr core.TestRequirement, outcome core.Outcome) {
@@ -116,6 +121,45 @@ func (p *progressTracker) complete(tr core.TestRequirement, outcome core.Outcome
 		)
 	}
 	p.mu.Unlock()
+	if p.onStateChange != nil {
+		p.onStateChange(label, progressComplete, outcome)
+	}
+}
+
+// abort records that an execution was entered or scheduled but did not reach a
+// result. Aborted executions must remain resumable; they are deliberately not
+// represented as completed errors.
+func (p *progressTracker) abort(tr core.TestRequirement, outcome core.Outcome) {
+	if p == nil {
+		return
+	}
+	label := core.ExecutionLabel(tr.ID, tr.Variant)
+	p.mu.Lock()
+	if p.state[label] == progressComplete || p.state[label] == progressAborted {
+		p.mu.Unlock()
+		return
+	}
+	p.state[label] = progressAborted
+	p.outcomes[label] = outcome
+	completed, total := p.countsLocked()
+	running, queued := p.listsLocked(progressRunning, progressQueued)
+	p.loggerInfo("test progress",
+		"status", "aborted",
+		"test", label,
+		"outcome", outcome,
+		"completed", completed,
+		"total", total,
+		"remaining", total-completed,
+	)
+	p.loggerDebug("plan progress detail",
+		"status", "updated",
+		"running", running,
+		"queued", queued,
+	)
+	p.mu.Unlock()
+	if p.onStateChange != nil {
+		p.onStateChange(label, progressAborted, outcome)
+	}
 }
 
 func (p *progressTracker) countsLocked() (completed, total int) {
