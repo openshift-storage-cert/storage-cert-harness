@@ -20,7 +20,7 @@ type preflight struct{}
 func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) ([]core.Finding, error) {
 	// Validate every selected TR's params, not just the first.
 	for i := range trs {
-		if err := resolveParams(trs[i : i+1]).validate(); err != nil {
+		if err := resolveParams(trs[i : i+1]).validateFor(trs[i].ID); err != nil {
 			return []core.Finding{{Level: "error", Message: err.Error()}}, nil
 		}
 	}
@@ -43,6 +43,9 @@ func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs 
 		Level:   "info",
 		Message: fmt.Sprintf("kube-burner vm-snapshot replicas=%d snapshot_count=%d vm_image=%s", p.Replicas, p.SnapshotCount, p.VMImage),
 	})
+	if len(trs) == 1 && trs[0].ID == "TR-VIRT-027" && p.SnapshotCount == 0 {
+		findings = append(findings, core.Finding{Level: "warn", Message: "TR-VIRT-027 reduced mode: creates the source volume without snapshots; the 250-snapshot SLA will fail"})
+	}
 	if _, err := exec.LookPath("kube-burner"); err != nil {
 		findings = append(findings, core.Finding{Level: "error", Message: fmt.Sprintf("host execution needs %q on PATH: %v", "kube-burner", err)})
 	} else {

@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // MkdirAll creates dir and every missing parent directory.
@@ -170,6 +171,62 @@ func WriteWriter(path string, perm fs.FileMode, fn func(io.Writer) error) error 
 		return err
 	}
 	return WriteFile(path, []byte(buf.String()), perm)
+}
+
+// WriteWriterAtomic renders fn to memory and replaces path atomically. The
+// temporary file is synced before rename so a checkpoint is either the prior
+// complete report or the new complete report, never a truncated XML/JSON file.
+func WriteWriterAtomic(path string, perm fs.FileMode, fn func(io.Writer) error) error {
+	var buf strings.Builder
+	if err := fn(&buf); err != nil {
+		return err
+	}
+	return WriteFileAtomic(path, []byte(buf.String()), perm)
+}
+
+// WriteFileAtomic writes data through a unique sibling temporary file and
+// atomically renames it into place.
+func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+	if err := MkdirAll(filepath.Dir(abs), dirPerm(perm)); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(filepath.Dir(abs))
+	if err != nil {
+		return fmt.Errorf("open parent of %q: %w", path, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	base := filepath.Base(abs)
+	tmp := fmt.Sprintf(".%s.tmp-%d-%d", base, os.Getpid(), time.Now().UnixNano())
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+	if err != nil {
+		return fmt.Errorf("create temporary file for %q: %w", path, err)
+	}
+	removeTemp := true
+	defer func() {
+		_ = f.Close()
+		if removeTemp {
+			_ = root.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("write temporary file for %q: %w", path, err)
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("sync temporary file for %q: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close temporary file for %q: %w", path, err)
+	}
+	if err := root.Rename(tmp, base); err != nil {
+		return fmt.Errorf("replace %q: %w", path, err)
+	}
+	removeTemp = false
+	return nil
 }
 
 // WriteUnder writes relPath as a file inside rootDir.

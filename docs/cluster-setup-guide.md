@@ -238,7 +238,7 @@ bin/harness run \
 ```
 
 When the run completes, `reports/` will contain `report.json`, `report.md`,
-`report.junit.xml`, `run.log`, and tool-generated result artifacts. Create the
+`report.junit.xml`, `report.json`, `run.log`, and tool-generated result artifacts. Create the
 submission archive described in
 [`PARTNER-CERTIFICATION-GUIDE.md`](../PARTNER-CERTIFICATION-GUIDE.md).
 

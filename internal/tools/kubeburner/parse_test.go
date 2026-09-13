@@ -350,6 +350,32 @@ func TestParams_TR027UsesCanonicalSnapshotNames(t *testing.T) {
 	}
 }
 
+func TestParams_TR027AllowsExplicitZeroSnapshotReducedMode(t *testing.T) {
+	p := Params{Replicas: 1, SnapshotCount: 0}
+	if err := p.validateFor("TR-VIRT-027"); err != nil {
+		t.Fatalf("TR-VIRT-027 zero-snapshot mode rejected: %v", err)
+	}
+	if err := p.validateFor("TR-VIRT-010"); err == nil {
+		t.Fatal("TR-VIRT-010 zero-snapshot mode succeeded, want error")
+	}
+}
+
+func TestParseResults_TR027ZeroSnapshotReducedModeFailsSLAExplicitly(t *testing.T) {
+	data := map[string][]byte{
+		"jobSummary.json": []byte(`[{"metricName":"jobSummary","elapsedTime":1,"passed":true,"jobConfig":{"name":"vmsnapshot-provision"}}]`),
+	}
+	res, err := parseResults("TR-VIRT-027", data, 0)
+	if err != nil {
+		t.Fatalf("parseResults: %v", err)
+	}
+	if res.Native != core.OutcomeFail {
+		t.Fatalf("native outcome = %q, want fail", res.Native)
+	}
+	if len(res.Metrics) != 1 || res.Metrics[0].Name != MetricSnapshotsPerVolume || res.Metrics[0].Value != 0 {
+		t.Fatalf("metrics = %+v, want snapshots_per_volume=0", res.Metrics)
+	}
+}
+
 func TestBuildEnv_UsesReplicas(t *testing.T) {
 	env := buildEnv(Params{Replicas: 5, SnapshotCount: 3}, "example-storage")
 	for _, want := range []string{"REPLICAS=5"} {
