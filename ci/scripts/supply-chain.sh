@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Module integrity (vendor), govulncheck, gosec, and trivy fs (repo tree).
-# Used by GitLab, GitHub Actions, and make test. Not a pre-commit hook until
-# ECOPROJECT-5419 (govulncheck GO-2026-4602) is fixed and CI is gating.
+# Used by GitLab, GitHub Actions, and make test. GitHub Actions gates on
+# failures; GitLab keeps this job allow-failure pending ECOPROJECT-5419.
 set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
