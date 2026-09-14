@@ -6,11 +6,20 @@ Script-centric checks for **storage-cert-harness** ([ECOPROJECT-5274](https://re
 files run locally, in GitLab CI, in GitHub Actions, and via
 pre-commit (yamllint, markdownlint, golangci-lint, secret-scan).
 
+**Support status:** GitHub Actions is the only supported and maintained CI
+provider. GitLab CI is no longer supported, and its configuration and behavior
+described below are legacy reference only. CI workflow and documentation
+updates target GitHub Actions flows only.
+
 **`unittest.sh`** (`make unittest`) runs unit tests only (`go test ./...`:
 package tests and golden-file parser tests). It does not need a cluster.
-`make lint` / `make test` match the GitLab **lint** and **test** stages.
+`make lint` / `make test` provide the corresponding local checks.
 Offline CLI smoke is `replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
 (see Open items).
+
+The GitHub Actions `supply-chain` job is gating: a failure fails the workflow.
+GitLab keeps its equivalent job `allow_failure` while ECOPROJECT-5419 remains
+open.
 
 ## Layout
 
@@ -305,9 +314,10 @@ All three must be on `PATH` under `/usr/bin/`. Pins live in
 `ci/config/images.env`. `image-contents-check.sh` verifies each binary is
 present and runnable after every image build (locally and in CI).
 
-`image-push` runs automatically on GitHub `main` pushes; on GitLab it is
-**manual** on `main`. `supply-chain` stays allow-failure; `replay-smoke` is
-manual on GitLab and skipped on GitHub.
+In the supported GitHub Actions flow, `image-push` runs automatically on
+`main` pushes. The GitLab manual-push behavior described in older sections is
+legacy reference only. `supply-chain` is gating on GitHub Actions; GitLab's
+former job remained allow-failure.
 
 ## MR vs main
 
@@ -483,8 +493,9 @@ make set-next-version IMAGE=2.0.0    # set next image version
 
 Hooks run only when staged files match `.pre-commit-config.yaml` (`files:`).
 `supply-chain` is not a pre-commit hook while GitLab `allow_failure` is on
-([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419)); enable
-it there when govulncheck `GO-2026-4602` is fixed and the CI job is gating.
+([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419)). The
+GitHub Actions job is already gating; enable the hook when the GitLab job is
+made gating after govulncheck `GO-2026-4602` is fixed.
 
 Logs: [`logs/`](../logs/README.md) (gitignored except `logs/README.md`). GitLab
 uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
@@ -505,7 +516,7 @@ uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
 | `unittest.sh` | **Unit tests only** (`go test ./...`). GitLab job `unittest`. |
 | `build.sh` | `bin/harness` with `binary_version()` ldflags |
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
-| `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **CI allow-failure** until [ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419). |
+| `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions; GitLab allow-failure** while [ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419) remains open. |
 | `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitLab: **manual**. GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (no push). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, `kube-burner`, `kubectl`, `virtctl`, `kube-burner-ocp`, and `virtbench` are in the image |
@@ -588,12 +599,12 @@ Neither MR/PR runs nor `test-ci` pushes publish an image.
 
 ## Open items
 
-### Supply-chain job (allow-failure)
+### Supply-chain job (provider-specific gating)
 
-GitLab `allow_failure` / GitHub `continue-on-error`
-([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419)).
-The job still runs and uploads logs on failure; it does not block merge.
-Make it gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
+GitHub Actions fails the workflow when `supply-chain` fails. GitLab still uses
+`allow_failure` ([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419));
+the job runs and uploads logs, but does not block merge there. Make the GitLab
+job gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
 
 ### Replay-smoke job (skipped on GitHub)
 
