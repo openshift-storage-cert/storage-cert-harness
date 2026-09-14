@@ -45,6 +45,7 @@ RUN set -eux; \
     curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${VIRTBENCH_VERSION}.tar.gz" \
       | tar xz --strip-components=1 -C /opt/virtbench; \
     python3 -m venv /opt/virtbench-venv; \
+    /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'; \
     /opt/virtbench-venv/bin/pip install --no-cache-dir /opt/virtbench; \
     /opt/virtbench-venv/bin/virtbench --help >/dev/null; \
     test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"
@@ -73,7 +74,10 @@ COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
 COPY --from=virtbench-builder /opt/virtbench-venv/bin/virtbench /usr/bin/virtbench
 COPY --from=virtbench-builder /kubectl /usr/bin/kubectl
 COPY container-entrypoint.sh /usr/local/bin/container-entrypoint.sh
-RUN mkdir -p /home/harness/.config /home/harness/.local/share/containers \
+RUN dnf update -y \
+  && python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
+  && dnf clean all \
+  && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
   && chown -R 65532:65532 /opt/virtbench-runtime /home/harness
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
