@@ -292,9 +292,9 @@ remain non-gating.
 Run scans locally when you need reports: `make image-build && make image-scan`.
 Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
 `dist/dive-report.txt`. GitLab uploads those paths as job artifacts when the
-scan jobs run. GitHub does **not** run the scan jobs, so it produces no scan
-artifacts and no Code scanning (SARIF) upload — use GitLab artifacts or local
-`dist/` output instead.
+scan jobs run. GitHub runs the scan jobs with failures allowed, so logs and
+reports are available as job artifacts; it produces no Code scanning (SARIF)
+upload. Local `dist/` output remains available via `make image-scan`.
 
 The `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can
 inspect the complete history.
@@ -583,8 +583,8 @@ Self-tests use `mktemp`.
 `image-push` is **not** part of MR tests. On GitLab it is **manual** on `main`.
 `version-bump` is main-only and runs after a successful image push.
 
-On GitHub, `image-scan-trivy` and `image-scan-dive` are skipped by default; the
-table above applies to GitLab and local `make image-scan` only.
+On GitHub, `image-scan-trivy` and `image-scan-dive` run with
+`continue-on-error: true` and do not block publish.
 
 ### GitHub `main` pipeline (publish)
 
@@ -614,15 +614,15 @@ not block later jobs). GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_S
 build and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh`
 locally when needed.
 
-### Image scan jobs (skipped on GitHub)
+### Image scan jobs (non-blocking on GitHub)
 
 GitLab runs `image-scan-trivy` and `image-scan-dive` after `image-build` with
 `allow_failure: true` — failures are visible and artifacts are uploaded, but
-they do not block merge or `image-push`. GitHub skips both jobs unless
-`vars.CI_RUN_IMAGE_SCANS=true`; `image-build` alone gates `publish`. No GitHub scan logs,
-`dist/trivy-report.*`, or Code scanning (SARIF) results are produced in that
-workflow. Use `make image-build && make image-scan` locally, or GitLab job
-artifacts, when you need scan output.
+they do not block merge or `image-push`. GitHub runs both jobs with
+`continue-on-error: true`; `image-build` alone gates `publish`. GitHub scan logs
+and reports are uploaded as job artifacts, but no Code scanning (SARIF) results
+are produced. Use `make image-build && make image-scan` locally or inspect the
+GitHub job artifacts when you need scan output.
 
 ### Dedicated CI cluster (live smoke)
 
