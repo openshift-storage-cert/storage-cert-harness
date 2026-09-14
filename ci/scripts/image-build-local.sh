@@ -5,6 +5,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 
+# shellcheck source=images.sh
+source "${repo_root}/ci/scripts/images.sh"
+
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
 	exit 1
@@ -26,6 +29,8 @@ platform="linux/${arch}"
 
 podman build \
 	--platform "${platform}" \
+	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}" \
+	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}" \
 	--build-arg "TARGETARCH=${arch}" \
 	--build-arg "HARNESS_VERSION=$(tr -d '[:space:]' < NEXT-VERSION)" \
 	--build-arg "IMAGE_VERSION=${image_version}" \

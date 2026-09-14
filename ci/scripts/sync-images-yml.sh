@@ -2,12 +2,11 @@
 # Project ci/images.env into ci/images.yml for GitLab `include:`.
 # Usage:
 #   ./ci/sync-images-yml.sh          # rewrite ci/images.yml
-#   ./ci/sync-images-yml.sh --check  # fail if yml or Containerfile defaults are stale
+#   ./ci/sync-images-yml.sh --check  # fail if generated image data is stale
 set -euo pipefail
 
 _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _config="$(cd "${_dir}/../config" && pwd)"
-_root="$(cd "${_dir}/../.." && pwd)"
 out="${_config}/images.yml"
 
 # Always emit from the file, not from GitLab-injected CI variables.
@@ -42,13 +41,13 @@ EOF
 )"
 
 check_containerfile_arg() {
-	local name="$1"
-	local want="$2"
-	local line="ARG ${name}=${want}"
-	if ! grep -qxF "${line}" "${_root}/Containerfile"; then
-		echo "error: Containerfile is missing '${line}' (must match ci/images.env)" >&2
-		return 1
-	fi
+  local name="$1"
+  local want="$2"
+  local line="ARG ${name}=${want}"
+  if ! grep -qxF "${line}" "${_dir}/../../Containerfile"; then
+    echo "error: Containerfile is missing '${line}' (must match the pinned tool versions)" >&2
+    return 1
+  fi
 }
 
 if [[ "${1:-}" == "--check" ]]; then
@@ -57,14 +56,12 @@ if [[ "${1:-}" == "--check" ]]; then
 		echo "error: ci/config/images.yml is stale; run ./ci/scripts/sync-images-yml.sh" >&2
 		exit 1
 	fi
-	check_containerfile_arg BUILD_IMAGE "${BUILD_IMAGE}"
-	check_containerfile_arg RUNTIME_IMAGE "${RUNTIME_IMAGE}"
 	check_containerfile_arg KUBE_BURNER_VERSION "${KUBE_BURNER_VERSION}"
 	check_containerfile_arg KUBE_BURNER_OCP_VERSION "${KUBE_BURNER_OCP_VERSION}"
 	check_containerfile_arg OPENSHIFT_CLIENT_VERSION "${OPENSHIFT_CLIENT_VERSION}"
 	check_containerfile_arg VIRTBENCH_VERSION "${VIRTBENCH_VERSION}"
 	check_containerfile_arg KUBEVIRT_VERSION "${KUBEVIRT_VERSION}"
-	echo "ci/config/images.yml and Containerfile ARG defaults match ci/config/images.env"
+  echo "ci/config/images.yml and Containerfile tool-version ARGs are synchronized"
 	exit 0
 fi
 

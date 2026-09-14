@@ -1,12 +1,12 @@
 # Python runtime is required by the packaged virtbench FIO CLI. The harness
 # binary must be built before this image build and is copied from bin/harness.
-# ARG defaults must match ci/config/images.env (ci/scripts/sync-images-yml.sh --check).
+# Image references are supplied by ci/config/images.env through the build scripts.
 # Keep the harness build version distinct from the base image version.
 ARG HARNESS_VERSION=0.0.0-dev
 ARG IMAGE_VERSION=0.0.0-dev
 ARG TARGETARCH=amd64
-ARG BUILD_IMAGE=registry.access.redhat.com/ubi9/python-311:9.8
-ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/python-311:9.8
+ARG BUILD_IMAGE
+ARG RUNTIME_IMAGE
 ARG KUBE_BURNER_VERSION=v2.8.5
 ARG KUBE_BURNER_OCP_VERSION=v1.12.3
 ARG OPENSHIFT_CLIENT_VERSION=4.22.11
@@ -35,7 +35,7 @@ RUN set -eux; \
       -o /tmp/virtctl; \
     install -m 0755 /tmp/virtctl /virtctl
 
-FROM ${RUNTIME_IMAGE} AS virtbench-builder
+FROM ${BUILD_IMAGE} AS virtbench-builder
 ARG TARGETARCH
 ARG OPENSHIFT_CLIENT_VERSION
 ARG VIRTBENCH_VERSION
@@ -74,9 +74,7 @@ COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
 COPY --from=virtbench-builder /opt/virtbench-venv/bin/virtbench /usr/bin/virtbench
 COPY --from=virtbench-builder /kubectl /usr/bin/kubectl
 COPY container-entrypoint.sh /usr/local/bin/container-entrypoint.sh
-RUN dnf update -y \
-  && python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
-  && dnf clean all \
+RUN python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
   && chown -R 65532:65532 /opt/virtbench-runtime /home/harness
