@@ -72,18 +72,20 @@ COPY --from=virtbench-builder /opt/virtbench /opt/virtbench-runtime
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
 COPY container-entrypoint.sh /usr/local/bin/
-# Drop package-manager CLIs/DB after pip install. rpm-libs stays (libmodulemd needs librpmio).
+# Refresh UBI RPMs at build time; keep /var/lib/rpm so Trivy can detect OS packages.
 RUN python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
   && rm -rf /opt/virtbench-runtime/docs \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
   && chown -R 65532:65532 /opt/virtbench-runtime /home/harness \
   && if command -v microdnf >/dev/null 2>&1; then \
-       microdnf remove -y --nodocs microdnf dnf-data libdnf libsolv; \
+       microdnf update -y --nodocs; \
+       microdnf clean all; \
      fi \
-  && rm -rf /var/lib/rpm /var/lib/dnf /var/cache/dnf /etc/yum.repos.d \
-     /usr/share/dnf /usr/share/microdnf /usr/libexec/microdnf /usr/libexec/dnf \
-  && rm -f /usr/bin/rpm /usr/bin/microdnf /usr/bin/dnf /usr/bin/yum
+  && if command -v dnf >/dev/null 2>&1; then \
+       dnf clean all; \
+     fi \
+  && rm -rf /var/lib/dnf/history* /var/cache/dnf
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
 ENV HOME=/home/harness
 # The harness writes reports and tool artifacts to operator-provided bind mounts.
