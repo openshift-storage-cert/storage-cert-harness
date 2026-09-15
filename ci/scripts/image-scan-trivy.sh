@@ -35,13 +35,17 @@ trivy "${trivy_input[@]}" \
 
 echo "wrote ${trivy_report_json} and ${trivy_report_txt}"
 
-if ! trivy "${trivy_input[@]}" \
+trivy_status=0
+trivy "${trivy_input[@]}" \
 	--exit-code 1 \
 	--severity HIGH,CRITICAL \
 	--ignore-unfixed \
 	--ignorefile "${CI_CONFIG_DIR}/trivyignore" \
-	--format table; then
+	--format table || trivy_status=$?
+if (( trivy_status == 1 )); then
 	echo "warning: HIGH/CRITICAL vulnerabilities found; continuing while remediation is tracked"
+elif (( trivy_status != 0 )); then
+	exit "${trivy_status}"
 fi
 
 trivy "${trivy_input[@]}" \
