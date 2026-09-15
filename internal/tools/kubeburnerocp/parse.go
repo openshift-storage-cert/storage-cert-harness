@@ -15,6 +15,11 @@ const migrateJobName = "migrate-vms"
 // stable KB check identifier.
 const pvcBoundCheck = "pvc-1000-bound"
 
+const (
+	virtParallelCheck  = "parallel-lifecycle-20"
+	virtParallelMetric = "lifecycle_completion_time"
+)
+
 // jobSummary is one row from jobSummary.json.
 type jobSummary struct {
 	MetricName      string            `json:"metricName"`
@@ -117,6 +122,10 @@ func ParseResults(trID string, data map[string][]byte) (core.TestResult, error) 
 	}
 
 	checks := map[string]core.Outcome{"jobs_passed": native}
+	if trID == "TR-VIRT-019" {
+		// The catalog uses the scenario check id, not the generic adapter id.
+		checks[virtParallelCheck] = native
+	}
 	for _, s := range summaries {
 		if s.JobConfig.Name != WorkloadPVCDensity {
 			continue
@@ -130,6 +139,19 @@ func ParseResults(trID string, data map[string][]byte) (core.TestResult, error) 
 		checks[pvcBoundCheck] = outcome
 		metrics = append(metrics, core.Metric{Name: "pvc_requested_count", Value: float64(s.JobConfig.JobIterations), Unit: "count"})
 		break
+	}
+	if trID == "TR-VIRT-019" {
+		var lifecycleSeconds float64
+		for _, s := range summaries {
+			lifecycleSeconds += s.ElapsedTime
+		}
+		if lifecycleSeconds > 0 {
+			metrics = append(metrics, core.Metric{
+				Name:  virtParallelMetric,
+				Value: lifecycleSeconds,
+				Unit:  "s",
+			})
+		}
 	}
 	raw, _ := json.Marshal(map[string]any{"jobSummary": summaries})
 	return core.TestResult{TRID: trID, Metrics: metrics, Checks: checks, Native: native, Raw: raw}, nil
