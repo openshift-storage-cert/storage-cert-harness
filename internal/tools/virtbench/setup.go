@@ -25,10 +25,10 @@ const (
 )
 
 // sshPodManifest is the helper pod virtbench uses for ping and in-VM SSH checks.
-// Uses alpine + apk (same as virtbench's own ensure_ssh_pod) so both ping and
-// sshpass are available. The pod is left running (persistent) so subsequent runs
-// reuse it instantly — our sshpassReady check confirms sshpass is installed before
-// declaring it ready. Remove manually when decommissioning the cluster:
+// An init container installs alpine packages into a shared emptyDir; the main
+// container mounts those paths and runs with readOnlyRootFilesystem. The pod is
+// left running (persistent) so subsequent runs reuse it instantly — our
+// sshpassReady check confirms sshpass is installed before declaring it ready. Remove manually when decommissioning the cluster:
 //
 //	kubectl delete pod ssh-test-pod -n default
 const sshPodManifest = `apiVersion: v1
@@ -40,10 +40,73 @@ metadata:
     app: kubevirt-perf-test
     managed-by: storage-cert-harness
 spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+  - name: install-tools
+    image: alpine:latest
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    command:
+    - /bin/sh
+    - -c
+    - |
+      cp -a /bin /lib /usr /sbin /etc /var /staging/
+      apk add --root /staging --no-cache bash openssh-client sshpass iputils
+      mkdir -p /tools/bin /tools/sbin /tools/lib /tools/usr/bin /tools/usr/sbin /tools/usr/lib
+      cp -a /staging/bin/. /tools/bin/
+      cp -a /staging/sbin/. /tools/sbin/
+      cp -a /staging/lib/. /tools/lib/
+      cp -a /staging/usr/bin/. /tools/usr/bin/
+      cp -a /staging/usr/sbin/. /tools/usr/sbin/
+      cp -a /staging/usr/lib/. /tools/usr/lib/
+    volumeMounts:
+    - name: staging
+      mountPath: /staging
+    - name: tools
+      mountPath: /tools
+    - name: tmp
+      mountPath: /tmp
   containers:
   - name: ssh-client
     image: alpine:latest
-    command: ["/bin/sh", "-c", "apk add --no-cache bash openssh-client sshpass iputils && tail -f /dev/null"]
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      readOnlyRootFilesystem: true
+    command: ["/bin/sh", "-c", "tail -f /dev/null"]
+    volumeMounts:
+    - name: tools
+      mountPath: /bin
+      subPath: bin
+    - name: tools
+      mountPath: /sbin
+      subPath: sbin
+    - name: tools
+      mountPath: /lib
+      subPath: lib
+    - name: tools
+      mountPath: /usr/bin
+      subPath: usr/bin
+    - name: tools
+      mountPath: /usr/sbin
+      subPath: usr/sbin
+    - name: tools
+      mountPath: /usr/lib
+      subPath: usr/lib
+    - name: tmp
+      mountPath: /tmp
+    - name: root-home
+      mountPath: /root
     resources:
       requests:
         memory: "128Mi"
@@ -51,6 +114,15 @@ spec:
       limits:
         memory: "256Mi"
         cpu: "200m"
+  volumes:
+  - name: staging
+    emptyDir: {}
+  - name: tools
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+  - name: root-home
+    emptyDir: {}
   restartPolicy: Always
 `
 
@@ -86,7 +158,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 		s.createdByUs = true // tracked for the log message in Teardown
 	}
 
-	// Wait for apk install to complete (image pull + apk add openssh sshpass iputils).
+	// Wait for the init container to finish installing tools (image pull + apk add).
 	// 300s matches virtbench's own ping timeout and handles slow registries.
 	deadline := time.Now().Add(300 * time.Second)
 	for time.Now().Before(deadline) {

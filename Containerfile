@@ -69,6 +69,7 @@ COPY bin/harness /usr/bin/
 COPY --from=builder /kube-burner /kube-burner-ocp /virtctl /usr/bin/
 COPY --from=virtbench-builder /kubectl /opt/virtbench-venv/bin/virtbench /usr/bin/
 COPY --from=virtbench-builder /opt/virtbench /opt/virtbench-runtime
+COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
 COPY container-entrypoint.sh /usr/local/bin/
 # Drop package-manager CLIs/DB after pip install. rpm-libs stays (libmodulemd needs librpmio).
