@@ -81,12 +81,24 @@ func TestParseResults_VirtParallel_Golden(t *testing.T) {
 	if res.Native != core.OutcomePass {
 		t.Errorf("native=%s, want pass", res.Native)
 	}
+	if got := res.Checks[virtParallelCheck]; got != core.OutcomePass {
+		t.Errorf("%s=%s, want pass", virtParallelCheck, got)
+	}
 	want := map[string]float64{"vmiLatency_VMReady": 10}
 	got := p99s(res)
 	for name, v := range want {
 		if got[name] != v {
 			t.Errorf("%s p99=%v, want %v", name, got[name], v)
 		}
+	}
+	var lifecycle float64
+	for _, m := range res.Metrics {
+		if m.Name == virtParallelMetric {
+			lifecycle = m.Value
+		}
+	}
+	if lifecycle != 128 {
+		t.Errorf("%s=%v, want 128", virtParallelMetric, lifecycle)
 	}
 }
 
