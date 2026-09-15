@@ -60,18 +60,27 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Install trivy
+      - id: artifact-timestamp
+        if: always()
+        run: echo "value=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Install trivy from Quay
         run: |
           set -euo pipefail
           source ci/scripts/images.sh
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+          docker pull "${TRIVY_IMAGE}"
+          container_id="$(docker create "${TRIVY_IMAGE}")"
+          trap 'docker rm "${container_id}" >/dev/null' EXIT
+          docker cp "${container_id}:/usr/local/bin/trivy" "${RUNNER_TEMP}/trivy"
+          sudo install -m 0755 "${RUNNER_TEMP}/trivy" /usr/local/bin/trivy
       - run: ./ci/scripts/image-scan-trivy.sh
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: logs-image-scan-trivy
-          path: logs/*.log
+          name: trivy-image-scan-artifacts-${{ steps.artifact-timestamp.outputs.value }}
+          path: |
+            dist/trivy-report.json
+            dist/trivy-report.txt
+            logs/*.log
           if-no-files-found: ignore
 
   image-scan-dive:
@@ -85,17 +94,24 @@ jobs:
         with:
           name: harness-image
           path: dist
-      - name: Install dive
+      - id: artifact-timestamp
+        if: always()
+        run: echo "value=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Install dive from Quay
         run: |
           set -euo pipefail
           source ci/scripts/images.sh
-          ver="${DIVE_VERSION#v}"
-          curl -sSfL "https://github.com/wagoodman/dive/releases/download/${DIVE_VERSION}/dive_${ver}_linux_amd64.tar.gz" | tar xz
-          sudo mv dive /usr/local/bin/
+          docker pull "${DIVE_IMAGE}"
+          container_id="$(docker create "${DIVE_IMAGE}")"
+          trap 'docker rm "${container_id}" >/dev/null' EXIT
+          docker cp "${container_id}:/usr/local/bin/dive" "${RUNNER_TEMP}/dive"
+          sudo install -m 0755 "${RUNNER_TEMP}/dive" /usr/local/bin/dive
       - run: ./ci/scripts/image-scan-dive.sh
-      - if: failure()
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: logs-image-scan-dive
-          path: logs/*.log
+          name: dive-image-scan-artifacts-${{ steps.artifact-timestamp.outputs.value }}
+          path: |
+            dist/dive-report.txt
+            logs/*.log
           if-no-files-found: ignore
