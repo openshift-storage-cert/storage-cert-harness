@@ -252,8 +252,9 @@ requirements pass.
 `ci-linters.yml`, `ci-tests.yml`, `ci-build.yml`, `ci-smoke.yml`,
 `ci-images.yml`, and `ci-publish.yml`. The stages run in order as
 linters -> tests -> build -> image build -> image push/version bump.
-`ci-smoke.yml` and the Trivy/Dive jobs inside `ci-images.yml` are present but
-**skipped by default** (opt-in via repository variables); they are not CI gates. The linter workflow
+`ci-smoke.yml` remains **skipped by default** (opt-in via repository variables).
+The Trivy/Dive jobs inside `ci-images.yml` run with the image build and are
+non-blocking; they are not CI gates. The linter workflow
 installs a pinned `actionlint` release and validates all
 `.github/workflows/*.yml` files. The build and image workflows pass the
 `harness-binary` and `harness-image` artifacts to later stages.
@@ -272,7 +273,7 @@ The top-level workflow dispatch input is:
 
 **Publish gates (GitHub).** On a push to `main`, `image-push` runs when
 `image-build` succeeds. `replay-smoke`, `image-scan-trivy`, and
-`image-scan-dive` are skipped by default and do not gate publish. A manual
+`image-scan-dive` run with allowed failures and do not gate publish. A manual
 `workflow_dispatch` with `publish=true` can also push from `main`. A `test-ci`
 push cannot publish an image or advance version files.
 
@@ -280,20 +281,20 @@ push cannot publish an image or advance version files.
 
 | Where | `image-scan-trivy` / `image-scan-dive` | Gates publish? |
 |-------|----------------------------------------|----------------|
-| GitHub Actions | Skipped unless `vars.CI_RUN_IMAGE_SCANS=true` | No |
+| GitHub Actions | Run with the image build; failures are allowed | No |
 | GitLab CI | Run after `image-build`; `allow_failure: true` | No |
 | Local | `make image-scan` / `make ci-image` | N/A |
 
-Optional GitHub repository variables (unset by default): `CI_RUN_REPLAY_SMOKE`
-and `CI_RUN_IMAGE_SCANS` set to `true` to run those jobs for debugging; they
+Optional GitHub repository variable (unset by default): `CI_RUN_REPLAY_SMOKE` set
+to `true` to run the smoke job for debugging. The image scans run by default and
 remain non-gating.
 
 Run scans locally when you need reports: `make image-build && make image-scan`.
 Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
 `dist/dive-report.txt`. GitLab uploads those paths as job artifacts when the
-scan jobs run. GitHub does **not** run the scan jobs, so it produces no scan
-artifacts and no Code scanning (SARIF) upload — use GitLab artifacts or local
-`dist/` output instead.
+scan jobs run. GitHub runs the scan jobs with failures allowed, so logs and
+reports are available as job artifacts; it produces no Code scanning (SARIF)
+upload. Local `dist/` output remains available via `make image-scan`.
 
 The `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can
 inspect the complete history.
@@ -392,7 +393,7 @@ Go compile error).
 | image-scan-dive | `BUILD_IMAGE` + Dive release binary (`DIVE_VERSION`) |
 
 `ubi9/go-toolset` only goes to Go 1.25; this module is **1.26**, so `BUILD_IMAGE`
-is ubi10, tag `:1.26`, not `:latest`. `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use
+is ubi10, pinned at `1.26.7-*` (Go **1.26.7+**), not `:latest`. `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use
 the UBI **minor stream** (`:9.8` / `:9.7`), not `:latest` and not a rebuild
 id. golangci-lint is still the GitHub **release tarball**
 (`GOLANGCI_LINT_VERSION`) into `$(go env GOPATH)/bin` (go-toolset is
@@ -441,7 +442,7 @@ binary installed in `before_script`. They are not Alpine-based or Buildah jobs.
 
 ## Local tools
 
-Install once (idempotent). Requires Go 1.26+, git, python3, pip, and npm
+Install once (idempotent). Requires Go 1.26.7+, git, python3, pip, and npm
 already on `PATH`. Tool versions are `GOLANGCI_LINT_VERSION`, `TRIVY_VERSION`,
 and `DIVE_VERSION` in `ci/config/images.env`.
 
@@ -454,7 +455,7 @@ make install-tools
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
 GitLab (`ci/config/images.env`): golangci-lint GitHub release binary into
 `BUILD_IMAGE` (not the Docker Hub `golangci/golangci-lint` image). That
-golangci-lint build needs Go 1.26+ because `go.mod` is 1.26.
+golangci-lint build needs Go 1.26.7+ because `go.mod` is 1.26.7.
 
 | Tool | Scripts | Installed by |
 | ------ | --------- | -------------- |
@@ -534,8 +535,8 @@ default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
 On **GitLab**, Trivy and Dive are separate parallel jobs after `image-build`.
 Both load `dist/harness-image.tar`, write reports under `dist/`, and are
-`allow_failure` (they do not block merge or push). On **GitHub**, both jobs are
-skipped unless `vars.CI_RUN_IMAGE_SCANS=true`; run `make image-scan` locally for
+`allow_failure` (they do not block merge or push). On **GitHub**, both jobs run
+with `continue-on-error: true`; run `make image-scan` locally for
 the same scripts and
 report paths.
 
@@ -582,8 +583,8 @@ Self-tests use `mktemp`.
 `image-push` is **not** part of MR tests. On GitLab it is **manual** on `main`.
 `version-bump` is main-only and runs after a successful image push.
 
-On GitHub, `image-scan-trivy` and `image-scan-dive` are skipped by default; the
-table above applies to GitLab and local `make image-scan` only.
+On GitHub, `image-scan-trivy` and `image-scan-dive` run with
+`continue-on-error: true` and do not block publish.
 
 ### GitHub `main` pipeline (publish)
 
@@ -613,15 +614,15 @@ not block later jobs). GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_S
 build and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh`
 locally when needed.
 
-### Image scan jobs (skipped on GitHub)
+### Image scan jobs (non-blocking on GitHub)
 
 GitLab runs `image-scan-trivy` and `image-scan-dive` after `image-build` with
 `allow_failure: true` — failures are visible and artifacts are uploaded, but
-they do not block merge or `image-push`. GitHub skips both jobs unless
-`vars.CI_RUN_IMAGE_SCANS=true`; `image-build` alone gates `publish`. No GitHub scan logs,
-`dist/trivy-report.*`, or Code scanning (SARIF) results are produced in that
-workflow. Use `make image-build && make image-scan` locally, or GitLab job
-artifacts, when you need scan output.
+they do not block merge or `image-push`. GitHub runs both jobs with
+`continue-on-error: true`; `image-build` alone gates `publish`. GitHub scan logs
+and reports are uploaded as job artifacts, but no Code scanning (SARIF) results
+are produced. Use `make image-build && make image-scan` locally or inspect the
+GitHub job artifacts when you need scan output.
 
 ### Dedicated CI cluster (live smoke)
 

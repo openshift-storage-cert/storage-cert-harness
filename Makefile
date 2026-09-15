@@ -10,8 +10,8 @@ LOCAL_GOARCH := arm64
 endif
 
 .PHONY: all build test unittest vet lint lint-yaml lint-actions lint-md lint-go tidy cover \
-	run-example run-tr-stor-006 clean ci ci-image replay-smoke image-build \
-	image-build-local run-image-tests \
+	run-example run-tr-stor-006 clean clean-image-cache ci ci-image replay-smoke image-build \
+	image-build-fresh image-build-local run-image-tests \
 	image-contents-check image-scan-trivy image-scan-dive image-scan image-push \
 	secret-scan supply-chain install-tools mirror-ci-tools sync-images set-next-version
 
@@ -79,6 +79,13 @@ supply-chain:
 
 image-build:
 	./ci/scripts/image-build.sh
+
+# Drop cached container layers and rebuild without cache (use after Containerfile cleanup changes).
+image-build-fresh: clean-image-cache
+	IMAGE_BUILD_NO_CACHE=1 ./ci/scripts/image-build.sh
+
+clean-image-cache:
+	./ci/scripts/clean-image-cache.sh
 
 # Build the binary first, then create a uniquely tagged local image from it.
 image-build-local: export GOOS = linux

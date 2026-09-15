@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ssh-test-pod
+  namespace: default
+  labels:
+    app: kubevirt-perf-test
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: install-tools
+      image: alpine:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+      command:
+        - /bin/sh
+        - -c
+        - |
+          cp -a /bin /lib /usr /sbin /etc /var /staging/
+          apk add --root /staging --no-cache bash iputils openssh-client netcat-openbsd sshpass
+          mkdir -p /tools/bin /tools/sbin /tools/lib /tools/usr/bin /tools/usr/sbin /tools/usr/lib
+          cp -a /staging/bin/. /tools/bin/
+          cp -a /staging/sbin/. /tools/sbin/
+          cp -a /staging/lib/. /tools/lib/
+          cp -a /staging/usr/bin/. /tools/usr/bin/
+          cp -a /staging/usr/sbin/. /tools/usr/sbin/
+          cp -a /staging/usr/lib/. /tools/usr/lib/
+      volumeMounts:
+        - name: staging
+          mountPath: /staging
+        - name: tools
+          mountPath: /tools
+        - name: tmp
+          mountPath: /tmp
+  containers:
+    - name: ssh-client
+      image: alpine:latest
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+      command:
+        - /bin/sh
+        - -c
+        - tail -f /dev/null
+      volumeMounts:
+        - name: tools
+          mountPath: /bin
+          subPath: bin
+        - name: tools
+          mountPath: /sbin
+          subPath: sbin
+        - name: tools
+          mountPath: /lib
+          subPath: lib
+        - name: tools
+          mountPath: /usr/bin
+          subPath: usr/bin
+        - name: tools
+          mountPath: /usr/sbin
+          subPath: usr/sbin
+        - name: tools
+          mountPath: /usr/lib
+          subPath: usr/lib
+        - name: tmp
+          mountPath: /tmp
+        - name: root-home
+          mountPath: /root
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "200m"
+  volumes:
+    - name: staging
+      emptyDir: {}
+    - name: tools
+      emptyDir: {}
+    - name: tmp
+      emptyDir: {}
+    - name: root-home
+      emptyDir: {}
+  restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-test-pod
+  namespace: default
+spec:
+  selector:
+    app: kubevirt-perf-test
+  ports:
+    - protocol: TCP
+      port: 22
+      targetPort: 22
