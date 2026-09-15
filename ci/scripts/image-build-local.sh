@@ -27,7 +27,14 @@ case "${arch}" in
 esac
 platform="linux/${arch}"
 
+no_cache=()
+if [[ "${IMAGE_BUILD_NO_CACHE:-0}" == "1" ]]; then
+	echo "IMAGE_BUILD_NO_CACHE=1 (disabling layer cache)"
+	no_cache=(--no-cache)
+fi
+
 podman build \
+	"${no_cache[@]}" \
 	--platform "${platform}" \
 	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}" \
 	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}" \

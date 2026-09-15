@@ -48,9 +48,8 @@ RUN set -eux; \
     /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'; \
     /opt/virtbench-venv/bin/pip install --no-cache-dir /opt/virtbench; \
     /opt/virtbench-venv/bin/virtbench --help >/dev/null; \
-    test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"
-
-RUN set -eux; \
+    test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"; \
+    rm -rf /opt/virtbench/docs; \
     archive="openshift-client-linux-${TARGETARCH}-rhel9-${OPENSHIFT_CLIENT_VERSION}.tar.gz"; \
     mkdir -p /tmp/openshift-client; \
     curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" \
@@ -65,19 +64,25 @@ USER 0
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
 LABEL io.storage-cert-harness.virtbench.version="${VIRTBENCH_VERSION}"
 LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
-COPY bin/harness /usr/bin/harness
-COPY --from=builder /kube-burner /usr/bin/kube-burner
-COPY --from=builder /kube-burner-ocp /usr/bin/kube-burner-ocp
-COPY --from=builder /virtctl /usr/bin/virtctl
+# Multiple sources are allowed when the destination is a directory (trailing slash).
+COPY bin/harness /usr/bin/
+COPY --from=builder /kube-burner /kube-burner-ocp /virtctl /usr/bin/
+COPY --from=virtbench-builder /kubectl /opt/virtbench-venv/bin/virtbench /usr/bin/
 COPY --from=virtbench-builder /opt/virtbench /opt/virtbench-runtime
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
-COPY --from=virtbench-builder /opt/virtbench-venv/bin/virtbench /usr/bin/virtbench
-COPY --from=virtbench-builder /kubectl /usr/bin/kubectl
-COPY container-entrypoint.sh /usr/local/bin/container-entrypoint.sh
+COPY container-entrypoint.sh /usr/local/bin/
+# Drop package-manager CLIs/DB after pip install. rpm-libs stays (libmodulemd needs librpmio).
 RUN python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
+  && rm -rf /opt/virtbench-runtime/docs \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
-  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness
+  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness \
+  && if command -v microdnf >/dev/null 2>&1; then \
+       microdnf remove -y --nodocs microdnf dnf-data libdnf libsolv; \
+     fi \
+  && rm -rf /var/lib/rpm /var/lib/dnf /var/cache/dnf /etc/yum.repos.d \
+     /usr/share/dnf /usr/share/microdnf /usr/libexec/microdnf /usr/libexec/dnf \
+  && rm -f /usr/bin/rpm /usr/bin/microdnf /usr/bin/dnf /usr/bin/yum
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
 ENV HOME=/home/harness
 # The harness writes reports and tool artifacts to operator-provided bind mounts.

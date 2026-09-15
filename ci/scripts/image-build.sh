@@ -22,7 +22,12 @@ mkdir -p "${REPO_ROOT}/dist" "$(dirname "${IMAGE_TAR}")"
 echo "building ${ref} with ${eng} (linux/${target_arch})"
 echo "  binary_version=${bin_ver}  image_version=${img_ver}"
 
-build_args=(
+build_args=()
+if [[ "${IMAGE_BUILD_NO_CACHE:-0}" == "1" ]]; then
+	echo "  IMAGE_BUILD_NO_CACHE=1 (disabling layer cache)"
+	build_args+=(--no-cache)
+fi
+build_args+=(
 	--build-arg "HARNESS_VERSION=${bin_ver}"
 	--build-arg "IMAGE_VERSION=${img_ver}"
 	--build-arg "TARGETARCH=${target_arch}"
