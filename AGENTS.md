@@ -43,7 +43,7 @@ the "why".
 
 ## Dev environment
 
-- Go 1.26.6+. No cluster needed for the skeleton: the `example` tool runs offline.
+- Go 1.26.7+. No cluster needed for the skeleton: the `example` tool runs offline.
 - `./ci/scripts/install-tools.sh` then `make build` → `bin/harness`; `make unittest`
   (unit tests) or `make test` (GitLab test stage: unittest, secret-scan,
   supply-chain); `make ci` / `./ci/scripts/ci.sh`. Image build/run uses **podman** by
