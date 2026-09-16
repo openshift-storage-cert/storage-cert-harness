@@ -6,10 +6,13 @@ usage() {
 	cat <<'EOF'
 Usage:
   ./ci/scripts/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
-  make run-quay-image-tests [VERSION=<version>] [KUBECONFIG=<path>]
+	BACKEND=<name> ./ci/scripts/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
+	BACKEND=<name> make run-quay-image-tests [VERSION=<version>] [KUBECONFIG=<path>]
 
 Pull and run quay.io/virtarraycert/storage-cert-harness:<version>.
 VERSION defaults to latest and KUBECONFIG defaults to work/kubeconfig.
+BACKEND optionally overrides the first backend in work/backends.local.yaml.
+The YAML parser `yq` is required when BACKEND is not set.
 Assumption: Podman has access to valid quay.io credentials, such as an
 existing Docker-compatible auth configuration, a Quay token, or `podman login`.
 EOF
@@ -49,17 +52,28 @@ KUBECONFIG="${2:-work/kubeconfig}"
 	exit 1
 }
 
+backend="${BACKEND:-}"
+if [[ -z "${backend}" ]]; then
+	command -v yq >/dev/null 2>&1 || {
+		echo "error: yq is required to read the backend from work/backends.local.yaml; set BACKEND explicitly or install yq" >&2
+		exit 1
+	}
+	if ! backend="$(yq -r '.backends[0].name // ""' work/backends.local.yaml)"; then
+		echo "error: could not parse backend configuration: work/backends.local.yaml" >&2
+		exit 1
+	fi
+fi
+[[ -n "${backend}" ]] || {
+	echo "error: no backend name found in work/backends.local.yaml; set BACKEND explicitly" >&2
+	exit 1
+}
+
 image="${QUAY_IMAGE}:${version}"
 # Assumption: Podman can read valid quay.io credentials from its configured
 # authentication sources, which may include Docker-compatible settings.
 podman pull "${image}"
 mkdir -p work/smoke-work work/smoke-report
 
-backend="${BACKEND:-$(awk '$1 == "-" && $2 == "name:" { print $3; exit }' work/backends.local.yaml)}"
-[[ -n "${backend}" ]] || {
-	echo "error: no backend found in work/backends.local.yaml; set BACKEND explicitly" >&2
-	exit 1
-}
 arch="${GOARCH:-$(uname -m)}"
 case "${arch}" in
 	x86_64) arch=amd64 ;;
