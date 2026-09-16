@@ -49,7 +49,7 @@ KUBECONFIG="${2:-work/kubeconfig}"
 	exit 1
 }
 
-image="quay.io/virtarraycert/storage-cert-harness:${version}"
+image="${QUAY_IMAGE}:${version}"
 # Assumption: Podman can read valid quay.io credentials from its configured
 # authentication sources, which may include Docker-compatible settings.
 podman pull "${image}"
