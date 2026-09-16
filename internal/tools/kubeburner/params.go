@@ -18,6 +18,25 @@ const (
 	defaultDiskSize = "10Gi"
 )
 
+type snapshotScenario struct {
+	SnapshotsPerVolume bool
+	SingleSourceVolume bool
+	AllowZeroSnapshots bool
+}
+
+var snapshotScenarios = map[string]snapshotScenario{
+	"TR-VIRT-010": {},
+	"TR-VIRT-027": {
+		SnapshotsPerVolume: true,
+		SingleSourceVolume: true,
+		AllowZeroSnapshots: true,
+	},
+}
+
+func scenarioFor(trID string) snapshotScenario {
+	return snapshotScenarios[trID]
+}
+
 // Params are the harness-local per-TR knobs (plan overrides) that shape the kube-burner run; storage class comes from the backend, not here. See decisions/0012.
 type Params struct {
 	Replicas      int
@@ -74,10 +93,14 @@ func (p Params) validate() error {
 }
 
 func (p Params) validateFor(trID string) error {
+	scenario := scenarioFor(trID)
 	if p.Replicas < 1 {
 		return fmt.Errorf("kube-burner: param %q must be >= 1", "replicas")
 	}
-	if p.SnapshotCount < 0 || (p.SnapshotCount == 0 && trID != "TR-VIRT-027") {
+	if scenario.SingleSourceVolume && p.Replicas != 1 {
+		return fmt.Errorf("kube-burner: TR-VIRT-027 requires exactly one source volume (replicas=1)")
+	}
+	if p.SnapshotCount < 0 || (p.SnapshotCount == 0 && !scenario.AllowZeroSnapshots) {
 		return fmt.Errorf("kube-burner: param %q must be >= 1", "snapshot_count")
 	}
 	return nil

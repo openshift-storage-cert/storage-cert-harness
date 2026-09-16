@@ -8,17 +8,10 @@ import (
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
 )
 
-// migrateJobName is the kube-burner-ocp virt-migration job that issues the VM
-// migrations; its elapsedTime is the mass-migration wall-clock.
-const migrateJobName = "migrate-vms"
-
-// stable KB check identifier.
-const pvcBoundCheck = "pvc-1000-bound"
-
-const (
-	virtParallelCheck  = "parallel-lifecycle-20"
-	virtParallelMetric = "lifecycle_completion_time"
-)
+// resultMapper translates generic kube-burner evidence into the catalog
+// contract for one workload. Workload-specific names stay at the adapter
+// boundary rather than in the shared parser.
+type resultMapper func(summaries []jobSummary, data map[string][]byte, result *core.TestResult) error
 
 // jobSummary is one row from jobSummary.json.
 type jobSummary struct {
@@ -81,8 +74,9 @@ func quantileMetricName(q latencyQuantile) string {
 	return m + "_" + q.QuantileName
 }
 
-// ParseResults: native = all jobs passed, plus p50/p95/p99 for every latency quantile.
-func ParseResults(trID string, data map[string][]byte) (core.TestResult, error) {
+// ParseResults normalizes generic kube-burner output and applies the selected
+// workload's result mapping to the catalog contract.
+func ParseResults(workload, trID string, data map[string][]byte) (core.TestResult, error) {
 	if len(data) == 0 {
 		return core.TestResult{}, fmt.Errorf("kubeburner: empty data map")
 	}
@@ -107,52 +101,17 @@ func ParseResults(trID string, data map[string][]byte) (core.TestResult, error) 
 				core.Metric{Name: base, Value: q.P95, Unit: "ms", Percentile: "p95"},
 				core.Metric{Name: base, Value: q.P99, Unit: "ms", Percentile: "p99"},
 			)
-			// Keep upstream names for diagnostics and expose the KB contract alias.
-			if q.MetricName == "pvcLatencyQuantilesMeasurement" && q.QuantileName == "Bound" && q.JobName == WorkloadPVCDensity {
-				metrics = append(metrics, core.Metric{Name: "pvc_bind_latency", Value: q.P99, Unit: "ms", Percentile: "p99"})
-			}
-		}
-	}
-
-	for _, s := range summaries {
-		if s.JobConfig.Name == migrateJobName {
-			metrics = append(metrics, core.Metric{Name: "total_migration_duration", Value: s.ElapsedTime, Unit: "s"})
-			break
 		}
 	}
 
 	checks := map[string]core.Outcome{"jobs_passed": native}
-	if trID == "TR-VIRT-019" {
-		// The catalog uses the scenario check id, not the generic adapter id.
-		checks[virtParallelCheck] = native
-	}
-	for _, s := range summaries {
-		if s.JobConfig.Name != WorkloadPVCDensity {
-			continue
-		}
-		// The released workload creates one PVC/pod pair per iteration. A
-		// successful, verified job waits for every object to become ready.
-		outcome := core.OutcomeFail
-		if s.Passed && s.ExecutionErrors == "" && s.JobConfig.JobIterations > 0 && s.JobConfig.WaitWhenFinished && s.JobConfig.VerifyObjects && s.JobConfig.ErrorOnVerify {
-			outcome = core.OutcomePass
-		}
-		checks[pvcBoundCheck] = outcome
-		metrics = append(metrics, core.Metric{Name: "pvc_requested_count", Value: float64(s.JobConfig.JobIterations), Unit: "count"})
-		break
-	}
-	if trID == "TR-VIRT-019" {
-		var lifecycleSeconds float64
-		for _, s := range summaries {
-			lifecycleSeconds += s.ElapsedTime
-		}
-		if lifecycleSeconds > 0 {
-			metrics = append(metrics, core.Metric{
-				Name:  virtParallelMetric,
-				Value: lifecycleSeconds,
-				Unit:  "s",
-			})
+	result := core.TestResult{TRID: trID, Metrics: metrics, Checks: checks, Native: native}
+	if spec, ok := workloadSpecs[workload]; ok && spec.mapResults != nil {
+		if err := spec.mapResults(summaries, data, &result); err != nil {
+			return core.TestResult{}, err
 		}
 	}
 	raw, _ := json.Marshal(map[string]any{"jobSummary": summaries})
-	return core.TestResult{TRID: trID, Metrics: metrics, Checks: checks, Native: native, Raw: raw}, nil
+	result.Raw = raw
+	return result, nil
 }

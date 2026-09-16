@@ -85,6 +85,10 @@ func ParseResults(trID string, data map[string][]byte) (core.TestResult, error) 
 
 // parseResults normalizes configured snapshot metrics.
 func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (core.TestResult, error) {
+	return parseResultsWithScenario(trID, data, requestedSnapshots, scenarioFor(trID))
+}
+
+func parseResultsWithScenario(trID string, data map[string][]byte, requestedSnapshots int, scenario snapshotScenario) (core.TestResult, error) {
 	summaries, native, err := parseJobSummaries(data)
 	if err != nil {
 		return core.TestResult{}, err
@@ -153,13 +157,12 @@ func parseResults(trID string, data map[string][]byte, requestedSnapshots int) (
 			core.Metric{Name: MetricSnapshotSuccessRate, Value: float64(ready) / float64(requestedSnapshots) * 100, Unit: "%"},
 		)
 		metrics = append(metrics, core.Metric{Name: MetricSnapshotBatchCompletionTime, Value: elapsed, Unit: "s"})
-		if trID == "TR-VIRT-027" {
-			// TR-027 runs with one source VM/volume, so the ready count is
-			// the measured snapshot depth for that volume.
+		if scenario.SnapshotsPerVolume {
+			// The scenario declares one source volume, so ready count is its depth.
 			metrics = append(metrics, core.Metric{Name: MetricSnapshotsPerVolume, Value: float64(ready), Unit: "count"})
 		}
 	}
-	if requestedSnapshots == 0 && trID == "TR-VIRT-027" {
+	if requestedSnapshots == 0 && scenario.AllowZeroSnapshots {
 		// Explicit reduced mode: the source volume was provisioned, but no
 		// snapshots were requested. Keep the result measurable and make the
 		// intentional reduction visible as a failed 250-snapshot requirement.

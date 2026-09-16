@@ -1,0 +1,21 @@
+[
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 0,
+    "passed": true,
+    "jobConfig": {
+      "name": "virt-parallel-start-fresh",
+      "jobType": "delete"
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 128,
+    "passed": false,
+    "executionErrors": "VM virt-parallel-2 failed",
+    "jobConfig": {
+      "name": "virt-parallel-create-vms-0",
+      "jobType": "create"
+    }
+  }
+]

@@ -204,7 +204,7 @@ func (parser) Parse(_ context.Context, _ *core.RunCtx, bag *core.Bag, logs core.
 			continue
 		}
 
-		res, err := ParseResults(r.TRID, sub)
+		res, err := ParseResults(r.Workload, r.TRID, sub)
 		if err != nil {
 			return nil, err
 		}

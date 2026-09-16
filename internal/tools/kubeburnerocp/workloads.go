@@ -29,17 +29,19 @@ type argSpec struct {
 // (value from the backend), typed flags, and cluster prerequisites. Adding a
 // workload is a new entry here — no engine-code changes.
 type workloadSpec struct {
-	sub      string
-	scFlag   string
-	args     []argSpec
-	prereqs  []clustercheck.Capability
-	hostBins []string
+	sub        string
+	scFlag     string
+	args       []argSpec
+	prereqs    []clustercheck.Capability
+	hostBins   []string
+	mapResults resultMapper
 }
 
 var workloadSpecs = map[string]workloadSpec{
 	WorkloadPVCDensity: {
-		sub:    "pvc-density",
-		scFlag: "--storage-class-name",
+		sub:        "pvc-density",
+		scFlag:     "--storage-class-name",
+		mapResults: mapPVCDensityResults,
 		args: []argSpec{
 			{flag: "--iterations", param: "iterations", typ: argInt},
 			{flag: "--claim-size", param: "claim_size", typ: argString},
@@ -47,8 +49,9 @@ var workloadSpecs = map[string]workloadSpec{
 		},
 	},
 	WorkloadVirtMigration: {
-		sub:    "virt-migration",
-		scFlag: "--storage-class",
+		sub:        "virt-migration",
+		scFlag:     "--storage-class",
+		mapResults: mapVirtMigrationResults,
 		args: []argSpec{
 			{flag: "--iterations", param: "iterations", typ: argInt},
 			{flag: "--iteration-vms", param: "iteration_vms", typ: argInt},
@@ -60,8 +63,9 @@ var workloadSpecs = map[string]workloadSpec{
 		hostBins: []string{"virtctl"},
 	},
 	WorkloadVirtParallel: {
-		sub:    "virt-parallel",
-		scFlag: "--storage-class",
+		sub:        "virt-parallel",
+		scFlag:     "--storage-class",
+		mapResults: mapVirtParallelResults,
 		args: []argSpec{
 			{flag: "--initial-vms", param: "initial_vms", typ: argInt, optional: true},
 			{flag: "--increment", param: "increment", typ: argInt, optional: true},

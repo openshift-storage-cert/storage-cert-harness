@@ -350,6 +350,16 @@ func TestParams_TR027UsesCanonicalSnapshotNames(t *testing.T) {
 	}
 }
 
+func TestParams_TR027RequiresSingleSourceVolume(t *testing.T) {
+	p := resolveParams([]core.TestRequirement{{Params: map[string]any{
+		"replicas":       2,
+		"snapshot_count": 250,
+	}}})
+	if err := p.validateFor("TR-VIRT-027"); err == nil {
+		t.Fatal("TR-VIRT-027 accepted replicas=2, want single-source rejection")
+	}
+}
+
 func TestParams_TR027AllowsExplicitZeroSnapshotReducedMode(t *testing.T) {
 	p := Params{Replicas: 1, SnapshotCount: 0}
 	if err := p.validateFor("TR-VIRT-027"); err != nil {
