@@ -1,12 +1,12 @@
 # Python runtime is required by the packaged virtbench FIO CLI. The harness
 # binary must be built before this image build and is copied from bin/harness.
-# ARG defaults must match ci/config/images.env (ci/scripts/sync-images-yml.sh --check).
+# Image references are supplied by ci/config/images.env through the build scripts.
 # Keep the harness build version distinct from the base image version.
 ARG HARNESS_VERSION=0.0.0-dev
 ARG IMAGE_VERSION=0.0.0-dev
 ARG TARGETARCH=amd64
-ARG BUILD_IMAGE=registry.access.redhat.com/ubi9/python-311:9.8
-ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/python-311:9.8
+ARG BUILD_IMAGE
+ARG RUNTIME_IMAGE
 ARG KUBE_BURNER_VERSION=v2.8.5
 ARG KUBE_BURNER_OCP_VERSION=v1.12.3
 ARG OPENSHIFT_CLIENT_VERSION=4.22.11
@@ -35,7 +35,7 @@ RUN set -eux; \
       -o /tmp/virtctl; \
     install -m 0755 /tmp/virtctl /virtctl
 
-FROM ${RUNTIME_IMAGE} AS virtbench-builder
+FROM ${BUILD_IMAGE} AS virtbench-builder
 ARG TARGETARCH
 ARG OPENSHIFT_CLIENT_VERSION
 ARG VIRTBENCH_VERSION
@@ -45,11 +45,11 @@ RUN set -eux; \
     curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${VIRTBENCH_VERSION}.tar.gz" \
       | tar xz --strip-components=1 -C /opt/virtbench; \
     python3 -m venv /opt/virtbench-venv; \
+    /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'; \
     /opt/virtbench-venv/bin/pip install --no-cache-dir /opt/virtbench; \
     /opt/virtbench-venv/bin/virtbench --help >/dev/null; \
-    test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"
-
-RUN set -eux; \
+    test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"; \
+    rm -rf /opt/virtbench/docs; \
     archive="openshift-client-linux-${TARGETARCH}-rhel9-${OPENSHIFT_CLIENT_VERSION}.tar.gz"; \
     mkdir -p /tmp/openshift-client; \
     curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" \
@@ -64,18 +64,28 @@ USER 0
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
 LABEL io.storage-cert-harness.virtbench.version="${VIRTBENCH_VERSION}"
 LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
-COPY bin/harness /usr/bin/harness
-COPY --from=builder /kube-burner /usr/bin/kube-burner
-COPY --from=builder /kube-burner-ocp /usr/bin/kube-burner-ocp
-COPY --from=builder /virtctl /usr/bin/virtctl
+# Multiple sources are allowed when the destination is a directory (trailing slash).
+COPY bin/harness /usr/bin/
+COPY --from=builder /kube-burner /kube-burner-ocp /virtctl /usr/bin/
+COPY --from=virtbench-builder /kubectl /opt/virtbench-venv/bin/virtbench /usr/bin/
 COPY --from=virtbench-builder /opt/virtbench /opt/virtbench-runtime
+COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
-COPY --from=virtbench-builder /opt/virtbench-venv/bin/virtbench /usr/bin/virtbench
-COPY --from=virtbench-builder /kubectl /usr/bin/kubectl
-COPY container-entrypoint.sh /usr/local/bin/container-entrypoint.sh
-RUN mkdir -p /home/harness/.config /home/harness/.local/share/containers \
+COPY container-entrypoint.sh /usr/local/bin/
+# Refresh UBI RPMs at build time; keep /var/lib/rpm so Trivy can detect OS packages.
+RUN python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
+  && rm -rf /opt/virtbench-runtime/docs \
+  && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
-  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness
+  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness \
+  && if command -v microdnf >/dev/null 2>&1; then \
+       microdnf update -y --nodocs; \
+       microdnf clean all; \
+     fi \
+  && if command -v dnf >/dev/null 2>&1; then \
+       dnf clean all; \
+     fi \
+  && rm -rf /var/lib/dnf/history* /var/cache/dnf
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
 ENV HOME=/home/harness
 # The harness writes reports and tool artifacts to operator-provided bind mounts.

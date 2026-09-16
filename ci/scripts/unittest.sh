@@ -6,5 +6,8 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "unittest"
 require_cmd go
+if [[ "${GOPROXY}" == "off" ]]; then
+	export GOPROXY="${GO_TOOLCHAIN_GOPROXY:-https://proxy.golang.org,direct}"
+fi
 go test ./...
 echo "unit tests ok"
