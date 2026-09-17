@@ -24,16 +24,17 @@ WORKDIR /src
 RUN set -eux; \
     case "${TARGETARCH}" in amd64) tool_arch=x86_64; kube_arch=x86_64; virtctl_arch=amd64 ;; arm64) tool_arch=arm64; kube_arch=arm64; virtctl_arch=arm64 ;; *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; esac; \
     kube_ver="${KUBE_BURNER_VERSION#v}"; \
-    curl -sSfL "https://github.com/kube-burner/kube-burner/releases/download/${KUBE_BURNER_VERSION}/kube-burner-V${kube_ver}-linux-${kube_arch}.tar.gz" \
-      | tar xz -C /tmp kube-burner; \
+    curl -sSfL "https://github.com/kube-burner/kube-burner/releases/download/${KUBE_BURNER_VERSION}/kube-burner-V${kube_ver}-linux-${kube_arch}.tar.gz" -o /tmp/kube-burner.tar.gz; \
+    tar xz -C /tmp -f /tmp/kube-burner.tar.gz kube-burner; \
     install -m 0755 /tmp/kube-burner /kube-burner; \
     ocp_ver="${KUBE_BURNER_OCP_VERSION#v}"; \
-    curl -sSfL "https://github.com/kube-burner/kube-burner-ocp/releases/download/${KUBE_BURNER_OCP_VERSION}/kube-burner-ocp-V${ocp_ver}-linux-${tool_arch}.tar.gz" \
-      | tar xz -C /tmp kube-burner-ocp; \
+    curl -sSfL "https://github.com/kube-burner/kube-burner-ocp/releases/download/${KUBE_BURNER_OCP_VERSION}/kube-burner-ocp-V${ocp_ver}-linux-${tool_arch}.tar.gz" -o /tmp/kube-burner-ocp.tar.gz; \
+    tar xz -C /tmp -f /tmp/kube-burner-ocp.tar.gz kube-burner-ocp; \
     install -m 0755 /tmp/kube-burner-ocp /kube-burner-ocp; \
     curl -sSfL "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/virtctl-${KUBEVIRT_VERSION}-linux-${virtctl_arch}" \
       -o /tmp/virtctl; \
     install -m 0755 /tmp/virtctl /virtctl
+USER 65532
 
 FROM ${BUILD_IMAGE} AS virtbench-builder
 ARG TARGETARCH
@@ -42,8 +43,8 @@ ARG VIRTBENCH_VERSION
 USER 0
 RUN set -eux; \
     mkdir -p /opt/virtbench; \
-    curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${VIRTBENCH_VERSION}.tar.gz" \
-      | tar xz --strip-components=1 -C /opt/virtbench; \
+    curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${VIRTBENCH_VERSION}.tar.gz" -o /tmp/virtbench.tar.gz; \
+    tar xz --strip-components=1 -C /opt/virtbench -f /tmp/virtbench.tar.gz; \
     python3 -m venv /opt/virtbench-venv; \
     /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1'; \
     /opt/virtbench-venv/bin/pip install --no-cache-dir /opt/virtbench; \
@@ -52,9 +53,10 @@ RUN set -eux; \
     rm -rf /opt/virtbench/docs; \
     archive="openshift-client-linux-${TARGETARCH}-rhel9-${OPENSHIFT_CLIENT_VERSION}.tar.gz"; \
     mkdir -p /tmp/openshift-client; \
-    curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" \
-      | tar xz -C /tmp/openshift-client; \
+    curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" -o "/tmp/${archive}"; \
+    tar xz -C /tmp/openshift-client -f "/tmp/${archive}"; \
     install -m 0755 /tmp/openshift-client/kubectl /kubectl
+USER 65532
 
 FROM ${RUNTIME_IMAGE}
 ARG IMAGE_VERSION
@@ -88,8 +90,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade 'setuptools>=78.1.1' \
   && rm -rf /var/lib/dnf/history* /var/cache/dnf
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
 ENV HOME=/home/harness
-# The harness writes reports and tool artifacts to operator-provided bind mounts.
-# Rootless engines map this root user to the invoking host user, while rootful
-# engines can write mounts owned by arbitrary host UIDs.
-USER 0
+# The image runs as the non-root image user by default. Callers that need a
+# different bind-mount mapping can override the container UID at runtime.
+USER 65532
 ENTRYPOINT ["/usr/local/bin/container-entrypoint.sh"]
