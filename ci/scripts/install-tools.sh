@@ -258,6 +258,33 @@ install_dive() {
 		dive
 }
 
+install_hadolint() {
+	local ver="${HADOLINT_VERSION#v}"
+	local mach asset bin
+	bin="$(resolve_bin hadolint || true)"
+	if [[ -n "${bin}" ]] && version_has "${bin}" "${ver}" --version; then
+		echo "ok  hadolint  ${bin}  v${ver}"
+		return
+	fi
+	if [[ "${check_only}" -eq 1 ]]; then
+		echo "missing  hadolint  (want v${ver})"
+		return
+	fi
+	need curl
+	mach="$(uname -m)"
+	case "${mach}" in
+	x86_64 | amd64) asset="hadolint-Linux-x86_64" ;;
+	aarch64 | arm64) asset="hadolint-Linux-arm64" ;;
+	*) die "unsupported architecture for hadolint: ${mach}" ;;
+	esac
+	echo "installing hadolint v${ver} (GitHub release binary)"
+	curl -sSfL \
+		-o "${USER_BIN}/hadolint" \
+		"https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}"
+	chmod 0755 "${USER_BIN}/hadolint"
+	echo "ok  hadolint  ${USER_BIN}/hadolint  v${ver}"
+}
+
 install_yamllint() {
 	skip_or_missing yamllint && return
 	need python3
@@ -323,11 +350,12 @@ install_go_pkg govulncheck "golang.org/x/vuln/cmd/govulncheck@latest"
 install_gosec
 install_trivy
 install_dive
+install_hadolint
 install_podman
 
 if [[ "${check_only}" -eq 1 ]]; then
 	missing=0
-	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive podman go git; do
+	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive hadolint podman go git; do
 		if [[ "${c}" == "golangci-lint" ]]; then
 			golangci_bin_ok "${USER_BIN}/golangci-lint" "${GOLANGCI_LINT_VERSION#v}" ||
 				{ have go && golangci_bin_ok "$(go_bin_dir)/golangci-lint" "${GOLANGCI_LINT_VERSION#v}"; } ||

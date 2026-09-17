@@ -3,13 +3,11 @@
 Script-centric checks for **storage-cert-harness** ([ECOPROJECT-5274](https://redhat.atlassian.net/browse/ECOPROJECT-5274),
 [ADR-0010](../decisions/0010-ci-scripts-and-multi-host.md),
 [ADR-0011](../decisions/0011-harness-ships-as-container-image.md)). The same `ci/scripts/*.sh`
-files run locally, in GitLab CI, in GitHub Actions, and via
+files run locally, in GitHub Actions, and via
 pre-commit (yamllint, markdownlint, golangci-lint, secret-scan).
 
 **Support status:** GitHub Actions is the only supported and maintained CI
-provider. GitLab CI is no longer supported, and its configuration and behavior
-described below are legacy reference only. CI workflow and documentation
-updates target GitHub Actions flows only.
+provider. GitLab CI is no longer supported.
 
 **`unittest.sh`** (`make unittest`) runs unit tests only (`go test ./...`:
 package tests and golden-file parser tests). It does not need a cluster.
@@ -18,8 +16,6 @@ Offline CLI smoke is `replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
 (see Open items).
 
 The GitHub Actions `supply-chain` job is gating: a failure fails the workflow.
-GitLab keeps its equivalent job `allow_failure` while ECOPROJECT-5419 remains
-open.
 
 ## Layout
 
@@ -27,7 +23,7 @@ open.
 ci/
   scripts/    # portable job logic
     ci-utils.sh          # shared helpers (REPO_ROOT, version funcs, container_engine)
-    images.sh            # load ci/config/images.env, derive Trivy/Dive refs
+    images.sh            # load ci/config/images.env, derive tool refs
     build.sh             # bin/harness (binary_version ldflags)
     image-build.sh       # linux/amd64 container → dist/harness-image.tar
     image-contents-check.sh  # verify harness + kubectl + virtctl + tool binaries
@@ -38,7 +34,7 @@ ci/
     ...                  # lint-*.sh, unittest.sh, secret-scan.sh, etc.
   config/     # linters, pins, allowlists
     images.env           # pinned CI images and tool versions (single source of truth)
-    images.yml           # generated YAML projection for GitLab include:
+    images.yml           # generated image configuration
     golangci.yml         # golangci-lint config
     yamllint.yaml        # yamllint config
     markdownlint-cli2.jsonc  # markdownlint-cli2 config (includes MD rule overrides)
@@ -56,7 +52,6 @@ flowchart TB
   subgraph wrappers [Thin wrappers]
     Local["make ci / ./ci/scripts/ci.sh"]
     PreCommit["pre-commit: yaml + md + go + secret-scan + version-lock"]
-    GitLab[".gitlab-ci.yml"]
     GHA[".github/workflows/ci.yml"]
   end
   subgraph scripts [ci/scripts/]
@@ -71,6 +66,7 @@ flowchart TB
     Replay["replay-smoke.sh"]
     Image["image-build.sh"]
     ImageCheck["image-contents-check.sh"]
+    ImageLint["image-lint.sh"]
     ImageTrivy["image-scan-trivy.sh"]
     ImageDive["image-scan-dive.sh"]
   end
@@ -84,6 +80,7 @@ flowchart TB
   Local --> Replay
   Local --> Image
   Local --> ImageCheck
+  Local --> ImageLint
   Local --> ImageTrivy
   Local --> ImageDive
   PreCommit --> LintYaml
@@ -91,18 +88,6 @@ flowchart TB
   PreCommit --> LintMd
   PreCommit --> LintGo
   PreCommit --> Secret
-  GitLab --> LintYaml
-  GitLab --> LintMd
-  GitLab --> LintGo
-  GitLab --> Unittest
-  GitLab --> Secret
-  GitLab --> Supply
-  GitLab --> Build
-  GitLab --> Replay
-  GitLab --> Image
-  GitLab --> ImageCheck
-  GitLab --> ImageTrivy
-  GitLab --> ImageDive
   GHA --> LintYaml
   GHA --> LintMd
   GHA --> LintGo
@@ -120,10 +105,8 @@ Offline Go: `GOPROXY=off` and `GOFLAGS=-mod=vendor`. Commit `vendor/`.
 gosec is the GitHub **release binary** (`GOSEC_VERSION`); do not `go install`
 it in CI — compiling it pulls AI SDKs and OOM-kills CEE pods.
 
-`go mod verify` / `go mod vendor` need a populated module cache. GitLab
-jobs are cold (`GOMODCACHE` empty), so those commands fail with
-`module lookup disabled by GOPROXY=off` and never reach govulncheck.
-A laptop with a warm cache succeeds — same script, different cache.
+`go mod verify` / `go mod vendor` need a populated module cache. A cold cache
+fails with `module lookup disabled by GOPROXY=off` before govulncheck runs.
 `supply-chain.sh` logs each step; under `GOPROXY=off` it continues from
 committed `vendor/` when verify/vendor cannot run. Integrity on CEE is
 `vendor/` + `go list -mod=vendor`. To force verify locally:
@@ -147,7 +130,7 @@ The tracks may diverge (binary `1.2.0` inside image tagged `3.0.0`).
 
 ### Computed version strings (`ci-utils.sh`)
 
-| Helper | Local / MR / PR | CI push to `main` |
+| Helper | Local / PR | CI push to `main` |
 |--------|-----------------|-------------------|
 | `binary_version()` | `$(cat NEXT-VERSION)-$(git_sha)` | `$(cat NEXT-VERSION)` |
 | `image_version()` | `$(cat NEXT-IMAGE-VERSION)-$(git_sha)` | `$(cat NEXT-IMAGE-VERSION)` |
@@ -155,8 +138,8 @@ The tracks may diverge (binary `1.2.0` inside image tagged `3.0.0`).
 Process-only overrides (do not write files):
 `HARNESS_VERSION` → binary; `HARNESS_IMAGE_VERSION` → image tag.
 
-`is_main_push`: GitLab `$CI_COMMIT_BRANCH == main && $CI_PIPELINE_SOURCE == push`;
-GitHub `$GITHUB_REF == refs/heads/main && $GITHUB_EVENT_NAME == push`.
+`is_main_push`: GitHub `$GITHUB_REF == refs/heads/main &&
+$GITHUB_EVENT_NAME == push`.
 Local checkout of main still gets `-sha`.
 
 ### Wiring
@@ -190,9 +173,8 @@ consume either number:
 
 1. `VERSION :=` current `NEXT-VERSION`; `NEXT-VERSION` patch + 1
 2. `IMAGE-VERSION :=` current `NEXT-IMAGE-VERSION`; `NEXT-IMAGE-VERSION` patch + 1
-3. Stage all four files and set `ALLOW_VERSION_CHANGE=1`.
-  GitLab commits and pushes them directly; GitHub passes the staged changes
-  to its automated version-bump pull request.
+3. Stage all four files and set `ALLOW_VERSION_CHANGE=1`. GitHub passes the
+  staged changes to its automated version-bump pull request.
 
 Refuses unless `is_main_push` and each NEXT is valid semver greater than its
 released counterpart.
@@ -200,8 +182,8 @@ released counterpart.
 ### Bootstrap, lock, and setting one track
 
 Pre-commit hook `version-files-locked` blocks staged changes to the four
-version files unless `ALLOW_VERSION_CHANGE=1` or `GITLAB_CI` / `GITHUB_ACTIONS`
-is set. On failure, it prints the commands below. Never use `--no-verify`.
+version files unless `ALLOW_VERSION_CHANGE=1` or `GITHUB_ACTIONS` is set. On
+failure, it prints the commands below. Never use `--no-verify`.
 
 **Initial (both tracks):**
 
@@ -232,12 +214,6 @@ HARNESS_IMAGE_VERSION=2.0.0-local ./ci/scripts/image-build.sh
 **Not supported:** editing the released `VERSION` / `IMAGE-VERSION` files by
 hand (CI-owned after bootstrap); `-rc` in the NEXT files.
 
-GitLab job `version-bump`: `main` push only, `needs` image-build + both scans,
-runs `advance-version.sh`, commits the four files, and pushes the detached
-checkout with `HEAD:${CI_COMMIT_BRANCH}`. The remote is configured with the
-`GIT_PUSH_TOKEN` project variable. GitLab requires `CI_PROJECT_PATH` and
-`CI_COMMIT_BRANCH` for this push.
-
 GitHub's `version-bump` job has `contents: write` and `pull-requests: write`.
 It runs `advance-version.sh` with `VERSION_BUMP_PR=1`, which stages the four
 files without committing. `peter-evans/create-pull-request` creates or updates
@@ -261,8 +237,8 @@ installs a pinned `actionlint` release and validates all
 
 On a successful `main` publish, the `version-bump` job creates the automated
 version-bump PR. The shared `advance-version.sh` script configures the
-`github-actions[bot]` identity when running in GitHub Actions or GitLab CI;
-local runs preserve the developer's Git identity. The resulting commit is not
+`github-actions[bot]` identity when running in GitHub Actions; local runs
+preserve the developer's Git identity. The resulting commit is not
 cryptographically signed by the current CI setup.
 
 The top-level workflow dispatch input is:
@@ -277,24 +253,26 @@ The top-level workflow dispatch input is:
 `workflow_dispatch` with `publish=true` can also push from `main`. A `test-ci`
 push cannot publish an image or advance version files.
 
-**Image scans (GitHub vs GitLab vs local).**
+**Image lint and scans.**
 
-| Where | `image-scan-trivy` / `image-scan-dive` | Gates publish? |
-|-------|----------------------------------------|----------------|
-| GitHub Actions | Run with the image build; failures are allowed | No |
-| GitLab CI | Run after `image-build`; `allow_failure: true` | No |
-| Local | `make image-scan` / `make ci-image` | N/A |
+| Where | `image-lint` | `image-scan-trivy` / `image-scan-dive` |
+|-------|--------------|----------------------------------------|
+| GitHub Actions | Before `image-build`; `continue-on-error: true` | Run after image build; failures are allowed |
+| Local | `make image-lint` | `make image-scan` / `make ci-image` |
 
 Optional GitHub repository variable (unset by default): `CI_RUN_REPLAY_SMOKE` set
-to `true` to run the smoke job for debugging. The image scans run by default and
-remain non-gating.
+to `true` to run the smoke job for debugging. The image lint and image scans run
+by default and remain non-gating.
 
-Run scans locally when you need reports: `make image-build && make image-scan`.
+Run the Containerfile lint locally with `make image-lint`. It uses the pinned
+Hadolint image from `CI_TOOLS_IMAGE` and reports any privileged `USER 0` setup
+lines for context. The Containerfile ends each stage as non-root and Hadolint
+is clean. Run image scans locally with
+`make image-build && make image-scan`.
 Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
-`dist/dive-report.txt`. GitLab uploads those paths as job artifacts when the
-scan jobs run. GitHub runs the scan jobs with failures allowed, so logs and
-reports are available as job artifacts; it produces no Code scanning (SARIF)
-upload. Local `dist/` output remains available via `make image-scan`.
+`dist/dive-report.txt`. GitHub runs the scan jobs with failures allowed, so
+logs and reports are available as job artifacts; it produces no Code scanning
+(SARIF) upload. Local `dist/` output remains available via `make image-scan`.
 
 The `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can
 inspect the complete history.
@@ -316,79 +294,21 @@ All three must be on `PATH` under `/usr/bin/`. Pins live in
 present and runnable after every image build (locally and in CI).
 
 In the supported GitHub Actions flow, `image-push` runs automatically on
-`main` pushes. The GitLab manual-push behavior described in older sections is
-legacy reference only. `supply-chain` is gating on GitHub Actions; GitLab's
-former job remained allow-failure.
-
-## MR vs main
-
-```mermaid
-flowchart LR
-  subgraph mr [Every MR / GitLab]
-    LintYaml2[lint-yaml + layout-check]
-    LintMd2[lint-md]
-    LintGo2[lint-go]
-    Unittest2[unittest]
-    Secret2[secret-scan]
-    Supply2[supply-chain]
-    BuildMR[build linux/amd64 binary]
-    ImageMR[image-build PUSH=0]
-    LintYaml2 --> BuildMR
-    LintMd2 --> BuildMR
-    LintGo2 --> BuildMR
-    Unittest2 --> BuildMR
-    Secret2 --> BuildMR
-    Supply2 --> BuildMR
-    BuildMR --> ImageMR
-    ImageMR --> TrivyMR[image-scan-trivy]
-    ImageMR --> DiveMR[image-scan-dive]
-  end
-  subgraph mainline [Push to main]
-    SameGates[same gates as MR]
-    ImagePushGH[GitHub: image-push automatic]
-    ImagePushGL[GitLab: image-push manual]
-    VersionBump[advance-version.sh]
-    SameGates --> ImagePushGH
-    SameGates --> ImagePushGL
-    ImagePushGH --> VersionBump
-    ImagePushGL --> VersionBump
-  end
-```
-
-On **GitHub**, `image-push` runs automatically after a successful `image-build`
-on every `main` push (see `ci-publish.yml`). On **GitLab**, the same script runs
-from a **manual** `image-push` job on `main`. `version-bump` follows a
-successful push on both hosts.
-
-GitLab CEE runners: **`tags: [itup-alm-x86]`** on every job (same as
-csi-certification-kb) and `default.tags` so a new job cannot omit it. Untagged
-jobs pend. GitHub Actions uses `ubuntu-latest` (no ITUP tag).
-
-**Container engine:** local default is **podman** (`CONTAINER_ENGINE`, see
-`ci/scripts/ci-utils.sh`). GitLab image jobs set `CONTAINER_ENGINE=buildah` on
-`quay.io/buildah/stable:v1.39`. GitHub Actions image jobs set
-`CONTAINER_ENGINE=docker`.
+`main` pushes. `supply-chain` is gating.
 
 ## Job images (no Docker Hub)
 
-Pins live in **`ci/config/images.env`**. Shell scripts source `ci/scripts/images.sh`
-(via `ci/scripts/ci-utils.sh` or `install-tools.sh`). GitLab `include`s the
-generated `ci/config/images.yml` because `image:` is resolved at YAML parse time
-and cannot source dotenv. After editing the env file: `make sync-images` (or
-`./ci/scripts/sync-images-yml.sh`). `lint-yaml.sh` fails if the YAML projection
-or Containerfile `ARG` defaults are stale.
-
-CEE `itup-alm-x86` runners share an egress IP. Unauthenticated Docker Hub pulls
-hit `toomanyrequests`; the pod then sits in `ImagePullBackOff` until
-`DeadlineExceeded` (that is the `secret-scan` / `lint-go` failure mode, not a
-Go compile error).
+Pins live in **`ci/config/images.env`**. Shell scripts source
+`ci/scripts/images.sh` via `ci/scripts/ci-utils.sh` or `install-tools.sh`.
+After editing the env file, run `./ci/scripts/sync-images-yml.sh`; the
+generated projection is retained for repository compatibility.
 
 | Job | Pin (`ci/config/images.env`) |
 | --- | --- |
 | lint-yaml | `YAML_LINT_IMAGE` |
 | lint-md | `MD_LINT_IMAGE` |
 | lint-go, unittest, secret-scan, supply-chain, replay-smoke, build | `BUILD_IMAGE` |
-| image-build, image-push | `BUILDAH_IMAGE` |
+| image-build | `BUILDAH_IMAGE` |
 | image-scan-trivy | `BUILD_IMAGE` + Trivy release binary (`TRIVY_VERSION`) |
 | image-scan-dive | `BUILD_IMAGE` + Dive release binary (`DIVE_VERSION`) |
 
@@ -411,40 +331,12 @@ make mirror-ci-tools          # or PUSH=0 ./ci/scripts/mirror-ci-tools.sh to tag
 ```
 
 Tags come from `TRIVY_VERSION` / `DIVE_VERSION` in `ci/config/images.env`
-(`trivy-<version>`, `dive-<tag>`). Do not have GitLab pull
-`docker.io/aquasec/trivy` or `docker.io/wagoodman/dive`.
-
-## GitLab image jobs (Buildah + git)
-
-`image-build` and `image-push` use `BUILDAH_IMAGE` from `ci/config/images.env`
-(Fedora). That image does **not** include git. `ci/scripts/image-build.sh` /
-`ci/scripts/image-push.sh` call `git_sha()` to tag
-`${QUAY_IMAGE}:<version>`.
-
-Both jobs `extends: .buildah`, which sets `CONTAINER_ENGINE=buildah` and
-installs git if missing:
-
-```yaml
-.buildah:
-  image: "${BUILDAH_IMAGE}"
-  variables:
-    CONTAINER_ENGINE: buildah
-  before_script:
-    - command -v git >/dev/null 2>&1 || dnf install -y git-core
-```
-
-`ci/scripts/ci-utils.sh` `git_sha()` prefers `CI_COMMIT_SHA` / `GITHUB_SHA` (first 12
-chars) so the tag is still correct if git is absent. Do not rely on the `"dev"`
-fallback in CI — that would push the wrong tag.
-
-Trivy/Dive scan jobs now run on `BUILD_IMAGE` (go-toolset) with the release
-binary installed in `before_script`. They are not Alpine-based or Buildah jobs.
+(`trivy-<version>`, `dive-<tag>`).
 
 ## Local tools
 
 Install once (idempotent). Requires Go 1.26.7+, git, python3, pip, and npm
-already on `PATH`. Tool versions are `GOLANGCI_LINT_VERSION`, `TRIVY_VERSION`,
-and `DIVE_VERSION` in `ci/config/images.env`.
+already on `PATH`. Tool versions are pinned in `ci/config/images.env`.
 
 ```sh
 ./ci/scripts/install-tools.sh          # install anything missing
@@ -453,8 +345,8 @@ make install-tools
 ```
 
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
-GitLab (`ci/config/images.env`): golangci-lint GitHub release binary into
-`BUILD_IMAGE` (not the Docker Hub `golangci/golangci-lint` image). That
+`ci/config/images.env`: golangci-lint is a GitHub release binary installed
+into `BUILD_IMAGE` (not the Docker Hub `golangci/golangci-lint` image). That
 golangci-lint build needs Go 1.26.7+ because `go.mod` is 1.26.7.
 
 | Tool | Scripts | Installed by |
@@ -467,25 +359,31 @@ golangci-lint build needs Go 1.26.7+ because `go.mod` is 1.26.7.
 | `gosec` | `supply-chain.sh` | GitHub release tarball (`GOSEC_VERSION`). Not `go install`. |
 | `trivy` | `supply-chain.sh`, `image-scan-trivy.sh` | GitHub release tarball → `~/.local/bin` |
 | `dive` | `image-scan-dive.sh` | GitHub release tarball → `~/.local/bin` |
+| `hadolint` | `image-lint.sh` | GitHub release binary (`HADOLINT_VERSION`) → `~/.local/bin` |
 | `go`, `git`, `gofmt` | `lint-go.sh`, `unittest.sh`, `build.sh`, … | not installed here |
 
-Optional: `gitleaks` (secret-scan), `hadolint` (Containerfile lint inside
-Trivy script), `pre-commit` (yamllint + markdownlint + golangci-lint + secret-scan + version-lock).
-Override engine with `CONTAINER_ENGINE=docker` or `CONTAINER_ENGINE=buildah`.
+Optional: `gitleaks` (secret-scan), `pre-commit` (yamllint + markdownlint +
+golangci-lint + secret-scan + version-lock). Hadolint runs from the pinned
+`HADOLINT_VERSION` release binary locally and from the pinned `CI_TOOLS_IMAGE`
+container in CI through `image-lint.sh`; it is not part of the Trivy scan.
+GitHub Actions image jobs and local runs use Podman via
+`CONTAINER_ENGINE=podman`. Override it only when needed with
+`CONTAINER_ENGINE=docker` or `CONTAINER_ENGINE=buildah`.
 
 ## Local
 
 ```sh
 pre-commit install          # yaml + md + go + secret-scan + version-lock → logs/pre-commit-*.log
 ./ci/scripts/install-tools.sh       # one-time: yamllint, markdownlint, golangci-lint, …
-make lint                   # GitLab lint stage: lint-yaml (+ layout-check), lint-md, lint-go
+make lint                   # lint-yaml (+ layout-check), lint-md, lint-go
 make lint-actions           # actionlint for GitHub Actions workflows
-make test                   # GitLab test stage: unittest, secret-scan, supply-chain
+make test                   # unittest, secret-scan, supply-chain
 make build                  # bin/harness + dist/binary-version.txt
 make unittest               # go test ./... only
 ./ci/scripts/ci.sh          # lint + test stages, then replay-smoke
 ./ci/scripts/ci.sh --image  # also build + contents-check + Trivy + Dive with podman (sequential)
 make ci-image               # same as ci.sh --image
+make image-lint             # Hadolint Containerfile check (non-gating in CI)
 make image-scan-trivy       # Trivy only (after make image-build)
 make image-scan-dive        # Dive only
 make set-next-version BINARY=1.0.0   # set next binary version (see Versioning)
@@ -493,13 +391,10 @@ make set-next-version IMAGE=2.0.0    # set next image version
 ```
 
 Hooks run only when staged files match `.pre-commit-config.yaml` (`files:`).
-`supply-chain` is not a pre-commit hook while GitLab `allow_failure` is on
-([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419)). The
-GitHub Actions job is already gating; enable the hook when the GitLab job is
-made gating after govulncheck `GO-2026-4602` is fixed.
+The GitHub Actions `supply-chain` job is gating.
 
-Logs: [`logs/`](../logs/README.md) (gitignored except `logs/README.md`). GitLab
-uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
+Logs: [`logs/`](../logs/README.md) (gitignored except `logs/README.md`). GitHub
+uploads `logs/*.log` when a job fails (not the README).
 
 ## Scripts
 
@@ -507,38 +402,37 @@ uploads `logs/*.log` when a job fails (not the README). GitHub does the same.
 | -------- | ------ |
 | `install-tools.sh` | Local install of lint/scan tools + podman (idempotent; `--check`) |
 | `ci-utils.sh` | Shared helpers: `REPO_ROOT`, `CI_SCRIPTS_DIR`, `CI_CONFIG_DIR`, version functions, `container_engine`, logging |
-| `images.sh` | Load `ci/config/images.env`, derive Trivy/Dive refs |
-| `sync-images-yml.sh` | Project `images.env` → `images.yml` for GitLab; `--check` from lint-yaml |
+| `images.sh` | Load `ci/config/images.env`, derive tool refs |
+| `sync-images-yml.sh` | Project `images.env` → generated `images.yml`; `--check` from lint-yaml |
 | `layout-check.sh` | Verify reorder layout: scripts, configs, version files, no leftovers |
 | `lint-yaml.sh` | yamllint + images.yml/Containerfile pin check + layout-check |
 | `lint-actions.sh` | actionlint validation for `.github/workflows/*.yml` |
 | `lint-md.sh` | markdownlint-cli2 (config from `ci/config/markdownlint-cli2.jsonc`) |
 | `lint-go.sh` | gofmt, go vet, golangci-lint (config from `ci/config/golangci.yml`) |
-| `unittest.sh` | **Unit tests only** (`go test ./...`). GitLab job `unittest`. |
+| `unittest.sh` | **Unit tests only** (`go test ./...`). |
 | `build.sh` | `bin/harness` with `binary_version()` ldflags |
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
-| `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions; GitLab allow-failure** while [ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419) remains open. |
-| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitLab: **manual**. GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
+| `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
+| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (no push). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, `kube-burner`, `kubectl`, `virtctl`, `kube-burner-ocp`, and `virtbench` are in the image |
+| `image-lint.sh` | Hadolint Containerfile check from the pinned `CI_TOOLS_IMAGE`; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
-| `image-push.sh` | Quay push; requires `PUSH=1`. GitHub: **automatic** on `main` push (or `workflow_dispatch` with `publish=true`). GitLab: **manual** on `main`. |
-| `mirror-ci-tools.sh` | Retag Trivy/Dive into `quay.io/virtarraycert/ci_tools`. **Not a GitLab job** — run locally with Quay push access. |
+| `image-push.sh` | Quay push; requires `PUSH=1`. GitHub: **automatic** on `main` push (or `workflow_dispatch` with `publish=true`). |
+| `mirror-ci-tools.sh` | Retag Trivy/Dive/Hadolint into `quay.io/virtarraycert/ci_tools`; run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
 | `advance-version.sh` | Auto-advance both tracks on main push (CI only) |
 
 The **release artifact** is that image ([ADR-0011](../decisions/0011-harness-ships-as-container-image.md)),
-not the GitLab `bin/harness` binary. Registry:
+not the `bin/harness` binary. Registry:
 `quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
-On **GitLab**, Trivy and Dive are separate parallel jobs after `image-build`.
-Both load `dist/harness-image.tar`, write reports under `dist/`, and are
-`allow_failure` (they do not block merge or push). On **GitHub**, both jobs run
-with `continue-on-error: true`; run `make image-scan` locally for
-the same scripts and
-report paths.
+On **GitHub**, `image-lint` runs before `image-build` with
+`continue-on-error: true`; Trivy and Dive run after the build with
+`continue-on-error: true`. Run `make image-lint` or `make image-scan` locally
+for the corresponding checks and report paths.
 
 ## Secret scan
 
@@ -570,21 +464,9 @@ make ci-image      # image-build (linux/amd64 + contents-check) + trivy + dive
 Scratch/logs stay gitignored (`/bin/`, `/dist/`, `/logs/**`, `/ci-local/`).
 Self-tests use `mktemp`.
 
-### GitLab MR/main pipeline
-
-| Job | Asserts |
-|-----|---------|
-| `lint-yaml` | reorder / `layout-check.sh` |
-| `build` | linux/amd64 `bin/harness` + `harness version` == binary track |
-| `image-build` | `linux/amd64` tar + tag == image track + contents-check (`harness`, `kube-burner`, `kube-burner-ocp`, `virtbench`) |
-| `image-scan-trivy` | loads tar, HIGH/CRITICAL gate (`allow_failure`) |
-| `image-scan-dive` | loads tar, wasted-layer gate (`allow_failure`) |
-
-`image-push` is **not** part of MR tests. On GitLab it is **manual** on `main`.
-`version-bump` is main-only and runs after a successful image push.
-
-On GitHub, `image-scan-trivy` and `image-scan-dive` run with
-`continue-on-error: true` and do not block publish.
+On GitHub, `image-lint`, `image-scan-trivy`, and `image-scan-dive` run with
+`continue-on-error: true` and do not block publish. `image-lint` completes
+before `image-build`.
 
 ### GitHub `main` pipeline (publish)
 
@@ -600,41 +482,33 @@ Neither MR/PR runs nor `test-ci` pushes publish an image.
 
 ## Open items
 
-### Supply-chain job (provider-specific gating)
+### Supply-chain job
 
-GitHub Actions fails the workflow when `supply-chain` fails. GitLab still uses
-`allow_failure` ([ECOPROJECT-5419](https://redhat.atlassian.net/browse/ECOPROJECT-5419));
-the job runs and uploads logs, but does not block merge there. Make the GitLab
-job gating after govulncheck `GO-2026-4602` is fixed (go1.26.1+).
+GitHub Actions fails the workflow when `supply-chain` fails.
 
-### Replay-smoke job (skipped on GitHub)
+### Replay-smoke job
 
-GitLab `when: manual` + `allow_failure` (skipped in the UI unless played; does
-not block later jobs). GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_SMOKE=true`; image
-build and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh`
-locally when needed.
+GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_SMOKE=true`; image build
+and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh` locally
+when needed.
 
-### Image scan jobs (non-blocking on GitHub)
+### Image lint and scan jobs (non-blocking)
 
-GitLab runs `image-scan-trivy` and `image-scan-dive` after `image-build` with
-`allow_failure: true` — failures are visible and artifacts are uploaded, but
-they do not block merge or `image-push`. GitHub runs both jobs with
-`continue-on-error: true`; `image-build` alone gates `publish`. GitHub scan logs
-and reports are uploaded as job artifacts, but no Code scanning (SARIF) results
-are produced. Use `make image-build && make image-scan` locally or inspect the
-GitHub job artifacts when you need scan output.
+GitHub runs `image-lint` before `image-build`, then both image scans, with
+`continue-on-error: true`; `image-build` alone gates `publish`. GitHub lint and
+scan logs and reports are uploaded as job artifacts, but no Code scanning
+(SARIF) results are produced. Use `make image-lint` or
+`make image-build && make image-scan` locally when you need the corresponding
+output.
 
 ### Dedicated CI cluster (live smoke)
 
-Today's jobs use hosted **itup-alm-x86** (no cluster). A later live-smoke job
-must **override `tags:`** on that job only so lint/unit tests stay on ALM.
-
-Store `CI_CLUSTER_KUBECONFIG` and `HARNESS_THRESHOLDS_JSON` as GitLab
-**protected, masked**, `main`-only variables (GitHub: environment secrets). Never
-echo them (`set +x`); write kubeconfig to a `0600` temp file and delete it in
-`trap`. Do not artifact full graded reports that contain real SLA bars. Track
-follow-up as ECOPROJECT-5331 (or a new issue) once `internal/kube` and virtbench
-exist.
+Today's jobs use hosted GitHub runners (no cluster). A later live-smoke job
+should use GitHub environment secrets for `CI_CLUSTER_KUBECONFIG` and
+`HARNESS_THRESHOLDS_JSON`. Never echo them (`set +x`); write kubeconfig to a
+`0600` temp file and delete it in `trap`. Do not artifact full graded reports
+that contain real SLA bars. Track follow-up as ECOPROJECT-5331 (or a new issue)
+once `internal/kube` and virtbench exist.
 
 ### AI agent files must not go to public GitHub
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Retag the pinned Trivy and Dive images into quay.io/virtarraycert/ci_tools.
+# Retag the pinned Trivy, Dive, and Hadolint images into quay.io/virtarraycert/ci_tools.
 # That repo is public and starts empty — this is how it gets its tags
 # (ECOPROJECT-5411 / ECOPROJECT-5417).
 #
@@ -32,4 +32,5 @@ mirror() {
 
 mirror "${TRIVY_SRC}" "${CI_TOOLS_IMAGE}:${TRIVY_TAG}"
 mirror "${DIVE_SRC}" "${CI_TOOLS_IMAGE}:${DIVE_TAG}"
-echo "ci_tools mirrors: ${CI_TOOLS_IMAGE}:${TRIVY_TAG} ${CI_TOOLS_IMAGE}:${DIVE_TAG}"
+mirror "${HADOLINT_SRC}" "${CI_TOOLS_IMAGE}:${HADOLINT_TAG}"
+echo "ci_tools mirrors: ${CI_TOOLS_IMAGE}:${TRIVY_TAG} ${CI_TOOLS_IMAGE}:${DIVE_TAG} ${CI_TOOLS_IMAGE}:${HADOLINT_TAG}"

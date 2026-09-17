@@ -10,7 +10,7 @@ _config="$(cd "${_dir}/../config" && pwd)"
 out="${_config}/images.yml"
 
 # Always emit from the file, not from GitLab-injected CI variables.
-unset TRIVY_TAG DIVE_TAG TRIVY_SRC DIVE_SRC TRIVY_IMAGE DIVE_IMAGE 2>/dev/null || true
+unset TRIVY_TAG DIVE_TAG HADOLINT_TAG TRIVY_SRC DIVE_SRC HADOLINT_SRC TRIVY_IMAGE DIVE_IMAGE HADOLINT_IMAGE 2>/dev/null || true
 # shellcheck source=images.sh
 CI_IMAGES_FORCE_FILE=1 source "${_dir}/images.sh"
 
@@ -30,13 +30,17 @@ variables:
   GOLANGCI_LINT_VERSION: "${GOLANGCI_LINT_VERSION}"
   TRIVY_VERSION: "${TRIVY_VERSION}"
   DIVE_VERSION: "${DIVE_VERSION}"
+  HADOLINT_VERSION: "${HADOLINT_VERSION}"
   GOSEC_VERSION: "${GOSEC_VERSION}"
   TRIVY_TAG: "${TRIVY_TAG}"
   DIVE_TAG: "${DIVE_TAG}"
+  HADOLINT_TAG: "${HADOLINT_TAG}"
   TRIVY_SRC: "${TRIVY_SRC}"
   DIVE_SRC: "${DIVE_SRC}"
+  HADOLINT_SRC: "${HADOLINT_SRC}"
   TRIVY_IMAGE: "${TRIVY_IMAGE}"
   DIVE_IMAGE: "${DIVE_IMAGE}"
+  HADOLINT_IMAGE: "${HADOLINT_IMAGE}"
 EOF
 )"
 

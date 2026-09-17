@@ -16,8 +16,19 @@ env:
   GOFLAGS: "-mod=vendor"
 
 jobs:
+  image-lint:
+    # Report Containerfile policy issues without blocking image publication yet.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-lint.sh
+
   image-build:
     runs-on: ubuntu-latest
+    needs: [image-lint]
     outputs:
       success: ${{ steps.report-success.outputs.success }}
     steps:
@@ -28,7 +39,7 @@ jobs:
           path: bin
       - run: chmod +x bin/harness
       - env:
-          CONTAINER_ENGINE: docker
+          CONTAINER_ENGINE: podman
         run: ./ci/scripts/image-build.sh
       - id: upload-image
         uses: actions/upload-artifact@v7
@@ -67,12 +78,14 @@ jobs:
         run: |
           set -euo pipefail
           source ci/scripts/images.sh
-          docker pull "${TRIVY_IMAGE}"
-          container_id="$(docker create "${TRIVY_IMAGE}")"
-          trap 'docker rm "${container_id}" >/dev/null' EXIT
-          docker cp "${container_id}:/usr/local/bin/trivy" "${RUNNER_TEMP}/trivy"
+          podman pull "${TRIVY_IMAGE}"
+          container_id="$(podman create "${TRIVY_IMAGE}")"
+          trap 'podman rm "${container_id}" >/dev/null' EXIT
+          podman cp "${container_id}:/usr/local/bin/trivy" "${RUNNER_TEMP}/trivy"
           sudo install -m 0755 "${RUNNER_TEMP}/trivy" /usr/local/bin/trivy
-      - run: ./ci/scripts/image-scan-trivy.sh
+      - env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-scan-trivy.sh
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -101,10 +114,10 @@ jobs:
         run: |
           set -euo pipefail
           source ci/scripts/images.sh
-          docker pull "${DIVE_IMAGE}"
-          container_id="$(docker create "${DIVE_IMAGE}")"
-          trap 'docker rm "${container_id}" >/dev/null' EXIT
-          docker cp "${container_id}:/usr/local/bin/dive" "${RUNNER_TEMP}/dive"
+          podman pull "${DIVE_IMAGE}"
+          container_id="$(podman create "${DIVE_IMAGE}")"
+          trap 'podman rm "${container_id}" >/dev/null' EXIT
+          podman cp "${container_id}:/usr/local/bin/dive" "${RUNNER_TEMP}/dive"
           sudo install -m 0755 "${RUNNER_TEMP}/dive" /usr/local/bin/dive
       - run: ./ci/scripts/image-scan-dive.sh
       - if: always()
