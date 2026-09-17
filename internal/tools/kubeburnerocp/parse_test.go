@@ -40,7 +40,7 @@ func TestParseResults_PVCDensity_Golden(t *testing.T) {
 		"jobSummary.json",
 		"pvcLatencyQuantilesMeasurement-pvc-density.json",
 		"podLatencyQuantilesMeasurement-pvc-density.json")
-	res, err := ParseResults("TR-STOR-006", data)
+	res, err := ParseResults(WorkloadPVCDensity, "TR-STOR-006", data)
 	if err != nil {
 		t.Fatalf("ParseResults: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestParseResults_PVCDensity_NativeFail(t *testing.T) {
 		"pvcLatencyQuantilesMeasurement-pvc-density.json",
 		"podLatencyQuantilesMeasurement-pvc-density.json")
 	data["jobSummary.json"] = mustRead(t, "pvc-density", "jobSummary-fail.json")
-	res, err := ParseResults("TR-STOR-006", data)
+	res, err := ParseResults(WorkloadPVCDensity, "TR-STOR-006", data)
 	if err != nil {
 		t.Fatalf("ParseResults: %v", err)
 	}
@@ -74,12 +74,15 @@ func TestParseResults_VirtParallel_Golden(t *testing.T) {
 	data := readFixtures(t, "virt-parallel",
 		"jobSummary.json",
 		"vmiLatencyQuantilesMeasurement-virt-parallel-create-vms-0.json")
-	res, err := ParseResults("TR-VIRT-019", data)
+	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
 	if err != nil {
 		t.Fatalf("ParseResults: %v", err)
 	}
 	if res.Native != core.OutcomePass {
 		t.Errorf("native=%s, want pass", res.Native)
+	}
+	if got := res.Checks[virtParallelCheck]; got != core.OutcomePass {
+		t.Errorf("%s=%s, want pass", virtParallelCheck, got)
 	}
 	want := map[string]float64{"vmiLatency_VMReady": 10}
 	got := p99s(res)
@@ -87,6 +90,29 @@ func TestParseResults_VirtParallel_Golden(t *testing.T) {
 		if got[name] != v {
 			t.Errorf("%s p99=%v, want %v", name, got[name], v)
 		}
+	}
+	var lifecycle float64
+	for _, m := range res.Metrics {
+		if m.Name == virtParallelMetric {
+			lifecycle = m.Value
+		}
+	}
+	if lifecycle != 128 {
+		t.Errorf("%s=%v, want 128", virtParallelMetric, lifecycle)
+	}
+}
+
+func TestParseResults_VirtParallelFailedGolden(t *testing.T) {
+	data := map[string][]byte{"jobSummary.json": mustRead(t, "virt-parallel", "jobSummary-fail.json")}
+	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
+	if err != nil {
+		t.Fatalf("ParseResults: %v", err)
+	}
+	if res.Native != core.OutcomeFail || res.Checks[virtParallelCheck] != core.OutcomeFail {
+		t.Fatalf("failed result = native %q checks %+v", res.Native, res.Checks)
+	}
+	if got := res.Metrics[0].Value; got != 128 {
+		t.Fatalf("lifecycle metric = %v, want 128", got)
 	}
 }
 
@@ -130,7 +156,7 @@ func TestPVCDensityCatalogGrading(t *testing.T) {
 			if tc.failedJob {
 				data["jobSummary.json"] = mustRead(t, "pvc-density", "jobSummary-fail.json")
 			}
-			res, err := ParseResults(tr.ID, data)
+			res, err := ParseResults(WorkloadPVCDensity, tr.ID, data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +180,7 @@ func TestPVCDensityRequiresVerifiedWait(t *testing.T) {
 	}
 	summaries[0].JobConfig.WaitWhenFinished = false
 	data["jobSummary.json"], _ = json.Marshal(summaries)
-	res, err := ParseResults("TR-STOR-006", data)
+	res, err := ParseResults(WorkloadPVCDensity, "TR-STOR-006", data)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -152,7 +152,7 @@ func (parser) Parse(_ context.Context, _ *core.RunCtx, bag *core.Bag, logs core.
 	if !ok {
 		return nil, fmt.Errorf("kube-burner: params missing (preflight first)")
 	}
-	res, err := parseResults(trID, logs.Data, p.SnapshotCount)
+	res, err := parseResultsWithScenario(trID, logs.Data, p.SnapshotCount, scenarioFor(trID))
 	if err != nil {
 		return nil, err
 	}
