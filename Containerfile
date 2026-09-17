@@ -33,7 +33,8 @@ RUN set -eux; \
     install -m 0755 /tmp/kube-burner-ocp /kube-burner-ocp; \
     curl -sSfL "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/virtctl-${KUBEVIRT_VERSION}-linux-${virtctl_arch}" \
       -o /tmp/virtctl; \
-    install -m 0755 /tmp/virtctl /virtctl
+    install -m 0755 /tmp/virtctl /virtctl; \
+    rm -f /tmp/kube-burner.tar.gz /tmp/kube-burner-ocp.tar.gz /tmp/kube-burner /tmp/kube-burner-ocp /tmp/virtctl
 USER 65532
 
 FROM ${BUILD_IMAGE} AS virtbench-builder
@@ -55,7 +56,8 @@ RUN set -eux; \
     mkdir -p /tmp/openshift-client; \
     curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" -o "/tmp/${archive}"; \
     tar xz -C /tmp/openshift-client -f "/tmp/${archive}"; \
-    install -m 0755 /tmp/openshift-client/kubectl /kubectl
+    install -m 0755 /tmp/openshift-client/kubectl /kubectl; \
+    rm -rf /tmp/virtbench.tar.gz /tmp/openshift-client
 USER 65532
 
 FROM ${RUNTIME_IMAGE}
