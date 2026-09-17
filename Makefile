@@ -106,6 +106,9 @@ run-quay-image-tests:
 image-contents-check:
 	./ci/scripts/image-contents-check.sh
 
+image-lint:
+	./ci/scripts/image-lint.sh
+
 image-scan-trivy:
 	./ci/scripts/image-scan-trivy.sh
 

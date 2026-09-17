@@ -149,7 +149,7 @@ merge_base() {
 }
 
 # Default container build/run tool is podman (local). Wrappers override:
-# GitLab image jobs set CONTAINER_ENGINE=buildah; GitHub sets docker.
+# GitHub image jobs use Podman; local runs also default to Podman.
 container_engine() {
 	local eng="${CONTAINER_ENGINE:-podman}"
 	case "${eng}" in

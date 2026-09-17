@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Trivy-only image scan (parallel with ci/image-scan-dive.sh).
-# Vulns, secrets in layers, misconfig, CycloneDX SBOM, hadolint on Containerfile.
+# Vulns, secrets in layers, misconfig, and CycloneDX SBOM.
 set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
@@ -60,10 +60,4 @@ trivy "${trivy_input[@]}" \
 trivy "${trivy_input[@]}" \
 	--format cyclonedx \
 	--output "${LOG_DIR}/sbom.cdx.json"
-
-if command -v hadolint >/dev/null 2>&1; then
-	hadolint "${REPO_ROOT}/Containerfile"
-else
-	echo "hadolint not installed; skipped Containerfile lint"
-fi
 echo "image-scan-trivy ok"
