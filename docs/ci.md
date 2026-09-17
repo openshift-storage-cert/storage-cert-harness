@@ -266,8 +266,8 @@ by default and remain non-gating.
 
 Run the Containerfile lint locally with `make image-lint`. It uses the pinned
 Hadolint image from `CI_TOOLS_IMAGE` and reports any privileged `USER 0` setup
-lines for context. The Containerfile ends each stage as non-root and Hadolint
-is clean. Run image scans locally with
+lines for context. The non-gating Hadolint check reports a DL3002 finding because the
+Containerfile ends with `USER 0`. Run image scans locally with
 `make image-build && make image-scan`.
 Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
 `dist/dive-report.txt`. GitHub runs the scan jobs with failures allowed, so
