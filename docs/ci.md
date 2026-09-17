@@ -264,10 +264,10 @@ Optional GitHub repository variable (unset by default): `CI_RUN_REPLAY_SMOKE` se
 to `true` to run the smoke job for debugging. The image lint and image scans run
 by default and remain non-gating.
 
-Run the Containerfile lint locally with `make image-lint`. It uses the pinned
-Hadolint image from `CI_TOOLS_IMAGE` and reports any privileged `USER 0` setup
-lines for context. The non-gating Hadolint check reports a DL3002 finding because the
-Containerfile ends with `USER 0`. Run image scans locally with
+Run the Containerfile lint locally with `make image-lint`. Locally it uses the
+pinned native Hadolint release binary installed by `install-tools.sh`; CI uses
+the pinned Hadolint image from `CI_TOOLS_IMAGE`. The script also reports any
+privileged `USER 0` setup lines for context. Run image scans locally with
 `make image-build && make image-scan`.
 Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
 `dist/dive-report.txt`. GitHub runs the scan jobs with failures allowed, so
@@ -367,8 +367,8 @@ golangci-lint + secret-scan + version-lock). Hadolint runs from the pinned
 `HADOLINT_VERSION` release binary locally and from the pinned `CI_TOOLS_IMAGE`
 container in CI through `image-lint.sh`; it is not part of the Trivy scan.
 GitHub Actions image jobs and local runs use Podman via
-`CONTAINER_ENGINE=podman`. Override it only when needed with
-`CONTAINER_ENGINE=docker` or `CONTAINER_ENGINE=buildah`.
+`CONTAINER_ENGINE=podman`. Podman is the preferred and supported container
+engine for local image builds, scans, tests, and GitHub publication.
 
 ## Local
 
@@ -416,7 +416,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (no push). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, `kube-burner`, `kubectl`, `virtctl`, `kube-burner-ocp`, and `virtbench` are in the image |
-| `image-lint.sh` | Hadolint Containerfile check from the pinned `CI_TOOLS_IMAGE`; reports privileged `USER 0` setup context. |
+| `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
 | `image-push.sh` | Quay push; requires `PUSH=1`. GitHub: **automatic** on `main` push (or `workflow_dispatch` with `publish=true`). |
