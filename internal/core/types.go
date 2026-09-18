@@ -360,8 +360,9 @@ type StorageClassInfo struct {
 }
 
 // Attestation is a partner claim the harness CANNOT observe from the cluster
-// (e.g. a Reference Architecture document, a published SLA page). Anything
-// observable belongs in Environment instead — hence no cross-check field.
+// (e.g. the storage-array model, a Reference Architecture document, or a
+// published SLA page). Anything observable belongs in Environment instead —
+// hence no cross-check field.
 type Attestation struct {
 	Claim    string `json:"claim"`
 	Value    string `json:"value"`

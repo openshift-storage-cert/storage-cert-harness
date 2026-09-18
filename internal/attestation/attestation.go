@@ -1,8 +1,9 @@
-// Package attestation gathers partner-declared, unobservable claims (the
-// Level-3 requirements a run cannot measure from the cluster) and records them
-// on the report. Questions come from a bundled default set, overridable with a
-// file; answers can be supplied non-interactively (the --attestations file) or
-// collected via an interactive prompt. See ADR-0014.
+// Package attestation gathers partner-declared, unobservable claims (including
+// the tested storage-array identity and Level-3 requirements a run cannot
+// measure from the cluster) and records them on the report. Questions come from
+// a bundled default set, overridable with a file; answers can be supplied
+// non-interactively (the --attestations file) or collected via an interactive
+// prompt. See ADR-0014.
 package attestation
 
 import (

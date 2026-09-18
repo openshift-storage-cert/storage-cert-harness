@@ -20,8 +20,9 @@ dependency-free and preserving KB provenance and existing grading.
   the CLI attaches results. Skip collection without a kube CLI so replay and
   unit tests remain usable.
 - **Attestations:** accept `{Claim, Value, SignedBy}` from `--attestations`
-  through a schema/loader. Only unobservable claims belong here, initially
-  Level-3 reference architecture and published SLAs (requirements B/C).
+  through a schema/loader. Only unobservable claims belong here, including the
+  partner-declared storage-array vendor/family/model used with the CSI driver
+  and Level-3 reference architecture and published SLAs (requirements B/C).
   Observable facts belong in Environment. No claim appears in both; attestations
   are not cross-checked.
 - **Level rollup:** group verdicts by `PartnerLevel`. A level passes with at least

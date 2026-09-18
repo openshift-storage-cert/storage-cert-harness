@@ -82,4 +82,13 @@ func TestJUnitExport(t *testing.T) {
 			t.Errorf("junit output missing %q\n---\n%s", want, out)
 		}
 	}
+	var markdown bytes.Buffer
+	if err := WriteMarkdown(&markdown, r); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Attestations", "ra url", "https://x", "Signed by: human:me"} {
+		if !strings.Contains(markdown.String(), want) {
+			t.Errorf("markdown output missing %q\n---\n%s", want, markdown.String())
+		}
+	}
 }
