@@ -495,7 +495,7 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 		b.WriteString("| Claim | Value |\n")
 		b.WriteString("|-------|-------|\n")
 		for _, a := range r.Attestations {
-			fmt.Fprintf(&b, "| %s | %s |\n", attestationLabel(a.Claim), a.Value)
+			fmt.Fprintf(&b, "| %s | %s |\n", strings.NewReplacer(`\`, `\\`, "|", `\|`, "\r\n", "<br>", "\r", "<br>", "\n", "<br>").Replace(attestationLabel(a.Claim)), strings.NewReplacer(`\`, `\\`, "|", `\|`, "\r\n", "<br>", "\r", "<br>", "\n", "<br>").Replace(a.Value))
 		}
 	}
 
