@@ -1,5 +1,5 @@
-# Default manual-attestation questions: the unobservable Level-3 requirements a
-# partner declares by hand (a run cannot measure them from the cluster). Override
+# Default manual-attestation questions: storage-array identity and unobservable
+# Level-3 requirements a partner declares by hand (a run cannot measure them). Override
 # with `run --attestation-questions <file>`. Flat, run-global list — see ADR-0014.
 - claim: storage_array_vendor
   prompt: Storage array vendor
