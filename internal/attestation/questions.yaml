@@ -1,6 +1,26 @@
-# Default manual-attestation questions: the unobservable Level-3 requirements a
-# partner declares by hand (a run cannot measure them from the cluster). Override
+# Default manual-attestation questions: storage-array identity and unobservable
+# Level-3 requirements a partner declares by hand (a run cannot measure them). Override
 # with `run --attestation-questions <file>`. Flat, run-global list — see ADR-0014.
+- claim: storage_array_vendor
+  prompt: Storage array vendor
+  help: Identify the vendor of the storage array or storage platform used for this certification run.
+  required: true
+- claim: storage_array_family
+  prompt: Storage array product family
+  help: Identify the product family under test (for example, ONTAP, PowerStore, or FlashArray).
+  required: true
+- claim: storage_array_model
+  prompt: Storage array model or deployment type
+  help: Identify the specific model under test. For software-defined storage, provide the platform or deployment type instead.
+  required: true
+- claim: storage_array_software_version
+  prompt: Storage array software or firmware version
+  help: Optional version of the array software or firmware used for this certification run.
+  required: false
+- claim: storage_array_protocol
+  prompt: Storage protocol or access mode
+  help: Optional protocol or access mode exercised by the CSI driver (for example, FC, iSCSI, NVMe/TCP, or NFS).
+  required: false
 - claim: reference_architecture_url
   prompt: Reference Architecture document URL
   help: Public URL of the partner reference architecture (Level-3 requirement B).

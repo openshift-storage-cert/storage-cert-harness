@@ -240,12 +240,19 @@ For a normal `run` command:
 - Use `--no-attestations` to skip the prompts and add the attestations later.
 - Use `--attestations ./attestations.json` to read answers from a file.
 
+The built-in questions identify the storage platform tested with the CSI driver
+so the result is understood as certification of a CSI-plus-array combination.
 The file must have this shape:
 
 ```json
 {
   "signed_by": "<person or organization>",
   "claims": {
+    "storage_array_vendor": "<storage-array vendor>",
+    "storage_array_family": "<product family>",
+    "storage_array_model": "<model or deployment type>",
+    "storage_array_software_version": "<optional software or firmware version>",
+    "storage_array_protocol": "<optional protocol or access mode>",
     "reference_architecture_url": "https://example.invalid/reference-architecture",
     "published_slas_url": "https://example.invalid/published-slas"
   }

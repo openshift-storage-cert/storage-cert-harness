@@ -20,6 +20,19 @@
         "generated_date": { "type": "string" }
       }
     },
+    "attestations": {
+      "type": "array",
+      "description": "Partner-declared, unobservable claims about the tested CSI and storage-array combination.",
+      "items": {
+        "type": "object",
+        "required": ["claim", "value"],
+        "properties": {
+          "claim": { "type": "string" },
+          "value": { "type": "string" },
+          "signed_by": { "type": "string" }
+        }
+      }
+    },
     "composition": {
       "type": "object",
       "required": ["parts_count"],

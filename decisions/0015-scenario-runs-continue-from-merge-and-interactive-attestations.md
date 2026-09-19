@@ -23,7 +23,9 @@ currently must pre-author their unobservable claims.
   summary, level rollup, and certified level through `report.Build`. Carry one
   shared Environment and Attestations set.
 - **Interactive attestations:** embed `internal/attestation/questions.yaml`,
-  overridable with `--attestation-questions`. Resolve in order: inherited answers
+  overridable with `--attestation-questions`. The bundled set captures the
+  tested storage-array identity as well as the reference-architecture and SLA
+  URLs. Resolve in order: inherited answers
   (never re-ask), `--attestations` file, `--no-attestations` (silent skip), TTY
   prompt (default-no consent, signer, questions), otherwise warn and skip.
   Attach answers to the report and save `<output>/attestations.json` for reuse.

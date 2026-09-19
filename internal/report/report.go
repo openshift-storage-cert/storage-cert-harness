@@ -481,6 +481,23 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 				core.ExecutionLabel(m.TR, m.Variant), m.Name, m.Percentile, strconv.FormatFloat(m.Value, 'f', -1, 64), m.Unit)
 		}
 	}
+	if len(r.Attestations) > 0 {
+		b.WriteString("\n## Attestations\n\n")
+		for _, a := range r.Attestations {
+			if strings.HasPrefix(a.Claim, "storage_array_") {
+				b.WriteString("The self-reported details below identify the CSI and storage-array combination covered by this report.\n\n")
+				break
+			}
+		}
+		if r.Attestations[0].SignedBy != "" {
+			fmt.Fprintf(&b, "Signed by: %s\n\n", r.Attestations[0].SignedBy)
+		}
+		b.WriteString("| Claim | Value |\n")
+		b.WriteString("|-------|-------|\n")
+		for _, a := range r.Attestations {
+			fmt.Fprintf(&b, "| %s | %s |\n", strings.NewReplacer(`\`, `\\`, "|", `\|`, "\r\n", "<br>", "\r", "<br>", "\n", "<br>").Replace(attestationLabel(a.Claim)), strings.NewReplacer(`\`, `\\`, "|", `\|`, "\r\n", "<br>", "\r", "<br>", "\n", "<br>").Replace(a.Value))
+		}
+	}
 
 	if len(r.Warnings) > 0 {
 		b.WriteString("\n## Warnings\n\n")
@@ -491,4 +508,25 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+func attestationLabel(claim string) string {
+	switch claim {
+	case "storage_array_vendor":
+		return "Storage array vendor"
+	case "storage_array_family":
+		return "Storage array product family"
+	case "storage_array_model":
+		return "Storage array model or deployment type"
+	case "storage_array_software_version":
+		return "Storage array software or firmware version"
+	case "storage_array_protocol":
+		return "Storage protocol or access mode"
+	case "reference_architecture_url":
+		return "Reference architecture URL"
+	case "published_slas_url":
+		return "Published SLAs URL"
+	default:
+		return strings.ReplaceAll(claim, "_", " ")
+	}
 }

@@ -21,6 +21,20 @@ func TestLoadQuestionsDefault(t *testing.T) {
 			t.Fatalf("malformed default question: %+v", q)
 		}
 	}
+	wantRequired := map[string]bool{
+		"storage_array_vendor": true,
+		"storage_array_family": true,
+		"storage_array_model":  true,
+	}
+	for _, q := range qs {
+		if required, ok := wantRequired[q.Claim]; ok && q.Required != required {
+			t.Errorf("default question %q Required=%t, want %t", q.Claim, q.Required, required)
+		}
+		delete(wantRequired, q.Claim)
+	}
+	for claim := range wantRequired {
+		t.Errorf("default questions missing %q", claim)
+	}
 }
 
 func TestLoadQuestionsRejectsPathTraversal(t *testing.T) {
