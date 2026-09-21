@@ -11,8 +11,13 @@ package virtbench
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"slices"
 	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
 )
@@ -53,6 +58,13 @@ func singleNodeCeilingArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRe
 		if node := strParamOr(tr, "node_name", ""); node != "" {
 			args = append(args, "--node-name", node)
 		}
+		if tmpl := strParamOr(tr, "vm_template", ""); tmpl != "" {
+			staged, err := stageTemplate(resultsRoot, tmpl)
+			if err != nil {
+				return nil, fmt.Errorf("virtbench: %s: %w", tr.ID, err)
+			}
+			args = append(args, "--vm-template", staged)
+		}
 		if driver := strParamOr(tr, "storage_driver", ""); driver != "" {
 			args = append(args, "--storage-driver", driver)
 		}
@@ -73,15 +85,83 @@ func singleNodeCeilingArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRe
 // --- Validate --------------------------------------------------------------
 
 // singleNodeCeilingValidate checks the scale params before setup creates
-// cluster resources.
+// cluster resources. Crucially it keeps num_disks and the actual VM template in
+// sync: max_luns_per_node is reported as successful VMs × num_disks, so a
+// num_disks that doesn't match the template's real disk count would misreport
+// the sustained LUN ceiling. virtbench's bundled default template is
+// single-disk (it uses --num-disks only for labeling, never to add disks), so
+// multiple disks require a vm_template that actually defines them.
 func singleNodeCeilingValidate(tr core.TestRequirement) error {
 	if n := intParam(tr, "attempt_vms", singleNodeDefaultCount); n < 1 {
 		return fmt.Errorf("virtbench: %s: attempt_vms must be >= 1", tr.ID)
 	}
-	if n := intParam(tr, "num_disks", 1); n < 1 {
+	disks := intParam(tr, "num_disks", 1)
+	if disks < 1 {
 		return fmt.Errorf("virtbench: %s: num_disks must be >= 1", tr.ID)
 	}
+	tmpl := strParamOr(tr, "vm_template", "")
+	if tmpl == "" {
+		if disks > 1 {
+			return fmt.Errorf("virtbench: %s: num_disks=%d requires a vm_template that defines that many disks (virtbench's bundled default is single-disk)", tr.ID, disks)
+		}
+		return nil
+	}
+	got, err := templateDiskCount(tmpl)
+	if err != nil {
+		return fmt.Errorf("virtbench: %s: cannot count disks in vm_template %q: %w", tr.ID, tmpl, err)
+	}
+	if got != disks {
+		return fmt.Errorf("virtbench: %s: num_disks=%d but vm_template %q defines %d disk(s); they must match so max_luns_per_node is accurate", tr.ID, disks, tmpl, got)
+	}
 	return nil
+}
+
+// templateDiskCount returns the number of non-cloud-init volumes in a VM
+// template, matching virtbench's own detect_disk_count_from_template
+// (datasource-clone): it counts spec.template.spec.volumes, excluding
+// cloud-init. The {{STORAGE_CLASS_NAME}} placeholder is neutralized before
+// parsing (virtbench substitutes it at run time; unresolved, it is not valid
+// YAML).
+func templateDiskCount(path string) (int, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-provided plan param, read-only.
+	if err != nil {
+		return 0, err
+	}
+	clean := strings.ReplaceAll(string(data), "{{STORAGE_CLASS_NAME}}", "placeholder-sc")
+
+	dec := yaml.NewDecoder(strings.NewReader(clean))
+	for {
+		var doc struct {
+			Kind string `yaml:"kind"`
+			Spec struct {
+				Template struct {
+					Spec struct {
+						Volumes []map[string]any `yaml:"volumes"`
+					} `yaml:"spec"`
+				} `yaml:"template"`
+			} `yaml:"spec"`
+		}
+		err := dec.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, err
+		}
+		if doc.Kind != "VirtualMachine" {
+			continue
+		}
+		n := 0
+		for _, v := range doc.Spec.Template.Spec.Volumes {
+			_, cloudNoCloud := v["cloudInitNoCloud"]
+			_, cloudConfig := v["cloudInitConfigDrive"]
+			if !cloudNoCloud && !cloudConfig {
+				n++
+			}
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("no VirtualMachine document found")
 }
 
 // --- Preflight hook ----------------------------------------------------------
