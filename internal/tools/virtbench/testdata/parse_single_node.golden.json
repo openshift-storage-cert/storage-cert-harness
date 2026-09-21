@@ -1,0 +1,80 @@
+[
+  {
+    "tr_id": "TR-VIRT-013",
+    "metrics": [
+      {
+        "name": "clone_duration",
+        "value": 39.8,
+        "unit": "s"
+      },
+      {
+        "name": "clone_duration_max",
+        "value": 71.2,
+        "unit": "s"
+      },
+      {
+        "name": "clone_duration_min",
+        "value": 28.4,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_running",
+        "value": 81.1,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_running_max",
+        "value": 149.6,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_running_min",
+        "value": 55.7,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping",
+        "value": 120.5,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_max",
+        "value": 210.3,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_min",
+        "value": 88.9,
+        "unit": "s"
+      },
+      {
+        "name": "vms_total",
+        "value": 100
+      },
+      {
+        "name": "vms_successful",
+        "value": 62
+      },
+      {
+        "name": "vms_failed",
+        "value": 38
+      },
+      {
+        "name": "vm_success_rate",
+        "value": 62,
+        "unit": "%"
+      },
+      {
+        "name": "total_test_duration",
+        "value": 903.4,
+        "unit": "s"
+      },
+      {
+        "name": "max_vms_per_node",
+        "value": 62,
+        "unit": "count"
+      }
+    ],
+    "native": "pass"
+  }
+]

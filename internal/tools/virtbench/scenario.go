@@ -3,6 +3,7 @@ package virtbench
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/core"
 	"gitlab.cee.redhat.com/eco-special-projects/storage-cert-harness/internal/grader"
@@ -71,6 +72,11 @@ type Scenario struct {
 	// DetailParse turns DetailFile's bytes into extra metrics appended to the
 	// TR's result. Only called when DetailFile was collected.
 	DetailParse func(data []byte) ([]core.Metric, error)
+	// DeriveMetrics computes metrics the parser can't, because they depend on TR
+	// params the parser never sees (it gets only result bytes). The default
+	// evaluator appends them before grading — single-node's max_luns_per_node is
+	// successful VMs × num_disks. Nil adds nothing.
+	DeriveMetrics func(tr core.TestRequirement, res core.TestResult) []core.Metric
 }
 
 // Result file names virtbench writes with --save-results (see the tool's
@@ -157,6 +163,18 @@ var scenarios = []Scenario{
 		CommandCheck:   []string{"fio", "--help"},
 		Validate:       fioValidate,
 	},
+	{
+		AutomationTool:   "virtbench datasource-clone --single-node",
+		ProvidesTR:       "TR-VIRT-013",
+		ResultFile:       SummaryFileName,
+		NSPrefix:         singleNodeNSPrefix,
+		BuildArgs:        singleNodeCeilingArgs(singleNodeNSPrefix),
+		Parse:            ParseSingleNodeCeiling,
+		Preflight:        singleNodeCeilingPreflight,
+		Validate:         singleNodeCeilingValidate,
+		DeriveMetrics:    singleNodeLunMetric,
+		TolerateRunError: true, // virtbench exits 1 whenever any VM failed — expected here (singlenode.go)
+	},
 }
 
 // setupGroup is the shared-setup group key every virtbench scenario belongs to.
@@ -202,6 +220,9 @@ func init() {
 type scenarioEvaluator struct{ sc Scenario }
 
 func (e scenarioEvaluator) Evaluate(_ context.Context, tr core.TestRequirement, res core.TestResult) ([]core.Verdict, error) {
+	if e.sc.DeriveMetrics != nil {
+		res.Metrics = append(slices.Clone(res.Metrics), e.sc.DeriveMetrics(tr, res)...)
+	}
 	if res.Native == core.OutcomeFail {
 		return []core.Verdict{{
 			TR:      tr.ID,

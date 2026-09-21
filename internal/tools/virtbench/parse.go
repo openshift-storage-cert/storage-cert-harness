@@ -276,6 +276,34 @@ func ParseBootStorm(data []byte, trID string) ([]core.TestResult, error) {
 	return res, nil
 }
 
+// ParseSingleNodeCeiling parses the single-node summary and adds
+// max_vms_per_node (TR-VIRT-013's KB gate name) from the achieved successful
+// count. Native is always pass: this scenario deliberately pushes VMs onto one
+// node until scheduling or volume attach fails, so partial failure is the
+// expected result, not a broken run — whether the ceiling is high enough is a
+// question for the max_vms_per_node >= 50 SLA bar, an ordinary graded metric,
+// not a native outcome.
+func ParseSingleNodeCeiling(data []byte, trID string) ([]core.TestResult, error) {
+	res, err := parseSummary(cloneMetricBase, cloneMetricOrder, data, trID)
+	if err != nil {
+		return nil, err
+	}
+	successful := metricValue(res[0].Metrics, "vms_successful")
+	res[0].Metrics = append(res[0].Metrics, core.Metric{Name: "max_vms_per_node", Value: successful, Unit: "count"})
+	res[0].Native = core.OutcomePass
+	return res, nil
+}
+
+// metricValue returns the value of the first metric named name, or 0 if absent.
+func metricValue(metrics []core.Metric, name string) float64 {
+	for _, m := range metrics {
+		if m.Name == name {
+			return m.Value
+		}
+	}
+	return 0
+}
+
 // parseSummary is the shared summary parser. Averages become SLA-scored metrics
 // (unit "s"); max/min and run-level counts are attached as informative metrics.
 // Native is fail if any VM failed.
