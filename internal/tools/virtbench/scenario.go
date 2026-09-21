@@ -128,14 +128,16 @@ var scenarios = []Scenario{
 		// VDI Ready badge (TR-VIRT-018): clone VMs at scale with 2 disks each.
 		// Same datasource-clone parser as TR-VIRT-002, but its own BuildArgs
 		// (clone_at_scale.go): virtbench's --num-disks flag only labels output,
-		// it never adds a disk, so the 2-disk template and --num-disks 2 are
-		// fixed here, not plan inputs. Only gate: clone_duration.
+		// it never adds a disk, so a real 2-disk template is embedded by
+		// default; a plan may swap in its own vm_template/num_disks, validated
+		// against each other (cloneAtScaleValidate). Only gate: clone_duration.
 		AutomationTool: "virtbench datasource-clone --num-disks 2",
 		ProvidesTR:     "TR-VIRT-018",
 		ResultFile:     SummaryFileName,
 		NSPrefix:       "virtbench",
 		BuildArgs:      cloneAtScaleArgs("virtbench"),
 		Parse:          ParseSummary,
+		Validate:       cloneAtScaleValidate,
 		// TR-018's gate is p99 clone provisioning; compute it from the per-VM
 		// samples (the summary carries only avg/max/min).
 		DetailFile:  DetailCloneFileName,
