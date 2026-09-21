@@ -2,6 +2,7 @@ package virtbench
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,4 +129,147 @@ func TestSingleNodeCeilingBelowThresholdFails(t *testing.T) {
 		}
 	}
 	t.Fatal("no sla:max_vms_per_node verdict produced")
+}
+
+// vmTemplate returns a datasource-clone VM template with n non-cloud-init
+// disks (plus a cloud-init volume that must not be counted), using the
+// {{STORAGE_CLASS_NAME}} placeholder virtbench substitutes at run time.
+func vmTemplate(n int) string {
+	var dvTemplates, disks, volumes string
+	for i := 1; i <= n; i++ {
+		dvTemplates += fmt.Sprintf(`    - metadata:
+        name: disk-%d
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: rhel9
+          namespace: openshift-virtualization-os-images
+        storage:
+          resources:
+            requests:
+              storage: 30Gi
+          storageClassName: {{STORAGE_CLASS_NAME}}
+          volumeMode: Block
+`, i)
+		disks += fmt.Sprintf(`            - name: disk-%d
+              disk:
+                bus: virtio
+`, i)
+		volumes += fmt.Sprintf(`        - name: disk-%d
+          dataVolume:
+            name: disk-%d
+`, i, i)
+	}
+	return fmt.Sprintf(`apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel-9-vm
+spec:
+  dataVolumeTemplates:
+%s  runStrategy: Always
+  template:
+    spec:
+      domain:
+        devices:
+          disks:
+%s            - name: cloudinitdisk
+              disk:
+                bus: virtio
+      volumes:
+%s        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: cloud-user
+`, dvTemplates, disks, volumes)
+}
+
+func writeTemplate(t *testing.T, dir string, n int) string {
+	t.Helper()
+	path := filepath.Join(dir, fmt.Sprintf("vm-%d-disk.yaml", n))
+	if err := os.WriteFile(path, []byte(vmTemplate(n)), 0o600); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+	return path
+}
+
+// TestTemplateDiskCount confirms the Go-side counter matches virtbench's
+// detect_disk_count_from_template: non-cloud-init volumes only, placeholder
+// tolerated.
+func TestTemplateDiskCount(t *testing.T) {
+	dir := t.TempDir()
+	for _, want := range []int{1, 2, 3} {
+		got, err := templateDiskCount(writeTemplate(t, dir, want))
+		if err != nil {
+			t.Fatalf("templateDiskCount(%d disks): %v", want, err)
+		}
+		if got != want {
+			t.Errorf("templateDiskCount = %d, want %d (cloud-init volume must be excluded)", got, want)
+		}
+	}
+}
+
+// TestSingleNodeCeilingArgsIncludesTemplate checks that a plan-supplied
+// vm_template is staged and passed to virtbench (the wiring that lets
+// TR-VIRT-013 run genuinely multi-disk VMs).
+func TestSingleNodeCeilingArgsIncludesTemplate(t *testing.T) {
+	root := t.TempDir()
+	tmpl := writeTemplate(t, t.TempDir(), 2)
+	tr := core.TestRequirement{
+		ID: "TR-VIRT-013",
+		Params: map[string]any{
+			"storage_class": "sc",
+			"vm_template":   tmpl,
+			"num_disks":     2,
+		},
+	}
+	args, err := singleNodeCeilingArgs(singleNodeNSPrefix)(&core.RunCtx{}, tr, root)
+	if err != nil {
+		t.Fatalf("singleNodeCeilingArgs: %v", err)
+	}
+	var staged string
+	for i, a := range args {
+		if a == "--vm-template" && i+1 < len(args) {
+			staged = args[i+1]
+		}
+	}
+	if staged == "" {
+		t.Fatalf("--vm-template not passed; args = %v", args)
+	}
+	if filepath.Dir(staged) != root {
+		t.Errorf("template staged at %q, want inside results root %q", staged, root)
+	}
+	if _, err := os.Stat(staged); err != nil {
+		t.Errorf("staged template not written: %v", err)
+	}
+}
+
+// TestSingleNodeCeilingValidate covers the num_disks / vm_template consistency
+// rules that keep max_luns_per_node honest.
+func TestSingleNodeCeilingValidate(t *testing.T) {
+	dir := t.TempDir()
+	tmpl2 := writeTemplate(t, dir, 2)
+
+	tests := []struct {
+		name    string
+		params  map[string]any
+		wantErr bool
+	}{
+		{"default single disk, no template", map[string]any{}, false},
+		{"multi-disk without template", map[string]any{"num_disks": 2}, true},
+		{"template matches num_disks", map[string]any{"num_disks": 2, "vm_template": tmpl2}, false},
+		{"template disagrees with num_disks", map[string]any{"num_disks": 3, "vm_template": tmpl2}, true},
+		{"num_disks below one", map[string]any{"num_disks": 0}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := singleNodeCeilingValidate(core.TestRequirement{ID: "TR-VIRT-013", Params: tc.params})
+			if tc.wantErr && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
 }
