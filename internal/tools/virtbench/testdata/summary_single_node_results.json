@@ -1,0 +1,11 @@
+{
+  "total_vms": 100,
+  "successful": 62,
+  "failed": 38,
+  "total_test_duration_sec": 903.4,
+  "metrics": [
+    { "metric": "clone_duration_sec", "avg": 39.8, "max": 71.2, "min": 28.4, "count": 62 },
+    { "metric": "running_time_sec", "avg": 81.1, "max": 149.6, "min": 55.7, "count": 62 },
+    { "metric": "ping_time_sec", "avg": 120.5, "max": 210.3, "min": 88.9, "count": 62 }
+  ]
+}
