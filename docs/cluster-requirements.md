@@ -197,7 +197,7 @@ not usable as CDI scratch space.
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | `cluster-admin`          | The credentials supplied to the harness must have `cluster-admin` (or equivalent) privileges                                   |
 | `kubectl` / `oc`         | Available on the machine running the harness; kubeconfig pointing at the target cluster                                        |
-| Container runtime access | The harness launches tool containers; the execution host must be able to `podman run` (or docker) and reach the image registry |
+| Container runtime access | The harness launches tool containers; the execution host must be able to `podman run` and reach the image registry |
 | `thresholds.json`        | Included with the repository certification inputs                                                                          |
 
 ---

@@ -38,10 +38,13 @@ _ci_images_load_if_unset() {
 _ci_images_derive() {
 	export TRIVY_TAG="${TRIVY_TAG:-trivy-${TRIVY_VERSION#v}}"
 	export DIVE_TAG="${DIVE_TAG:-dive-${DIVE_VERSION}}"
+	export HADOLINT_TAG="${HADOLINT_TAG:-hadolint-${HADOLINT_VERSION#v}}"
 	export TRIVY_SRC="${TRIVY_SRC:-docker.io/aquasec/trivy:${TRIVY_VERSION#v}}"
 	export DIVE_SRC="${DIVE_SRC:-docker.io/wagoodman/dive:${DIVE_VERSION}}"
+	export HADOLINT_SRC="${HADOLINT_SRC:-docker.io/hadolint/hadolint:${HADOLINT_VERSION}}"
 	export TRIVY_IMAGE="${TRIVY_IMAGE:-${CI_TOOLS_IMAGE}:${TRIVY_TAG}}"
 	export DIVE_IMAGE="${DIVE_IMAGE:-${CI_TOOLS_IMAGE}:${DIVE_TAG}}"
+	export HADOLINT_IMAGE="${HADOLINT_IMAGE:-${CI_TOOLS_IMAGE}:${HADOLINT_TAG}}"
 }
 
 if [[ "${CI_IMAGES_FORCE_FILE:-0}" == "1" ]]; then
