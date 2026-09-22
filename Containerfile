@@ -47,7 +47,7 @@ RUN set -eux; \
     curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${VIRTBENCH_VERSION}.tar.gz" -o /tmp/virtbench.tar.gz; \
     tar xz --strip-components=1 -C /opt/virtbench -f /tmp/virtbench.tar.gz; \
     python3 -m venv /opt/virtbench-venv; \
-    /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'pip>=26.2.1' 'setuptools>=78.1.1'; \
+    /opt/virtbench-venv/bin/python -m pip install --no-cache-dir --upgrade 'pip==26.2.1' 'setuptools>=78.1.1'; \
     /opt/virtbench-venv/bin/pip install --no-cache-dir /opt/virtbench; \
     /opt/virtbench-venv/bin/virtbench --help >/dev/null; \
     test "$(/opt/virtbench-venv/bin/virtbench --version)" = "virtbench, version ${VIRTBENCH_VERSION#v}"; \
@@ -78,7 +78,7 @@ COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
 COPY container-entrypoint.sh /usr/local/bin/
 # Refresh UBI RPMs at build time; keep /var/lib/rpm so Trivy can detect OS packages.
-RUN python3 -m pip install --no-cache-dir --upgrade 'pip>=26.2.1' 'setuptools>=78.1.1' \
+RUN python3 -m pip install --no-cache-dir --upgrade 'pip==26.2.1' 'setuptools>=78.1.1' \
   && rm -rf /opt/virtbench-runtime/docs \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
