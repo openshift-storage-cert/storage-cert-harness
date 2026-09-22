@@ -56,6 +56,7 @@ RUN set -eux; \
     mkdir -p /tmp/openshift-client; \
     curl -sSfL "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/${archive}" -o "/tmp/${archive}"; \
     tar xz -C /tmp/openshift-client -f "/tmp/${archive}"; \
+    install -m 0755 /tmp/openshift-client/oc /oc; \
     install -m 0755 /tmp/openshift-client/kubectl /kubectl; \
     rm -rf /tmp/virtbench.tar.gz /tmp/openshift-client
 USER 65532
@@ -71,7 +72,7 @@ LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
 # Multiple sources are allowed when the destination is a directory (trailing slash).
 COPY bin/harness /usr/bin/
 COPY --from=builder /kube-burner /kube-burner-ocp /virtctl /usr/bin/
-COPY --from=virtbench-builder /kubectl /opt/virtbench-venv/bin/virtbench /usr/bin/
+COPY --from=virtbench-builder /oc /kubectl /opt/virtbench-venv/bin/virtbench /usr/bin/
 COPY --from=virtbench-builder /opt/virtbench /opt/virtbench-runtime
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY --from=virtbench-builder /opt/virtbench-venv /opt/virtbench-venv
