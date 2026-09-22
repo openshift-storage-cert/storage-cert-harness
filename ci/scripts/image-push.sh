@@ -55,6 +55,7 @@ for manifest in "${manifests[@]}"; do
 		buildah manifest push --all "${manifest}" "docker://${manifest}"
 	else
 		"${eng}" manifest rm "${manifest}" 2>/dev/null || true
+		"${eng}" rmi "${manifest}" 2>/dev/null || true
 		"${eng}" manifest create "${manifest}" "${refs[@]}"
 		"${eng}" manifest push "${manifest}"
 	fi
