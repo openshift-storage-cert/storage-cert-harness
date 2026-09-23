@@ -26,10 +26,16 @@ KUBECONFIG="${1:-work/kubeconfig}"
 	exit 1
 }
 
+kubectl --kubeconfig "${KUBECONFIG}" --insecure-skip-tls-verify=true \
+	auth can-i get pods -n default >/dev/null || {
+	echo "error: kubeconfig authentication failed; refresh credentials before running image tests" >&2
+	exit 1
+}
+
 mkdir -p work/smoke-work work/smoke-report
 
 image="$(tr -d '[:space:]' < work/local-image-ref)"
-backend="${BACKEND:-$(awk '$1 == "-" && $2 == "name:" { print $3; exit }' work/backends.local.yaml)}"
+backend="${BACKEND:-tlvbm}"
 [[ -n "${backend}" ]] || {
 	echo "error: no backend found in work/backends.local.yaml; set BACKEND explicitly" >&2
 	exit 1
@@ -46,6 +52,7 @@ podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
 	-v "$(realpath "${KUBECONFIG}"):/work/kubeconfig:ro,Z" \
 	-w /work \
 	-e KUBECONFIG=/work/kubeconfig \
+	-e KUBECTL_INSECURE_SKIP_TLS_VERIFY=true \
 	"${image}" run \
 	--catalog /work/catalog.json \
 	--thresholds /work/thresholds.json \

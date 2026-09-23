@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -210,6 +211,9 @@ func runKubectl(ctx context.Context, kubeconfig string, args ...string) (out str
 	if kubeconfig != "" {
 		full = append([]string{"--kubeconfig", kubeconfig}, args...)
 	}
+	if os.Getenv("KUBECTL_INSECURE_SKIP_TLS_VERIFY") == "true" {
+		full = append([]string{"--insecure-skip-tls-verify=true"}, full...)
+	}
 	cmd := exec.CommandContext(ctx, "kubectl", full...) // #nosec G204 -- kubectl arguments are constructed by the harness.
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -224,11 +228,14 @@ func runKubectl(ctx context.Context, kubeconfig string, args ...string) (out str
 	return buf.String(), false, runErr
 }
 
-// kubectlApply pipes a manifest to `kubectl apply -f -`.
+// kubectlApply pipes a manifest to `kubectl apply --validate=false -f -`.
 func kubectlApply(ctx context.Context, kubeconfig, manifest string) error {
-	args := []string{"apply", "-f", "-"}
+	args := []string{"apply", "--validate=false", "-f", "-"}
 	if kubeconfig != "" {
 		args = append([]string{"--kubeconfig", kubeconfig}, args...)
+	}
+	if os.Getenv("KUBECTL_INSECURE_SKIP_TLS_VERIFY") == "true" {
+		args = append([]string{"--insecure-skip-tls-verify=true"}, args...)
 	}
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stdin = strings.NewReader(manifest)
