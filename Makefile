@@ -94,7 +94,7 @@ image-build-local: export GOARCH = $(LOCAL_GOARCH)
 image-build-local: build
 	./ci/scripts/image-build-local.sh
 
-# Run the live smoke plan; override KUBECONFIG to use another kubeconfig.
+# Run the live smoke plan; override KUBECONFIG to use another kubeconfig
 run-image-tests:
 	./ci/scripts/run-image-tests.sh "$(or $(KUBECONFIG),work/kubeconfig)"
 
