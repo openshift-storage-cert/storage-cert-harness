@@ -328,8 +328,8 @@ use an exact commit; a moving branch without a commit is for development only.
 The final image records the source mode, ref, repository, and commit in OCI
 labels. `image-contents-check.sh` verifies that `kube-burner-ocp` runs, its
 `version` output contains the requested commit, and the image labels match the
-requested source mode and commit. If `skopeo` is unavailable, the binary check
-still runs but label verification is skipped.
+requested source mode, repository, ref, and commit. `skopeo` is required for
+label verification; the check fails if it is unavailable.
 
 To restore the release-tarball path for a local build, override the source
 inputs:
@@ -337,6 +337,8 @@ inputs:
 ```sh
 KUBE_BURNER_OCP_SOURCE_MODE=release \
 KUBE_BURNER_OCP_VERSION=v1.12.5 \
+KUBE_BURNER_OCP_REF= \
+KUBE_BURNER_OCP_COMMIT= \
 make image-build
 ```
 
