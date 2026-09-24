@@ -107,7 +107,7 @@ if command -v skopeo >/dev/null 2>&1; then
 		fail "kube-burner-ocp version output does not contain expected commit (${expected_commit})"
 	fi
 else
-	echo "  skopeo unavailable; skipping image-label verification"
+	fail "skopeo unavailable; cannot verify image labels"
 fi
 
 echo "==> checking /usr/bin/kubectl"
