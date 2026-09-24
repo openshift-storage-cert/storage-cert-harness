@@ -68,8 +68,9 @@ else
 fi
 
 echo "==> checking /usr/bin/kube-burner-ocp"
-ocp_version_output="$(run_cmd /usr/bin/kube-burner-ocp version 2>&1 || true)"
-if [[ -n "${ocp_version_output}" ]] || run_cmd /usr/bin/kube-burner-ocp --help >/dev/null 2>&1; then
+ocp_version_status=0
+ocp_version_output="$(run_cmd /usr/bin/kube-burner-ocp version 2>&1)" || ocp_version_status=$?
+if [[ "${ocp_version_status}" -eq 0 && -n "${ocp_version_output}" ]] || run_cmd /usr/bin/kube-burner-ocp --help >/dev/null 2>&1; then
 	echo "  kube-burner-ocp: present"
 	if [[ -n "${ocp_version_output}" ]]; then
 		echo "${ocp_version_output}" | sed 's/^/  /'
