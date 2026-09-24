@@ -86,16 +86,26 @@ if command -v skopeo >/dev/null 2>&1; then
 	}
 
 	expected_mode="${KUBE_BURNER_OCP_SOURCE_MODE}"
+	expected_repository="${KUBE_BURNER_OCP_REPOSITORY}"
+	expected_ref="${KUBE_BURNER_OCP_REF}"
 	expected_commit="${KUBE_BURNER_OCP_COMMIT}"
 	actual_mode="$(label io.storage-cert-harness.kube-burner-ocp.source-mode)"
+	actual_repository="$(label io.storage-cert-harness.kube-burner-ocp.repository)"
 	actual_ref="$(label io.storage-cert-harness.kube-burner-ocp.ref)"
 	actual_commit="$(label io.storage-cert-harness.kube-burner-ocp.commit)"
 	echo "  source mode: ${actual_mode}"
+	echo "  source repository: ${actual_repository}"
 	echo "  source ref: ${actual_ref}"
 	echo "  source commit: ${actual_commit}"
 
 	if [[ "${actual_mode}" != "${expected_mode}" ]]; then
 		fail "kube-burner-ocp source mode (${actual_mode}) != expected (${expected_mode})"
+	fi
+	if [[ "${actual_repository}" != "${expected_repository}" ]]; then
+		fail "kube-burner-ocp repository (${actual_repository}) != expected (${expected_repository})"
+	fi
+	if [[ "${actual_ref}" != "${expected_ref}" ]]; then
+		fail "kube-burner-ocp ref (${actual_ref}) != expected (${expected_ref})"
 	fi
 	if [[ "${actual_mode}" == "git" && -z "${actual_commit}" ]]; then
 		fail "git-mode kube-burner-ocp image has no resolved commit label"
