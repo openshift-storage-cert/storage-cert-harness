@@ -296,6 +296,50 @@ present and runnable after every image build (locally and in CI).
 In the supported GitHub Actions flow, `image-push` runs automatically on
 `main` pushes. `supply-chain` is gating.
 
+### Customized kube-burner-ocp builds
+
+The image build supports two `kube-burner-ocp` source modes:
+
+| Mode | Source | Use |
+| --- | --- | --- |
+| `release` | GitHub release tarball selected by `KUBE_BURNER_OCP_VERSION` | Normal upstream release build |
+| `git` | GitHub repository selected by `KUBE_BURNER_OCP_REF` | Reviewed customized build from a branch, tag, or commit |
+
+The current customized build is pinned to commit
+`1558bb9b0122d3b414d403f6cda1e4c95fb11994` through
+`ci/config/images.env`. The build uses the Go toolchain in `SOURCE_BUILD_IMAGE`,
+compiles `./cmd/` with `CGO_ENABLED=0`, and installs the result as
+`/usr/bin/kube-burner-ocp`.
+
+To build a customized source revision locally:
+
+```sh
+KUBE_BURNER_OCP_SOURCE_MODE=git \
+KUBE_BURNER_OCP_REF=1558bb9b0122d3b414d403f6cda1e4c95fb11994 \
+KUBE_BURNER_OCP_COMMIT=1558bb9b0122d3b414d403f6cda1e4c95fb11994 \
+make image-build
+```
+
+For a branch or tag, set `KUBE_BURNER_OCP_REF` to that ref and set
+`KUBE_BURNER_OCP_COMMIT` to the resolved full commit. The image build verifies
+that the fetched revision matches the expected commit. Published images must
+use an exact commit; a moving branch without a commit is for development only.
+
+The final image records the source mode, ref, repository, and commit in OCI
+labels. `image-contents-check.sh` verifies that `kube-burner-ocp` runs, its
+`version` output contains the requested commit, and the image labels match the
+requested source mode and commit. If `skopeo` is unavailable, the binary check
+still runs but label verification is skipped.
+
+To restore the release-tarball path for a local build, override the source
+inputs:
+
+```sh
+KUBE_BURNER_OCP_SOURCE_MODE=release \
+KUBE_BURNER_OCP_VERSION=v1.12.5 \
+make image-build
+```
+
 ## Job images (no Docker Hub)
 
 Pins live in **`ci/config/images.env`**. Shell scripts source

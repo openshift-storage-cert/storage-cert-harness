@@ -68,10 +68,45 @@ else
 fi
 
 echo "==> checking /usr/bin/kube-burner-ocp"
-if run_cmd /usr/bin/kube-burner-ocp version >/dev/null 2>&1 || run_cmd /usr/bin/kube-burner-ocp --help >/dev/null 2>&1; then
+ocp_version_output="$(run_cmd /usr/bin/kube-burner-ocp version 2>&1 || true)"
+if [[ -n "${ocp_version_output}" ]] || run_cmd /usr/bin/kube-burner-ocp --help >/dev/null 2>&1; then
 	echo "  kube-burner-ocp: present"
+	if [[ -n "${ocp_version_output}" ]]; then
+		echo "${ocp_version_output}" | sed 's/^/  /'
+	fi
 else
 	fail "/usr/bin/kube-burner-ocp is missing or cannot run"
+fi
+
+echo "==> checking kube-burner-ocp build provenance"
+if command -v skopeo >/dev/null 2>&1; then
+	label() {
+		skopeo inspect --format "{{ index .Labels \"$1\" }}" "docker-archive:${IMAGE_TAR}" 2>/dev/null || true
+	}
+
+	expected_mode="${KUBE_BURNER_OCP_SOURCE_MODE}"
+	expected_commit="${KUBE_BURNER_OCP_COMMIT}"
+	actual_mode="$(label io.storage-cert-harness.kube-burner-ocp.source-mode)"
+	actual_ref="$(label io.storage-cert-harness.kube-burner-ocp.ref)"
+	actual_commit="$(label io.storage-cert-harness.kube-burner-ocp.commit)"
+	echo "  source mode: ${actual_mode}"
+	echo "  source ref: ${actual_ref}"
+	echo "  source commit: ${actual_commit}"
+
+	if [[ "${actual_mode}" != "${expected_mode}" ]]; then
+		fail "kube-burner-ocp source mode (${actual_mode}) != expected (${expected_mode})"
+	fi
+	if [[ "${actual_mode}" == "git" && -z "${actual_commit}" ]]; then
+		fail "git-mode kube-burner-ocp image has no resolved commit label"
+	fi
+	if [[ -n "${expected_commit}" && "${actual_commit}" != "${expected_commit}" ]]; then
+		fail "kube-burner-ocp commit (${actual_commit}) != expected (${expected_commit})"
+	fi
+	if [[ "${actual_mode}" == "git" && -n "${expected_commit}" && "${ocp_version_output}" != *"${expected_commit}"* ]]; then
+		fail "kube-burner-ocp version output does not contain expected commit (${expected_commit})"
+	fi
+else
+	echo "  skopeo unavailable; skipping image-label verification"
 fi
 
 echo "==> checking /usr/bin/kubectl"
@@ -89,7 +124,7 @@ else
 fi
 
 echo "==> checking /usr/bin/virtbench fio"
-if run_cmd /usr/bin/virtbench fio --help >/dev/null 2>&1; then
+if run_cmd env VIRTBENCH_REPO=/opt/virtbench-runtime /usr/bin/virtbench fio --help >/dev/null 2>&1; then
 	echo "  virtbench fio: present"
 else
 	fail "/usr/bin/virtbench fio is missing or cannot run"

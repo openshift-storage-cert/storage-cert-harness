@@ -37,10 +37,20 @@ podman build \
 	"${no_cache[@]}" \
 	--platform "${platform}" \
 	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}" \
+	--build-arg "SOURCE_BUILD_IMAGE=${SOURCE_BUILD_IMAGE}" \
 	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}" \
 	--build-arg "TARGETARCH=${arch}" \
 	--build-arg "HARNESS_VERSION=$(tr -d '[:space:]' < NEXT-VERSION)" \
 	--build-arg "IMAGE_VERSION=${image_version}" \
+	--build-arg "KUBE_BURNER_VERSION=${KUBE_BURNER_VERSION}" \
+	--build-arg "KUBE_BURNER_OCP_VERSION=${KUBE_BURNER_OCP_VERSION}" \
+	--build-arg "KUBE_BURNER_OCP_SOURCE_MODE=${KUBE_BURNER_OCP_SOURCE_MODE}" \
+	--build-arg "KUBE_BURNER_OCP_REPOSITORY=${KUBE_BURNER_OCP_REPOSITORY}" \
+	--build-arg "KUBE_BURNER_OCP_REF=${KUBE_BURNER_OCP_REF}" \
+	--build-arg "KUBE_BURNER_OCP_COMMIT=${KUBE_BURNER_OCP_COMMIT}" \
+	--build-arg "OPENSHIFT_CLIENT_VERSION=${OPENSHIFT_CLIENT_VERSION}" \
+	--build-arg "VIRTBENCH_VERSION=${VIRTBENCH_VERSION}" \
+	--build-arg "KUBEVIRT_VERSION=${KUBEVIRT_VERSION}" \
 	-t "${image}" \
 	-f Containerfile .
 
