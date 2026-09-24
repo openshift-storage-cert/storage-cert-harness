@@ -68,10 +68,75 @@ else
 fi
 
 echo "==> checking /usr/bin/kube-burner-ocp"
-if run_cmd /usr/bin/kube-burner-ocp version >/dev/null 2>&1 || run_cmd /usr/bin/kube-burner-ocp --help >/dev/null 2>&1; then
+ocp_version_status=0
+ocp_version_output="$(run_cmd /usr/bin/kube-burner-ocp version 2>&1)" || ocp_version_status=$?
+if [[ "${ocp_version_status}" -eq 0 && -n "${ocp_version_output}" ]]; then
 	echo "  kube-burner-ocp: present"
+	if [[ -n "${ocp_version_output}" ]]; then
+		echo "${ocp_version_output}" | sed 's/^/  /'
+	fi
 else
 	fail "/usr/bin/kube-burner-ocp is missing or cannot run"
+fi
+
+echo "==> checking kube-burner-ocp build provenance"
+if command -v skopeo >/dev/null 2>&1; then
+	label() {
+		skopeo inspect --format "{{ index .Labels \"$1\" }}" "docker-archive:${IMAGE_TAR}" 2>/dev/null || true
+	}
+
+	expected_mode="${KUBE_BURNER_OCP_SOURCE_MODE}"
+	expected_repository="${KUBE_BURNER_OCP_REPOSITORY}"
+	expected_ref="${KUBE_BURNER_OCP_REF}"
+	expected_commit="${KUBE_BURNER_OCP_COMMIT}"
+	expected_version="${KUBE_BURNER_OCP_VERSION}"
+	actual_mode="$(label io.storage-cert-harness.kube-burner-ocp.source-mode)"
+	actual_repository="$(label io.storage-cert-harness.kube-burner-ocp.repository)"
+	actual_ref="$(label io.storage-cert-harness.kube-burner-ocp.ref)"
+	actual_commit="$(label io.storage-cert-harness.kube-burner-ocp.commit)"
+	actual_version="$(label io.storage-cert-harness.kube-burner-ocp.version)"
+	echo "  source mode: ${actual_mode}"
+	echo "  source repository: ${actual_repository}"
+	echo "  source ref: ${actual_ref}"
+	echo "  source commit: ${actual_commit}"
+	echo "  source version: ${actual_version}"
+
+	if [[ "${actual_mode}" != "${expected_mode}" ]]; then
+		fail "kube-burner-ocp source mode (${actual_mode}) != expected (${expected_mode})"
+	fi
+	if [[ "${actual_repository}" != "${expected_repository}" ]]; then
+		fail "kube-burner-ocp repository (${actual_repository}) != expected (${expected_repository})"
+	fi
+	if [[ "${actual_ref}" != "${expected_ref}" ]]; then
+		fail "kube-burner-ocp ref (${actual_ref}) != expected (${expected_ref})"
+	fi
+	if [[ "${actual_mode}" == "git" && -z "${expected_commit}" ]]; then
+		fail "git-mode kube-burner-ocp check has no expected commit"
+	fi
+	if [[ "${actual_mode}" == "git" && -z "${actual_commit}" ]]; then
+		fail "git-mode kube-burner-ocp image has no resolved commit label"
+	fi
+	if [[ "${actual_mode}" == "git" && "${actual_commit}" != "${expected_commit}" ]]; then
+		fail "kube-burner-ocp commit (${actual_commit}) != expected (${expected_commit})"
+	fi
+	if [[ "${actual_mode}" == "git" && -n "${expected_commit}" && "${ocp_version_output}" != *"${expected_commit}"* ]]; then
+		fail "kube-burner-ocp version output does not contain expected commit (${expected_commit})"
+	fi
+	if [[ "${actual_mode}" == "release" ]]; then
+		if [[ -z "${expected_version}" ]]; then
+			fail "release-mode kube-burner-ocp check has no expected version (KUBE_BURNER_OCP_VERSION)"
+		fi
+		if [[ "${actual_version}" != "${expected_version}" ]]; then
+			fail "kube-burner-ocp version label (${actual_version}) != expected (${expected_version})"
+		fi
+		version_match="${expected_version}"
+		version_match_nov="${expected_version#v}"
+		if [[ "${ocp_version_output}" != *"${version_match}"* && "${ocp_version_output}" != *"${version_match_nov}"* ]]; then
+			fail "kube-burner-ocp version output does not contain expected release version (${expected_version})"
+		fi
+	fi
+else
+	fail "skopeo unavailable; cannot verify image labels"
 fi
 
 echo "==> checking /usr/bin/kubectl"
@@ -89,7 +154,7 @@ else
 fi
 
 echo "==> checking /usr/bin/virtbench fio"
-if run_cmd /usr/bin/virtbench fio --help >/dev/null 2>&1; then
+if run_cmd env VIRTBENCH_REPO=/opt/virtbench-runtime /usr/bin/virtbench fio --help >/dev/null 2>&1; then
 	echo "  virtbench fio: present"
 else
 	fail "/usr/bin/virtbench fio is missing or cannot run"

@@ -41,6 +41,14 @@ jobs:
       - env:
           CONTAINER_ENGINE: podman
         run: ./ci/scripts/image-build.sh
+      - name: Install skopeo for image verification
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+      - name: Verify image contents and kube-burner-ocp provenance
+        env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-contents-check.sh
       - id: upload-image
         uses: actions/upload-artifact@v7
         with:

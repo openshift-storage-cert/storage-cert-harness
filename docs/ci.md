@@ -296,6 +296,54 @@ present and runnable after every image build (locally and in CI).
 In the supported GitHub Actions flow, `image-push` runs automatically on
 `main` pushes. `supply-chain` is gating.
 
+### Customized kube-burner-ocp builds
+
+The image build supports two `kube-burner-ocp` source modes:
+
+| Mode | Source | Use |
+| --- | --- | --- |
+| `release` | GitHub release tarball selected by `KUBE_BURNER_OCP_VERSION` | Normal upstream release build |
+| `git` | GitHub repository selected by `KUBE_BURNER_OCP_REF` | Reviewed customized build from a branch, tag, or commit |
+
+The current customized build is pinned to commit
+`1558bb9b0122d3b414d403f6cda1e4c95fb11994` through
+`ci/config/images.env`. The build uses the Go toolchain in `SOURCE_BUILD_IMAGE`,
+compiles `./cmd/` with `CGO_ENABLED=0`, and installs the result as
+`/usr/bin/kube-burner-ocp`.
+
+To build a customized source revision locally:
+
+```sh
+KUBE_BURNER_OCP_SOURCE_MODE=git \
+KUBE_BURNER_OCP_REF=1558bb9b0122d3b414d403f6cda1e4c95fb11994 \
+KUBE_BURNER_OCP_COMMIT=1558bb9b0122d3b414d403f6cda1e4c95fb11994 \
+make image-build
+```
+
+For a branch or tag, set `KUBE_BURNER_OCP_REF` to that ref and set
+`KUBE_BURNER_OCP_COMMIT` to the full commit it must resolve to (for example
+`git ls-remote "${KUBE_BURNER_OCP_REPOSITORY}" "${KUBE_BURNER_OCP_REF}"`).
+Git-mode image builds always require `KUBE_BURNER_OCP_COMMIT`; the Containerfile
+rejects a fetch whose `HEAD` does not match that commit.
+
+The final image records the source mode, ref, repository, version, and commit in
+OCI labels. `image-contents-check.sh` verifies that `kube-burner-ocp` runs, the
+image labels match the requested source mode, repository, ref, and commit (git
+mode), or version (release mode), and the `version` command output contains the
+expected commit (git) or release version (release). `skopeo` is required for
+label verification; the check fails if it is unavailable.
+
+To restore the release-tarball path for a local build, override the source
+inputs:
+
+```sh
+KUBE_BURNER_OCP_SOURCE_MODE=release \
+KUBE_BURNER_OCP_VERSION=v1.12.5 \
+KUBE_BURNER_OCP_REF= \
+KUBE_BURNER_OCP_COMMIT= \
+make image-build
+```
+
 ## Job images (no Docker Hub)
 
 Pins live in **`ci/config/images.env`**. Shell scripts source
