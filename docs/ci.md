@@ -321,14 +321,16 @@ make image-build
 ```
 
 For a branch or tag, set `KUBE_BURNER_OCP_REF` to that ref and set
-`KUBE_BURNER_OCP_COMMIT` to the resolved full commit. The image build verifies
-that the fetched revision matches the expected commit. Published images must
-use an exact commit; a moving branch without a commit is for development only.
+`KUBE_BURNER_OCP_COMMIT` to the full commit it must resolve to (for example
+`git ls-remote "${KUBE_BURNER_OCP_REPOSITORY}" "${KUBE_BURNER_OCP_REF}"`).
+Git-mode image builds always require `KUBE_BURNER_OCP_COMMIT`; the Containerfile
+rejects a fetch whose `HEAD` does not match that commit.
 
-The final image records the source mode, ref, repository, and commit in OCI
-labels. `image-contents-check.sh` verifies that `kube-burner-ocp` runs, its
-`version` output contains the requested commit, and the image labels match the
-requested source mode, repository, ref, and commit. `skopeo` is required for
+The final image records the source mode, ref, repository, version, and commit in
+OCI labels. `image-contents-check.sh` verifies that `kube-burner-ocp` runs, the
+image labels match the requested source mode, repository, ref, and commit (git
+mode), or version (release mode), and the `version` command output contains the
+expected commit (git) or release version (release). `skopeo` is required for
 label verification; the check fails if it is unavailable.
 
 To restore the release-tarball path for a local build, override the source

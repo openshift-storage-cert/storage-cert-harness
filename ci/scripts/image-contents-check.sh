@@ -89,14 +89,17 @@ if command -v skopeo >/dev/null 2>&1; then
 	expected_repository="${KUBE_BURNER_OCP_REPOSITORY}"
 	expected_ref="${KUBE_BURNER_OCP_REF}"
 	expected_commit="${KUBE_BURNER_OCP_COMMIT}"
+	expected_version="${KUBE_BURNER_OCP_VERSION}"
 	actual_mode="$(label io.storage-cert-harness.kube-burner-ocp.source-mode)"
 	actual_repository="$(label io.storage-cert-harness.kube-burner-ocp.repository)"
 	actual_ref="$(label io.storage-cert-harness.kube-burner-ocp.ref)"
 	actual_commit="$(label io.storage-cert-harness.kube-burner-ocp.commit)"
+	actual_version="$(label io.storage-cert-harness.kube-burner-ocp.version)"
 	echo "  source mode: ${actual_mode}"
 	echo "  source repository: ${actual_repository}"
 	echo "  source ref: ${actual_ref}"
 	echo "  source commit: ${actual_commit}"
+	echo "  source version: ${actual_version}"
 
 	if [[ "${actual_mode}" != "${expected_mode}" ]]; then
 		fail "kube-burner-ocp source mode (${actual_mode}) != expected (${expected_mode})"
@@ -118,6 +121,19 @@ if command -v skopeo >/dev/null 2>&1; then
 	fi
 	if [[ "${actual_mode}" == "git" && -n "${expected_commit}" && "${ocp_version_output}" != *"${expected_commit}"* ]]; then
 		fail "kube-burner-ocp version output does not contain expected commit (${expected_commit})"
+	fi
+	if [[ "${actual_mode}" == "release" ]]; then
+		if [[ -z "${expected_version}" ]]; then
+			fail "release-mode kube-burner-ocp check has no expected version (KUBE_BURNER_OCP_VERSION)"
+		fi
+		if [[ "${actual_version}" != "${expected_version}" ]]; then
+			fail "kube-burner-ocp version label (${actual_version}) != expected (${expected_version})"
+		fi
+		version_match="${expected_version}"
+		version_match_nov="${expected_version#v}"
+		if [[ "${ocp_version_output}" != *"${version_match}"* && "${ocp_version_output}" != *"${version_match_nov}"* ]]; then
+			fail "kube-burner-ocp version output does not contain expected release version (${expected_version})"
+		fi
 	fi
 else
 	fail "skopeo unavailable; cannot verify image labels"
