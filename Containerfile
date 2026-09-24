@@ -64,7 +64,7 @@ RUN set -eux; \
         git -C /src/kube-burner-ocp fetch --depth 1 origin "${KUBE_BURNER_OCP_REF}"; \
         git -C /src/kube-burner-ocp checkout --detach FETCH_HEAD; \
         actual_commit="$(git -C /src/kube-burner-ocp rev-parse HEAD)"; \
-        if test -z "${KUBE_BURNER_OCP_COMMIT}" || test "${actual_commit}" != "${KUBE_BURNER_OCP_COMMIT}"; then \
+        if test -n "${KUBE_BURNER_OCP_COMMIT}" && test "${actual_commit}" != "${KUBE_BURNER_OCP_COMMIT}"; then \
           echo "kube-burner-ocp commit mismatch: expected ${KUBE_BURNER_OCP_COMMIT}, got ${actual_commit}" >&2; \
           exit 1; \
         fi; \
