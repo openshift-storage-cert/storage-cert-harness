@@ -107,10 +107,13 @@ if command -v skopeo >/dev/null 2>&1; then
 	if [[ "${actual_ref}" != "${expected_ref}" ]]; then
 		fail "kube-burner-ocp ref (${actual_ref}) != expected (${expected_ref})"
 	fi
+	if [[ "${actual_mode}" == "git" && -z "${expected_commit}" ]]; then
+		fail "git-mode kube-burner-ocp check has no expected commit"
+	fi
 	if [[ "${actual_mode}" == "git" && -z "${actual_commit}" ]]; then
 		fail "git-mode kube-burner-ocp image has no resolved commit label"
 	fi
-	if [[ -n "${expected_commit}" && "${actual_commit}" != "${expected_commit}" ]]; then
+	if [[ "${actual_mode}" == "git" && "${actual_commit}" != "${expected_commit}" ]]; then
 		fail "kube-burner-ocp commit (${actual_commit}) != expected (${expected_commit})"
 	fi
 	if [[ "${actual_mode}" == "git" && -n "${expected_commit}" && "${ocp_version_output}" != *"${expected_commit}"* ]]; then
