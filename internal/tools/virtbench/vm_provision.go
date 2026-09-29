@@ -2,9 +2,10 @@ package virtbench
 
 import (
 	"context"
+	crand "crypto/rand"
 	_ "embed"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +134,11 @@ func pickWorkerNode(ctx context.Context, kubeconfig string) (name, hostnameLabel
 	if len(ready) == 0 {
 		return "", "", fmt.Errorf("virtbench: no Ready+schedulable worker nodes found (all %d workers are not Ready or kubevirt.io/schedulable != true)", len(allNodes))
 	}
-	name = ready[rand.Intn(len(ready))] //nolint:gosec
+	index, err := crand.Int(crand.Reader, big.NewInt(int64(len(ready))))
+	if err != nil {
+		return "", "", fmt.Errorf("virtbench: choose worker node: %w", err)
+	}
+	name = ready[index.Int64()]
 	label, labelOK, _ := runKubectl(ctx, kubeconfig, "get", "node", name,
 		`-o`, `jsonpath={.metadata.labels.kubernetes\.io/hostname}`)
 	if labelOK && strings.TrimSpace(label) != "" {
