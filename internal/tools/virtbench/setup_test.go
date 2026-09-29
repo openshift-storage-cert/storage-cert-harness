@@ -204,15 +204,13 @@ func TestSSHHelperReplayDoesNotUseCluster(t *testing.T) {
 
 func TestSSHHelperManifestAvoidsTargetNodes(t *testing.T) {
 	manifest := sshPodManifestForNodes(map[string]struct{}{
-		"r660-05":                               {},
-		"r660-05.ecosys.eng.rdu2.dc.redhat.com": {},
+		"r660-05": {},
 	})
 	for _, want := range []string{
 		"requiredDuringSchedulingIgnoredDuringExecution",
 		"key: kubernetes.io/hostname",
 		"operator: NotIn",
 		`- "r660-05"`,
-		`- "r660-05.ecosys.eng.rdu2.dc.redhat.com"`,
 	} {
 		if !strings.Contains(manifest, want) {
 			t.Errorf("manifest missing %q:\n%s", want, manifest)

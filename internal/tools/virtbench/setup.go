@@ -157,7 +157,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kubeconfig := kubeconfigOf(trs)
-	avoidNodes, err := sshHelperAvoidNodes(ctx, kubeconfig, trs)
+	avoidNodeNames, avoidHostnameLabels, err := sshHelperAvoidNodes(ctx, kubeconfig, trs)
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 		switch {
 		case pod == nil:
 			rc.Logger.Info("virtbench: creating shared ssh helper pod", "pod", sshPodNS+"/"+sshPodName)
-			if err := kubectlApply(ctx, kubeconfig, sshPodManifestForNodes(avoidNodes)); err != nil {
+			if err := kubectlApply(ctx, kubeconfig, sshPodManifestForNodes(avoidHostnameLabels)); err != nil {
 				return fmt.Errorf("create ssh helper pod: %w", err)
 			}
 			s.createdByUs = true
@@ -191,7 +191,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 				return fmt.Errorf("delete stopped ssh helper pod: %v: %s", err, strings.TrimSpace(out))
 			}
 			continue
-		case sshPodOnNode(pod, avoidNodes):
+		case sshPodOnNode(pod, avoidNodeNames):
 			rc.Logger.Info("virtbench: replacing ssh helper on FAR target node", "node", pod.Spec.NodeName)
 			out, ok, err := runKubectl(ctx, kubeconfig, "delete", "pod", sshPodName, "-n", sshPodNS, "--wait=false", "--ignore-not-found")
 			if err != nil || !ok {
@@ -211,27 +211,28 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 }
 
 // sshHelperAvoidNodes returns target node names and hostname labels declared by
-// the plan. The name is needed to recognize an already-running helper; the
-// label is used by Kubernetes scheduling affinity.
-func sshHelperAvoidNodes(ctx context.Context, kubeconfig string, trs []core.TestRequirement) (map[string]struct{}, error) {
-	avoid := make(map[string]struct{})
+// the plan. Names recognize an existing helper's assigned node; labels are used
+// by Kubernetes scheduling affinity.
+func sshHelperAvoidNodes(ctx context.Context, kubeconfig string, trs []core.TestRequirement) (map[string]struct{}, map[string]struct{}, error) {
+	avoidNames := make(map[string]struct{})
+	avoidLabels := make(map[string]struct{})
 	for _, tr := range trs {
 		node := strParamOr(tr, "node", "")
 		if node == "" {
 			continue
 		}
-		avoid[node] = struct{}{}
+		avoidNames[node] = struct{}{}
 		label, ok, err := runKubectl(ctx, kubeconfig, "get", "node", node,
 			"-o", `jsonpath={.metadata.labels.kubernetes\.io/hostname}`)
 		if err != nil {
-			return nil, fmt.Errorf("get FAR target node %s: %w", node, err)
+			return nil, nil, fmt.Errorf("get FAR target node %s: %w", node, err)
 		}
 		if !ok || strings.TrimSpace(label) == "" {
-			return nil, fmt.Errorf("get FAR target node %s: %s", node, strings.TrimSpace(label))
+			return nil, nil, fmt.Errorf("get FAR target node %s: %s", node, strings.TrimSpace(label))
 		}
-		avoid[strings.TrimSpace(label)] = struct{}{}
+		avoidLabels[strings.TrimSpace(label)] = struct{}{}
 	}
-	return avoid, nil
+	return avoidNames, avoidLabels, nil
 }
 
 func sshPodManifestForNodes(avoidNodes map[string]struct{}) string {
