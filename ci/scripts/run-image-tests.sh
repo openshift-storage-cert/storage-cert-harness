@@ -50,14 +50,14 @@ backend="${BACKEND:-$(${yq_bin} -r '.backend // ""' "${plan}")}"
 	exit 1
 }
 echo "validation passed: plan backend is '${backend}'"
-backend_name="$(${yq_bin} -r ".backends[] | select(.name == \"${backend}\") | .name" work/backends.local.yaml)"
+backend_name="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .name' work/backends.local.yaml)"
 [[ "${backend_name}" == "${backend}" ]] || {
 	echo "error: backend '${backend}' is not defined in work/backends.local.yaml" >&2
 	exit 1
 }
 echo "validation passed: backend '${backend}' is defined"
-storage_class="$(${yq_bin} -r ".backends[] | select(.name == \"${backend}\") | .storage_class // \"\"" work/backends.local.yaml)"
-snapshot_class="$(${yq_bin} -r ".backends[] | select(.name == \"${backend}\") | .snapshot_class // \"\"" work/backends.local.yaml)"
+storage_class="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .storage_class // ""' work/backends.local.yaml)"
+snapshot_class="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .snapshot_class // ""' work/backends.local.yaml)"
 [[ -n "${storage_class}" ]] || {
 	echo "error: backend '${backend}' has no storage_class" >&2
 	exit 1
