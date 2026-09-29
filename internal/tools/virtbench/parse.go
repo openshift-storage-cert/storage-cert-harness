@@ -538,6 +538,56 @@ func drainDistRow(msg string) (node string, count int, ok bool) {
 	return fields[0], n, true
 }
 
+// --- failure-recovery (Parser D) ---------------------------------------------
+
+// metric-map + emit-order for failure-recovery. KB gate: recovery_time
+// (running_time_sec) and ping_time_sec (required — absent means no VMs
+// responded to ping, which is a test failure).
+var (
+	failureRecoveryMetricBase = map[string]string{
+		"running_time_sec": "vm_ha_restart_time",
+		"ping_time_sec":    "time_to_ping",
+	}
+	failureRecoveryMetricOrder = []string{"running_time_sec", "ping_time_sec"}
+)
+
+// ParseFailureRecovery converts a virtbench failure-recovery summary into one
+// normalized TestResult for trID. It populates Checks so the grader can score
+// node-failure-vm-recovery and reattach-failure-modes.
+//
+// node-failure-vm-recovery passes only when ALL of:
+//   - vms_failed == 0 (native pass), AND
+//   - ping_time_sec is present in the output (all VMs responded to ping).
+//
+// A missing ping_time_sec means virtbench never confirmed network reachability
+// after recovery — that is a test failure regardless of Running state.
+func ParseFailureRecovery(data []byte, trID string) ([]core.TestResult, error) {
+	res, err := parseSummary(failureRecoveryMetricBase, failureRecoveryMetricOrder, data, trID)
+	if err != nil {
+		return nil, err
+	}
+	hasPing := false
+	for _, m := range res[0].Metrics {
+		if m.Name == "time_to_ping" {
+			hasPing = true
+			break
+		}
+	}
+	nativeOK := res[0].Native == core.OutcomePass
+	var nodeRecovery core.Outcome
+	switch {
+	case nativeOK && hasPing:
+		nodeRecovery = core.OutcomePass
+	default:
+		nodeRecovery = core.OutcomeFail
+	}
+	res[0].Checks = map[string]core.Outcome{
+		"node-failure-vm-recovery": nodeRecovery,
+		"reattach-failure-modes":   res[0].Native,
+	}
+	return res, nil
+}
+
 // --- disk-ops (Parser B) -----------------------------------------------------
 
 // diskOpsFile is the disk-ops nested shape (disk-ops-benchmark/measure-disk-ops.py

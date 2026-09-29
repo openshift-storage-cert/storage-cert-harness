@@ -1,0 +1,94 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{VM_NAME}}
+  namespace: {{NAMESPACE}}
+  labels:
+    app: kubevirt-perf-test
+    managed-by: storage-cert-harness
+spec:
+  dataVolumeTemplates:
+    - metadata:
+        name: "{{VM_NAME}}-volume"
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: rhel9
+          namespace: openshift-virtualization-os-images
+        storage:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 30Gi
+          storageClassName: {{STORAGE_CLASS_NAME}}
+          volumeMode: Block
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: kubevirt-perf-test
+    spec:
+      # evictionStrategy: None prevents KubeVirt from live-migrating these VMs
+      # when the node is cordoned (which happens right before the reboot). Without
+      # this, clusters with LiveMigrate as default strategy would move the VMs
+      # before the reboot fires, leaving virtbench with nothing to monitor.
+      evictionStrategy: None
+      affinity:
+        nodeAffinity:
+          # Required at scheduling so VMs land on the target node.
+          # IgnoredDuringExecution: the affinity is NOT enforced at runtime,
+          # so VMs can be live-migrated to surviving nodes on failure.
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - {{HOSTNAME_LABEL}}
+      domain:
+        cpu:
+          cores: 1
+        devices:
+          disks:
+            - name: rootdisk
+              bootOrder: 1
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+        features:
+          acpi: {}
+          smm:
+            enabled: true
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+      networks:
+        - name: default
+          pod: {}
+      tolerations:
+        - operator: Exists
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: "{{VM_NAME}}-volume"
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: cloud-user
+              password: changeme
+              chpasswd:
+                expire: false
+              ssh_pwauth: true
+              disable_root: false
+              packages:
+                - qemu-guest-agent
+              runcmd:
+                - systemctl enable --now qemu-guest-agent

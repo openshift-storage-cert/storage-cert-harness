@@ -98,7 +98,7 @@ func (p preflight) Check(ctx context.Context, rc *core.RunCtx, _ *core.Bag, trs 
 		}
 	}
 	for _, tr := range trs {
-		if storageClass(rc, tr) == "" {
+		if storageClass(rc, tr) == "" && !p.sc.StorageClassOptional {
 			findings = append(findings, core.Finding{Level: "error", Message: fmt.Sprintf("virtbench: %s has no storage_class (select a --backend or set the TR 'storage_class' param)", tr.ID)})
 		}
 		if p.sc.Validate != nil {
@@ -120,8 +120,6 @@ type provisioner struct{ sc Scenario }
 func (p provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) error {
 	if len(trs) > 0 {
 		bag.Set("tr_id", trs[0].ID)
-		// Stash what Teardown's safety-net namespace sweep needs (Teardown gets no
-		// TRs). namespace_prefix mirrors the default in the scenario's BuildArgs.
 		bag.Set("ns_prefix", strParamOr(trs[0], "namespace_prefix", p.sc.NSPrefix))
 		bag.Set("kubeconfig", strParamOr(trs[0], "kubeconfig", ""))
 	}
@@ -154,6 +152,11 @@ func (p provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.B
 			return err
 		}
 	}
+	if p.sc.ProvisionVMs != nil {
+		if err := p.sc.ProvisionVMs(ctx, rc, bag, trs); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -174,18 +177,32 @@ func (r runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []c
 	if r.sc.Run != nil {
 		return r.sc.Run(ctx, rc, bag, trs)
 	}
-	args, err := r.sc.BuildArgs(rc, trs[0], root)
+	args, err := r.sc.BuildArgs(rc, bag, trs[0], root)
 	if err != nil {
 		return stages.RunHandle{}, err
 	}
 	rc.Logger.Info("virtbench: exec", "cmd", binary, "args", args, "dir", root)
-	if err := execVirtbench(ctx, rc, root, args); err != nil {
-		// drain-nodes exits 1 on a timeout — a gradeable FAIL, not a crash. Keep
-		// going to Collect/Parse so the log is still scored (decisions/0013).
-		if !r.sc.TolerateRunError {
+	if r.sc.KillNode != nil {
+		cmd := exec.CommandContext(ctx, binary, args...)
+		cmd.Dir = root
+		cmd.Stdout = logWriter{log: rc.Logger, stream: "stdout"}
+		cmd.Stderr = logWriter{log: rc.Logger, stream: "stderr"}
+		if err := cmd.Start(); err != nil {
+			return stages.RunHandle{}, fmt.Errorf("virtbench: start failed: %w", err)
+		}
+		go r.sc.KillNode(ctx, rc, bag)
+		if err := cmd.Wait(); err != nil {
 			return stages.RunHandle{}, fmt.Errorf("virtbench: run failed: %w", err)
 		}
-		rc.Logger.Warn("virtbench: CLI exited non-zero; grading from its output anyway", "err", err)
+	} else {
+		if err := execVirtbench(ctx, rc, root, args); err != nil {
+			// drain-nodes exits 1 on a timeout — a gradeable FAIL, not a crash. Keep
+			// going to Collect/Parse so the log is still scored (decisions/0013).
+			if !r.sc.TolerateRunError {
+				return stages.RunHandle{}, fmt.Errorf("virtbench: run failed: %w", err)
+			}
+			rc.Logger.Warn("virtbench: CLI exited non-zero; grading from its output anyway", "err", err)
+		}
 	}
 	return stages.RunHandle{ID: "virtbench-" + rc.RunID}, nil
 }
@@ -384,6 +401,15 @@ func (t teardown) Teardown(_ context.Context, rc *core.RunCtx, bag *core.Bag) er
 	}
 	kubeconfig, _ := core.GetAs[string](bag, "kubeconfig")
 
+	if node, _ := core.GetAs[string](bag, "killed_node"); node != "" {
+		timeout, _ := core.GetAs[int](bag, "node_restore_timeout")
+		if timeout == 0 {
+			timeout = 600
+		}
+		waitForNodeReady(ctx, kubeconfig, node, timeout, rc)
+		uncordonNodeLogged(ctx, kubeconfig, node, rc)
+	}
+
 	leftovers, err := listNamespacesByPrefix(ctx, kubeconfig, prefix+"-")
 	if err != nil {
 		rc.Logger.Warn("virtbench: teardown could not list namespaces; verify none leftover", "prefix", prefix+"-", "err", err)
@@ -408,8 +434,8 @@ func (t teardown) Teardown(_ context.Context, rc *core.RunCtx, bag *core.Bag) er
 // ONLY params/backend config — never a threshold/SLA value — so nothing sensitive
 // can reach a command line. resultsRoot is where virtbench must write results so
 // the collector can find them.
-func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -459,8 +485,8 @@ func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, 
 // with its own flags — note --results-dir vs the clone family's --results-folder,
 // and disk-ops templates its own VM name so no --vm-name fix is needed). Same
 // secret-hygiene rule as datasourceCloneArgs.
-func diskOpsArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func diskOpsArgs(nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -522,8 +548,8 @@ const (
 
 // fioArgs builds the fixed 4 KiB random read/write profile. The plan's start/end
 // range selects one VM or a concurrent fleet; the parser grades the worst p99.
-func fioArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func fioArgs(nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -621,7 +647,7 @@ func runFIO(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.Test
 		return stages.RunHandle{}, fmt.Errorf("virtbench: no results_root in bag")
 	}
 	tr := trs[0]
-	base, err := fioArgs("fio-latency")(rc, tr, root)
+	base, err := fioArgs("fio-latency")(rc, nil, tr, root)
 	if err != nil {
 		return stages.RunHandle{}, err
 	}
@@ -940,4 +966,52 @@ func intParam(tr core.TestRequirement, key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func boolParam(tr core.TestRequirement, key string) bool {
+	if tr.Params == nil {
+		return false
+	}
+	v, ok := tr.Params[key]
+	if !ok {
+		return false
+	}
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		return b == "true" || b == "1" || b == "yes"
+	}
+	return false
+}
+
+// failureRecoveryArgs builds the CLI for the failure-recovery scenario.
+// The node is taken from the bag (set by provisionFailureRecoveryVMs which
+// auto-picks a worker at Provision time) or from an explicit "node" param.
+func failureRecoveryArgs(nsPrefix string) func(rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+		node, _ := core.GetAs[string](bag, "picked_node")
+		if node == "" {
+			node = strParamOr(tr, "node", "")
+		}
+		if node == "" {
+			return nil, fmt.Errorf("virtbench: %s: worker node unknown (provisioning may have failed)", tr.ID)
+		}
+		args := clusterArgs(tr)
+		args = append(args, "failure-recovery",
+			"--node", node,
+			"--vm-name", strParamOr(tr, "vm_name", defaultVMName),
+			"--namespace-prefix", strParamOr(tr, "namespace_prefix", nsPrefix),
+			"--yes",
+			"--save-results",
+			"--results-folder", resultsRoot,
+		)
+		if t := intParam(tr, "vm_recovery_timeout", 0); t > 0 {
+			args = append(args, "--recovery-timeout", strconv.Itoa(t))
+		}
+		if sc := storageClass(nil, tr); sc != "" {
+			args = append(args, "--storage-class", sc)
+		}
+		return args, nil
+	}
 }
