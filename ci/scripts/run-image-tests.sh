@@ -41,7 +41,6 @@ case "${arch}" in
 esac
 podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
 	--platform "linux/${arch}" \
-	--privileged \
 	-v "${repo_root}/work:/work:Z" \
 	-v "$(realpath "${KUBECONFIG}"):/work/kubeconfig:ro,Z" \
 	-w /work \
