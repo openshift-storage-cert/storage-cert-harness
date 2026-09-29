@@ -182,27 +182,13 @@ func (r runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []c
 		return stages.RunHandle{}, err
 	}
 	rc.Logger.Info("virtbench: exec", "cmd", binary, "args", args, "dir", root)
-	if r.sc.KillNode != nil {
-		cmd := exec.CommandContext(ctx, binary, args...)
-		cmd.Dir = root
-		cmd.Stdout = logWriter{log: rc.Logger, stream: "stdout"}
-		cmd.Stderr = logWriter{log: rc.Logger, stream: "stderr"}
-		if err := cmd.Start(); err != nil {
-			return stages.RunHandle{}, fmt.Errorf("virtbench: start failed: %w", err)
-		}
-		go r.sc.KillNode(ctx, rc, bag)
-		if err := cmd.Wait(); err != nil {
+	if err := execVirtbench(ctx, rc, root, args); err != nil {
+		// drain-nodes exits 1 on a timeout — a gradeable FAIL, not a crash. Keep
+		// going to Collect/Parse so the log is still scored (decisions/0013).
+		if !r.sc.TolerateRunError {
 			return stages.RunHandle{}, fmt.Errorf("virtbench: run failed: %w", err)
 		}
-	} else {
-		if err := execVirtbench(ctx, rc, root, args); err != nil {
-			// drain-nodes exits 1 on a timeout — a gradeable FAIL, not a crash. Keep
-			// going to Collect/Parse so the log is still scored (decisions/0013).
-			if !r.sc.TolerateRunError {
-				return stages.RunHandle{}, fmt.Errorf("virtbench: run failed: %w", err)
-			}
-			rc.Logger.Warn("virtbench: CLI exited non-zero; grading from its output anyway", "err", err)
-		}
+		rc.Logger.Warn("virtbench: CLI exited non-zero; grading from its output anyway", "err", err)
 	}
 	return stages.RunHandle{ID: "virtbench-" + rc.RunID}, nil
 }
@@ -400,15 +386,6 @@ func (t teardown) Teardown(_ context.Context, rc *core.RunCtx, bag *core.Bag) er
 		prefix = t.sc.NSPrefix
 	}
 	kubeconfig, _ := core.GetAs[string](bag, "kubeconfig")
-
-	if node, _ := core.GetAs[string](bag, "killed_node"); node != "" {
-		timeout, _ := core.GetAs[int](bag, "node_restore_timeout")
-		if timeout == 0 {
-			timeout = 600
-		}
-		waitForNodeReady(ctx, kubeconfig, node, timeout, rc)
-		uncordonNodeLogged(ctx, kubeconfig, node, rc)
-	}
 
 	leftovers, err := listNamespacesByPrefix(ctx, kubeconfig, prefix+"-")
 	if err != nil {
@@ -968,23 +945,6 @@ func intParam(tr core.TestRequirement, key string, fallback int) int {
 	return fallback
 }
 
-func boolParam(tr core.TestRequirement, key string) bool {
-	if tr.Params == nil {
-		return false
-	}
-	v, ok := tr.Params[key]
-	if !ok {
-		return false
-	}
-	switch b := v.(type) {
-	case bool:
-		return b
-	case string:
-		return b == "true" || b == "1" || b == "yes"
-	}
-	return false
-}
-
 // failureRecoveryArgs builds the CLI for the failure-recovery scenario.
 // The node is taken from the bag (set by provisionFailureRecoveryVMs which
 // auto-picks a worker at Provision time) or from an explicit "node" param.
@@ -998,7 +958,9 @@ func failureRecoveryArgs(nsPrefix string) func(rc *core.RunCtx, bag *core.Bag, t
 			return nil, fmt.Errorf("virtbench: %s: worker node unknown (provisioning may have failed)", tr.ID)
 		}
 		args := clusterArgs(tr)
+		mode := strParamOr(tr, "mode", "monitor")
 		args = append(args, "failure-recovery",
+			"--mode", mode,
 			"--node", node,
 			"--vm-name", strParamOr(tr, "vm_name", defaultVMName),
 			"--namespace-prefix", strParamOr(tr, "namespace_prefix", nsPrefix),
@@ -1008,6 +970,13 @@ func failureRecoveryArgs(nsPrefix string) func(rc *core.RunCtx, bag *core.Bag, t
 		)
 		if t := intParam(tr, "vm_recovery_timeout", 0); t > 0 {
 			args = append(args, "--recovery-timeout", strconv.Itoa(t))
+		}
+		if mode == "far-operator" {
+			farConfig := strParamOr(tr, "far_config", "")
+			if farConfig == "" {
+				return nil, fmt.Errorf("virtbench: %s: far_config is required for far-operator mode", tr.ID)
+			}
+			args = append(args, "--far-config", farConfig, "--remove-node-selector", "--cleanup", "--cleanup-vms")
 		}
 		if sc := storageClass(nil, tr); sc != "" {
 			args = append(args, "--storage-class", sc)

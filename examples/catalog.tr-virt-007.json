@@ -20,7 +20,8 @@
       "checks_count": 2,
       "params": {
         "mode": {"default": "monitor"},
-        "node": {"required": false, "default": ""}
+        "node": {"required": false, "default": ""},
+        "far_config": {"required": false, "default": ""}
       },
       "sla": [
         {

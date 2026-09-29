@@ -82,12 +82,6 @@ spec:
           cloudInitNoCloud:
             userData: |
               #cloud-config
-              user: cloud-user
-              password: changeme
-              chpasswd:
-                expire: false
-              ssh_pwauth: true
-              disable_root: false
               packages:
                 - qemu-guest-agent
               runcmd:

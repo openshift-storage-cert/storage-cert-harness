@@ -555,28 +555,39 @@ var (
 // normalized TestResult for trID. It populates Checks so the grader can score
 // node-failure-vm-recovery and reattach-failure-modes.
 //
-// node-failure-vm-recovery passes only when ALL of:
-//   - vms_failed == 0 (native pass), AND
-//   - ping_time_sec is present in the output (all VMs responded to ping).
+// node-failure-vm-recovery passes only when all VMs are successful and the
+// ping_time_sec aggregate covers every VM.
 //
 // A missing ping_time_sec means virtbench never confirmed network reachability
 // after recovery — that is a test failure regardless of Running state.
 func ParseFailureRecovery(data []byte, trID string) ([]core.TestResult, error) {
+	var summary struct {
+		TotalVMs   int `json:"total_vms"`
+		Successful int `json:"successful"`
+		Failed     int `json:"failed"`
+		Metrics    []struct {
+			Name  string `json:"metric"`
+			Count int    `json:"count"`
+		} `json:"metrics"`
+	}
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return nil, fmt.Errorf("virtbench: parse failure-recovery summary: %w", err)
+	}
 	res, err := parseSummary(failureRecoveryMetricBase, failureRecoveryMetricOrder, data, trID)
 	if err != nil {
 		return nil, err
 	}
-	hasPing := false
-	for _, m := range res[0].Metrics {
-		if m.Name == "time_to_ping" {
-			hasPing = true
-			break
+	complete := summary.TotalVMs > 0 && summary.Successful == summary.TotalVMs && summary.Failed == 0
+	pingComplete := false
+	for _, metric := range summary.Metrics {
+		if metric.Name == "ping_time_sec" && metric.Count == summary.TotalVMs {
+			pingComplete = true
 		}
 	}
-	nativeOK := res[0].Native == core.OutcomePass
+	nativeOK := res[0].Native == core.OutcomePass && complete
 	var nodeRecovery core.Outcome
 	switch {
-	case nativeOK && hasPing:
+	case nativeOK && pingComplete:
 		nodeRecovery = core.OutcomePass
 	default:
 		nodeRecovery = core.OutcomeFail

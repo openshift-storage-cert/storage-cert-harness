@@ -662,6 +662,23 @@ func TestParseFailureRecoveryNoPingFails(t *testing.T) {
 	}
 }
 
+func TestParseFailureRecoveryPartialPingFails(t *testing.T) {
+	partial := []byte(`{
+		"total_vms": 3, "successful": 3, "failed": 0,
+		"metrics": [
+			{"metric": "running_time_sec", "avg": 10, "count": 3},
+			{"metric": "ping_time_sec", "avg": 12, "count": 2}
+		]
+	}`)
+	got, err := ParseFailureRecovery(partial, "TR-VIRT-007")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Checks["node-failure-vm-recovery"] != core.OutcomeFail {
+		t.Errorf("partial ping coverage was accepted: %q", got[0].Checks["node-failure-vm-recovery"])
+	}
+}
+
 func TestParseFailureRecoveryMetricNamesMatchKB(t *testing.T) {
 	in, _ := os.ReadFile(filepath.Join("testdata", FailureRecoveryFileName))
 	got, err := ParseFailureRecovery(in, "TR-VIRT-007")
@@ -709,6 +726,37 @@ func TestBuildArgsFailureRecovery(t *testing.T) {
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("failure-recovery args missing %q; got %q", want, joined)
+		}
+	}
+}
+
+func TestBuildArgsFailureRecoveryFAR(t *testing.T) {
+	tr := core.TestRequirement{ID: "TR-VIRT-007", Params: map[string]any{
+		"node":       "worker-0",
+		"mode":       "far-operator",
+		"far_config": "/far-config.json",
+	}}
+	got, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, core.NewBag(), tr, "/work/res")
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{"--mode far-operator", "--far-config /far-config.json", "--remove-node-selector", "--cleanup", "--cleanup-vms"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("FAR flag %q missing; got %q", want, joined)
+		}
+	}
+}
+
+func TestFailureRecoveryValidate(t *testing.T) {
+	for _, tr := range []core.TestRequirement{
+		{ID: "TR-VIRT-007", Params: map[string]any{"vm_count": 0}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"vm_count": -1}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"mode": "unknown"}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"mode": "far-operator"}},
+	} {
+		if err := failureRecoveryValidate(tr); err == nil {
+			t.Errorf("failureRecoveryValidate(%v) returned nil", tr.Params)
 		}
 	}
 }

@@ -71,11 +71,6 @@ type Scenario struct {
 	// Validate checks scenario-specific inputs before setup can create cluster resources.
 	// Nil means the shared preflight checks are sufficient.
 	Validate func(core.TestRequirement) error
-	// KillNode, when non-nil, is called in a goroutine by the Runner shortly
-	// after the virtbench process starts. Used by failure-recovery to kill the
-	// target node while virtbench is already monitoring the VMs, so it finds
-	// them before the failure rather than after.
-	KillNode func(ctx context.Context, rc *core.RunCtx, bag *core.Bag)
 	// DetailFile, when set, is a second (per-VM) result file the collector reads
 	// best-effort so DetailParse can derive metrics the summary can't (e.g. a real
 	// percentile from raw samples). Absence is not fatal.
@@ -204,6 +199,7 @@ var scenarios = []Scenario{
 		NSPrefix:       "failure-recovery",
 		BuildArgs:      failureRecoveryArgs("failure-recovery"),
 		Parse:          ParseFailureRecovery,
+		Validate:       failureRecoveryValidate,
 		ProvisionVMs:   provisionFailureRecoveryVMs,
 	},
 }
