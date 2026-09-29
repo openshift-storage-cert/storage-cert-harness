@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -155,6 +157,10 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kubeconfig := kubeconfigOf(trs)
+	avoidNodes, err := sshHelperAvoidNodes(ctx, kubeconfig, trs)
+	if err != nil {
+		return err
+	}
 	// Wait for the init container to finish installing tools (image pull + apk add).
 	// Bound kubectl calls and polling together, and honor run cancellation.
 	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
@@ -170,7 +176,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 		switch {
 		case pod == nil:
 			rc.Logger.Info("virtbench: creating shared ssh helper pod", "pod", sshPodNS+"/"+sshPodName)
-			if err := kubectlApply(ctx, kubeconfig, sshPodManifest); err != nil {
+			if err := kubectlApply(ctx, kubeconfig, sshPodManifestForNodes(avoidNodes)); err != nil {
 				return fmt.Errorf("create ssh helper pod: %w", err)
 			}
 			s.createdByUs = true
@@ -185,6 +191,13 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 				return fmt.Errorf("delete stopped ssh helper pod: %v: %s", err, strings.TrimSpace(out))
 			}
 			continue
+		case sshPodOnNode(pod, avoidNodes):
+			rc.Logger.Info("virtbench: replacing ssh helper on FAR target node", "node", pod.Spec.NodeName)
+			out, ok, err := runKubectl(ctx, kubeconfig, "delete", "pod", sshPodName, "-n", sshPodNS, "--wait=false", "--ignore-not-found")
+			if err != nil || !ok {
+				return fmt.Errorf("delete ssh helper on FAR target node: %v: %s", err, strings.TrimSpace(out))
+			}
+			continue
 		case pod.Status.Phase == "Running" && sshpassReady(ctx, kubeconfig):
 			rc.Logger.Info("virtbench: ssh helper pod ready", "pod", sshPodNS+"/"+sshPodName)
 			return nil
@@ -195,6 +208,49 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// sshHelperAvoidNodes returns target node names and hostname labels declared by
+// the plan. The name is needed to recognize an already-running helper; the
+// label is used by Kubernetes scheduling affinity.
+func sshHelperAvoidNodes(ctx context.Context, kubeconfig string, trs []core.TestRequirement) (map[string]struct{}, error) {
+	avoid := make(map[string]struct{})
+	for _, tr := range trs {
+		node := strParamOr(tr, "node", "")
+		if node == "" {
+			continue
+		}
+		avoid[node] = struct{}{}
+		label, ok, err := runKubectl(ctx, kubeconfig, "get", "node", node,
+			"-o", `jsonpath={.metadata.labels.kubernetes\.io/hostname}`)
+		if err != nil {
+			return nil, fmt.Errorf("get FAR target node %s: %w", node, err)
+		}
+		if !ok || strings.TrimSpace(label) == "" {
+			return nil, fmt.Errorf("get FAR target node %s: %s", node, strings.TrimSpace(label))
+		}
+		avoid[strings.TrimSpace(label)] = struct{}{}
+	}
+	return avoid, nil
+}
+
+func sshPodManifestForNodes(avoidNodes map[string]struct{}) string {
+	if len(avoidNodes) == 0 {
+		return sshPodManifest
+	}
+	values := make([]string, 0, len(avoidNodes))
+	for node := range avoidNodes {
+		values = append(values, node)
+	}
+	slices.Sort(values)
+	var affinity strings.Builder
+	affinity.WriteString("  affinity:\n    nodeAffinity:\n      requiredDuringSchedulingIgnoredDuringExecution:\n        nodeSelectorTerms:\n        - matchExpressions:\n          - key: kubernetes.io/hostname\n            operator: NotIn\n            values:\n")
+	for _, node := range values {
+		affinity.WriteString("            - ")
+		affinity.WriteString(strconv.Quote(node))
+		affinity.WriteByte('\n')
+	}
+	return strings.Replace(sshPodManifest, "spec:\n", "spec:\n"+affinity.String(), 1)
 }
 
 // Teardown removes the ssh helper pod if this run created it. This is the group
@@ -280,6 +336,17 @@ type sshPodState struct {
 	Status struct {
 		Phase string `json:"phase"`
 	} `json:"status"`
+	Spec struct {
+		NodeName string `json:"nodeName"`
+	} `json:"spec"`
+}
+
+func sshPodOnNode(pod *sshPodState, avoidNodes map[string]struct{}) bool {
+	if pod == nil || pod.Spec.NodeName == "" {
+		return false
+	}
+	_, found := avoidNodes[pod.Spec.NodeName]
+	return found
 }
 
 // getSSHPod distinguishes absence from API/auth failures; only absence permits

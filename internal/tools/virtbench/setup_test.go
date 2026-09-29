@@ -201,3 +201,39 @@ func TestSSHHelperReplayDoesNotUseCluster(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSSHHelperManifestAvoidsTargetNodes(t *testing.T) {
+	manifest := sshPodManifestForNodes(map[string]struct{}{
+		"r660-05":                               {},
+		"r660-05.ecosys.eng.rdu2.dc.redhat.com": {},
+	})
+	for _, want := range []string{
+		"requiredDuringSchedulingIgnoredDuringExecution",
+		"key: kubernetes.io/hostname",
+		"operator: NotIn",
+		`- "r660-05"`,
+		`- "r660-05.ecosys.eng.rdu2.dc.redhat.com"`,
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Errorf("manifest missing %q:\n%s", want, manifest)
+		}
+	}
+}
+
+func TestSSHHelperManifestWithoutTargetKeepsDefaultScheduling(t *testing.T) {
+	manifest := sshPodManifestForNodes(nil)
+	if strings.Contains(manifest, "nodeAffinity") {
+		t.Fatalf("unexpected node affinity without a target node:\n%s", manifest)
+	}
+}
+
+func TestSSHHelperOnTargetNode(t *testing.T) {
+	pod := &sshPodState{}
+	pod.Spec.NodeName = "r660-05.ecosys.eng.rdu2.dc.redhat.com"
+	if !sshPodOnNode(pod, map[string]struct{}{"r660-05.ecosys.eng.rdu2.dc.redhat.com": {}}) {
+		t.Fatal("helper on target node was not detected")
+	}
+	if sshPodOnNode(pod, map[string]struct{}{"r660-06.ecosys.eng.rdu2.dc.redhat.com": {}}) {
+		t.Fatal("helper on another node was incorrectly detected")
+	}
+}
