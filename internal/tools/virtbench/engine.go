@@ -98,7 +98,7 @@ func (p preflight) Check(ctx context.Context, rc *core.RunCtx, _ *core.Bag, trs 
 		}
 	}
 	for _, tr := range trs {
-		if storageClass(rc, tr) == "" {
+		if storageClass(rc, tr) == "" && !p.sc.StorageClassOptional {
 			findings = append(findings, core.Finding{Level: "error", Message: fmt.Sprintf("virtbench: %s has no storage_class (select a --backend or set the TR 'storage_class' param)", tr.ID)})
 		}
 		if p.sc.Validate != nil {
@@ -120,8 +120,6 @@ type provisioner struct{ sc Scenario }
 func (p provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) error {
 	if len(trs) > 0 {
 		bag.Set("tr_id", trs[0].ID)
-		// Stash what Teardown's safety-net namespace sweep needs (Teardown gets no
-		// TRs). namespace_prefix mirrors the default in the scenario's BuildArgs.
 		bag.Set("ns_prefix", strParamOr(trs[0], "namespace_prefix", p.sc.NSPrefix))
 		bag.Set("kubeconfig", strParamOr(trs[0], "kubeconfig", ""))
 	}
@@ -154,6 +152,11 @@ func (p provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.B
 			return err
 		}
 	}
+	if p.sc.ProvisionVMs != nil {
+		if err := p.sc.ProvisionVMs(ctx, rc, bag, trs); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -174,7 +177,7 @@ func (r runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []c
 	if r.sc.Run != nil {
 		return r.sc.Run(ctx, rc, bag, trs)
 	}
-	args, err := r.sc.BuildArgs(rc, trs[0], root)
+	args, err := r.sc.BuildArgs(rc, bag, trs[0], root)
 	if err != nil {
 		return stages.RunHandle{}, err
 	}
@@ -408,8 +411,8 @@ func (t teardown) Teardown(_ context.Context, rc *core.RunCtx, bag *core.Bag) er
 // ONLY params/backend config — never a threshold/SLA value — so nothing sensitive
 // can reach a command line. resultsRoot is where virtbench must write results so
 // the collector can find them.
-func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -459,8 +462,8 @@ func datasourceCloneArgs(bootStorm bool, nsPrefix string) func(rc *core.RunCtx, 
 // with its own flags — note --results-dir vs the clone family's --results-folder,
 // and disk-ops templates its own VM name so no --vm-name fix is needed). Same
 // secret-hygiene rule as datasourceCloneArgs.
-func diskOpsArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func diskOpsArgs(nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -522,8 +525,8 @@ const (
 
 // fioArgs builds the fixed 4 KiB random read/write profile. The plan's start/end
 // range selects one VM or a concurrent fleet; the parser grades the worst p99.
-func fioArgs(nsPrefix string) func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
-	return func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func fioArgs(nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 		sc := storageClass(rc, tr)
 		if sc == "" {
 			return nil, fmt.Errorf("virtbench: %s: storage_class required (backend or 'storage_class' param)", tr.ID)
@@ -621,7 +624,7 @@ func runFIO(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.Test
 		return stages.RunHandle{}, fmt.Errorf("virtbench: no results_root in bag")
 	}
 	tr := trs[0]
-	base, err := fioArgs("fio-latency")(rc, tr, root)
+	base, err := fioArgs("fio-latency")(rc, nil, tr, root)
 	if err != nil {
 		return stages.RunHandle{}, err
 	}
@@ -940,4 +943,44 @@ func intParam(tr core.TestRequirement, key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// failureRecoveryArgs builds the CLI for the failure-recovery scenario.
+// The node is taken from the bag (set by provisionFailureRecoveryVMs which
+// auto-picks a worker at Provision time) or from an explicit "node" param.
+func failureRecoveryArgs(nsPrefix string) func(rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+	return func(rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+		node, _ := core.GetAs[string](bag, "picked_node")
+		if node == "" {
+			node = strParamOr(tr, "node", "")
+		}
+		if node == "" {
+			return nil, fmt.Errorf("virtbench: %s: worker node unknown (provisioning may have failed)", tr.ID)
+		}
+		args := clusterArgs(tr)
+		mode := strParamOr(tr, "mode", "monitor")
+		args = append(args, "failure-recovery",
+			"--mode", mode,
+			"--node", node,
+			"--vm-name", strParamOr(tr, "vm_name", defaultVMName),
+			"--namespace-prefix", strParamOr(tr, "namespace_prefix", nsPrefix),
+			"--yes",
+			"--save-results",
+			"--results-folder", resultsRoot,
+		)
+		if t := intParam(tr, "vm_recovery_timeout", 0); t > 0 {
+			args = append(args, "--recovery-timeout", strconv.Itoa(t))
+		}
+		if mode == "far-operator" {
+			farConfig := strParamOr(tr, "far_config", "")
+			if farConfig == "" {
+				return nil, fmt.Errorf("virtbench: %s: far_config is required for far-operator mode", tr.ID)
+			}
+			args = append(args, "--far-config", farConfig, "--remove-node-selector", "--cleanup", "--cleanup-vms")
+		}
+		if sc := storageClass(nil, tr); sc != "" {
+			args = append(args, "--storage-class", sc)
+		}
+		return args, nil
+	}
 }
