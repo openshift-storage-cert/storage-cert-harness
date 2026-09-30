@@ -19,9 +19,12 @@ type preflight struct{}
 
 func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) ([]core.Finding, error) {
 	var findings []core.Finding
+	needsSnapshot := false
 	// Validate every selected TR's params, not just the first.
 	for i := range trs {
-		if err := resolveParams(trs[i : i+1]).validateFor(trs[i].ID); err != nil {
+		params := resolveParams(trs[i : i+1])
+		needsSnapshot = needsSnapshot || params.SnapshotCount > 0
+		if err := params.validateFor(trs[i].ID); err != nil {
 			findings = append(findings, core.Finding{Level: "error", Message: trs[i].ID + " parameters: " + err.Error()})
 		} else {
 			findings = append(findings, core.Finding{Level: "info", Message: trs[i].ID + " parameters valid"})
@@ -53,6 +56,15 @@ func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs 
 	}
 	caps := []clustercheck.Capability{clustercheck.KubeVirt, clustercheck.CDI, snapshotCRD}
 	findings = append(findings, clustercheck.Preflight(ctx, caps, sc)...)
+	if sc != "" && needsSnapshot {
+		selection, err := clustercheck.ResolveSnapshot(ctx, sc, rc.Backend.SnapshotClass, "", true)
+		if err != nil {
+			findings = append(findings, core.Finding{Level: "error", Message: err.Error()})
+		} else {
+			bag.Set("snapshot_selection", selection)
+			findings = append(findings, selection.Finding())
+		}
+	}
 	cli := clustercheck.KubeCLI()
 	if cli == "" {
 		return append(findings, core.Finding{Level: "skip", Message: "CDI VolumeImportSource populator: neither kubectl nor oc found on PATH"}), nil
@@ -73,7 +85,15 @@ func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs 
 
 type provisioner struct{}
 
-func (provisioner) Provision(_ context.Context, rc *core.RunCtx, bag *core.Bag, _ []core.TestRequirement) error {
+func (provisioner) Provision(ctx context.Context, rc *core.RunCtx, bag *core.Bag, _ []core.TestRequirement) error {
+	if selection, ok := core.GetAs[clustercheck.SnapshotSelection](bag, "snapshot_selection"); ok && rc.Backend != nil && rc.Backend.SnapshotClass != "" {
+		// Pin the resolved class for the whole run through a private profile.
+		created, err := selection.PrepareVMStorage(ctx)
+		bag.Set("snapshot_storage_class", created)
+		if err != nil {
+			return fmt.Errorf("prepare snapshot storage: %w", err)
+		}
+	}
 	dir := rc.WorkDir
 	if dir == "" {
 		dir = os.TempDir()

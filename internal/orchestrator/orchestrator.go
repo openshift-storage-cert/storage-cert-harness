@@ -48,7 +48,18 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	var scorable []core.TestRequirement
 	var verdicts []core.Verdict
 	var measurements []core.Measurement
+	var storageSelections []core.StorageSelection
 	var resultsMu sync.Mutex
+	externalStorageRecorder := rc.RecordStorageSelection
+	rc.RecordStorageSelection = func(selection core.StorageSelection) {
+		selection.Scenario = cfg.Scenario
+		resultsMu.Lock()
+		storageSelections = append(storageSelections, selection)
+		resultsMu.Unlock()
+		if externalStorageRecorder != nil {
+			externalStorageRecorder(selection)
+		}
+	}
 	var stateMu sync.Mutex
 	var incidentMu sync.Mutex
 	startedAt := time.Now().UTC().Format(time.RFC3339)
@@ -72,6 +83,7 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 		resultsMu.Lock()
 		vs := append([]core.Verdict(nil), verdicts...)
 		ms := append([]core.Measurement(nil), measurements...)
+		ss := append([]core.StorageSelection(nil), storageSelections...)
 		resultsMu.Unlock()
 		for i := range vs {
 			vs[i].Level = levelOf[vs[i].TR]
@@ -82,6 +94,10 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 			ms[i].Scenario = cfg.Scenario
 		}
 		r := report.Build(rc.RunID, schemaVersion, prov, vs)
+		r.StorageSelections = ss
+		sort.Slice(r.StorageSelections, func(i, j int) bool {
+			return core.ExecutionLabel(ss[i].TR, ss[i].Variant) < core.ExecutionLabel(ss[j].TR, ss[j].Variant)
+		})
 		r.Status = status
 		r.Composition = core.RunComposition{PartsCount: 1, Parts: []core.RunPart{{
 			PartID: rc.RunID, Kind: partKind, StartedAt: startedAt, Status: status,

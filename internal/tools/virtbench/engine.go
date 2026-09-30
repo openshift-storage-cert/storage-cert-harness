@@ -74,7 +74,7 @@ const teardownBudget = 120 * time.Second
 
 type preflight struct{ sc Scenario }
 
-func (p preflight) Check(ctx context.Context, rc *core.RunCtx, _ *core.Bag, trs []core.TestRequirement) ([]core.Finding, error) {
+func (p preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) ([]core.Finding, error) {
 	var findings []core.Finding
 	// Replay grades pre-collected results — no binary or cluster needed.
 	dir := replayDir(trs)
@@ -108,6 +108,15 @@ func (p preflight) Check(ctx context.Context, rc *core.RunCtx, _ *core.Bag, trs 
 		}
 	}
 	for _, tr := range trs {
+		if dir == "" && usesSnapshot(tr) && strings.HasPrefix(p.sc.AutomationTool, "virtbench datasource-clone") {
+			clone, err := snapshotClonePreflight(ctx, rc, tr)
+			if err != nil {
+				findings = append(findings, core.Finding{Level: "error", Message: tr.ID + " snapshot clone: " + err.Error()})
+			} else {
+				bag.Set("snapshot_clone", clone)
+				findings = append(findings, clone.Selection.Finding())
+			}
+		}
 		if dir != "" {
 			findings = append(findings, core.Finding{Level: "skip", Message: tr.ID + " storage_class: replay mode"})
 		} else if sc := storageClass(rc, tr); sc == "" {
@@ -195,6 +204,25 @@ func (r runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []c
 	args, err := r.sc.BuildArgs(rc, trs[0], root)
 	if err != nil {
 		return stages.RunHandle{}, err
+	}
+	if clone, ok := core.GetAs[*snapshotClone](bag, "snapshot_clone"); ok {
+		path, err := clone.prepare(ctx, root)
+		if err != nil {
+			return stages.RunHandle{}, fmt.Errorf("prepare snapshot clone: %w", err)
+		}
+		found := false
+		for i := 0; i+1 < len(args); i++ {
+			if args[i] == "--vm-template" {
+				args[i+1], found = path, true
+				break
+			}
+		}
+		if !found {
+			args = append(args, "--vm-template", path)
+		}
+		if rc.RecordStorageSelection != nil {
+			rc.RecordStorageSelection(core.StorageSelection{TR: trs[0].ID, Variant: trs[0].Variant, StorageClass: clone.Selection.StorageClass, SnapshotClass: clone.Selection.SnapshotClass})
+		}
 	}
 	rc.Logger.Info("virtbench: exec", "cmd", binary, "args", args, "dir", root)
 	if err := execVirtbench(ctx, rc, root, args); err != nil {
@@ -387,6 +415,9 @@ func (t teardown) Teardown(_ context.Context, rc *core.RunCtx, bag *core.Bag) er
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), teardownBudget)
 	defer cancel()
+	if clone, ok := core.GetAs[*snapshotClone](bag, "snapshot_clone"); ok {
+		defer clone.cleanup(ctx, rc)
+	}
 
 	// A scenario adds its own cleanup on top of the generic namespace sweep (drain
 	// uncordons the workers it cordoned).
