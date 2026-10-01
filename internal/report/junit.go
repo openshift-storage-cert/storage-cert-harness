@@ -55,6 +55,17 @@ func writeJUnit(w io.Writer, r core.Report, hardwareAtRoot bool) error {
 		pfProps.add(base+".volume_binding_mode", sc.VolumeBindingMode)
 	}
 	addFacts(pfProps, p.Facts)
+	for _, s := range r.StorageSelections {
+		base := "storage." + core.ExecutionLabel(s.TR, s.Variant)
+		if s.Scenario != "" {
+			base += "." + s.Scenario
+		}
+		pfProps.add(base+".storage_class", s.StorageClass)
+		pfProps.add(base+".snapshot_class", s.SnapshotClass)
+		if s.EffectiveStorageClass != "" {
+			pfProps.add(base+".effective_storage_class", s.EffectiveStorageClass)
+		}
+	}
 	root.Suites = append(root.Suites, juSuite{Name: "environment-platform", Properties: pfProps})
 
 	// --- verdicts grouped by partner level ---

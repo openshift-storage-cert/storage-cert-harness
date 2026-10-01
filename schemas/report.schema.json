@@ -20,6 +20,22 @@
         "generated_date": { "type": "string" }
       }
     },
+    "storage_selections": {
+      "type": "array",
+      "description": "Resolved classes for each snapshot-backed execution; effective_storage_class identifies a private KubeVirt storage class copy.",
+      "items": {
+        "type": "object",
+        "required": ["tr", "storage_class", "snapshot_class"],
+        "properties": {
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "scenario": { "type": "string" },
+          "storage_class": { "type": "string" },
+          "snapshot_class": { "type": "string" },
+          "effective_storage_class": { "type": "string" }
+        }
+      }
+    },
     "attestations": {
       "type": "array",
       "description": "Partner-declared, unobservable claims about the tested CSI and storage-array combination.",

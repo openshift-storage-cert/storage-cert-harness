@@ -34,7 +34,15 @@ func TestPreflightContinuesAfterInvalidParameters(t *testing.T) {
 
 func TestPreflightSuccessfulSnapshot(t *testing.T) {
 	dir := t.TempDir()
-	script := "#!/bin/sh\nif [ \"$2\" = volumepopulator ]; then echo '{\"items\":[]}'; fi\nexit 0\n"
+	script := `#!/bin/sh
+case "$2" in
+  volumepopulator) echo '{"items":[]}' ;;
+  storageclass) echo '{"provisioner":"test-driver"}' ;;
+  storageprofile) echo '{"status":{"snapshotClass":"test-snapshot"}}' ;;
+  volumesnapshotclass) echo '{"driver":"test-driver"}' ;;
+esac
+exit 0
+`
 	for _, binary := range []string{"kube-burner", "kubectl"} {
 		if err := os.WriteFile(filepath.Join(dir, binary), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
@@ -47,8 +55,8 @@ func TestPreflightSuccessfulSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 8 {
-		t.Fatalf("findings = %+v, want parameters, storage config, binary, 3 CRDs, storage existence, populator", got)
+	if len(got) != 9 {
+		t.Fatalf("findings = %+v, want parameters, storage config, binary, 3 CRDs, storage existence, snapshot class, populator", got)
 	}
 	for _, f := range got {
 		if f.Level != "info" {

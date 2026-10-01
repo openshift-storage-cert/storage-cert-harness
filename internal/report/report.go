@@ -243,6 +243,7 @@ func Merge(base, next core.Report) (core.Report, error) {
 	merged.Measurements = dedupeMeasurements(append(append([]core.Measurement{}, base.Measurements...), next.Measurements...))
 	merged.Composition = mergeComposition(base, next)
 	merged.Executions = mergeExecutions(base.Executions, next.Executions)
+	merged.StorageSelections = mergeStorageSelections(base.StorageSelections, next.StorageSelections)
 	merged.Incidents = mergeIncidents(base.Incidents, next.Incidents)
 	merged.Warnings = append(append([]string{}, base.Warnings...), next.Warnings...)
 	merged.Status = next.Status
@@ -429,6 +430,13 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 	fmt.Fprintf(&b, "- Certified level: %d\n", r.Summary.CertifiedLevel)
 	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip (of %d)\n\n",
 		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.Total)
+	if len(r.StorageSelections) > 0 {
+		b.WriteString("## Snapshot storage\n\n| TR | Scenario | Storage class | Snapshot class | Effective storage class |\n|----|----------|---------------|----------------|-------------------------|\n")
+		for _, s := range r.StorageSelections {
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", core.ExecutionLabel(s.TR, s.Variant), s.Scenario, s.StorageClass, s.SnapshotClass, s.EffectiveStorageClass)
+		}
+		b.WriteString("\n")
+	}
 	if len(r.Composition.Parts) > 0 {
 		b.WriteString("## Run composition\n\n")
 		fmt.Fprintf(&b, "Composed from %d run part(s).\n\n", r.Composition.PartsCount)
