@@ -201,3 +201,37 @@ func TestSSHHelperReplayDoesNotUseCluster(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSSHHelperManifestAvoidsTargetNodes(t *testing.T) {
+	manifest := sshPodManifestForNodes(map[string]struct{}{
+		"worker-05": {},
+	})
+	for _, want := range []string{
+		"requiredDuringSchedulingIgnoredDuringExecution",
+		"key: kubernetes.io/hostname",
+		"operator: NotIn",
+		`- "worker-05"`,
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Errorf("manifest missing %q:\n%s", want, manifest)
+		}
+	}
+}
+
+func TestSSHHelperManifestWithoutTargetKeepsDefaultScheduling(t *testing.T) {
+	manifest := sshPodManifestForNodes(nil)
+	if strings.Contains(manifest, "nodeAffinity") {
+		t.Fatalf("unexpected node affinity without a target node:\n%s", manifest)
+	}
+}
+
+func TestSSHHelperOnTargetNode(t *testing.T) {
+	pod := &sshPodState{}
+	pod.Spec.NodeName = "worker-05.example.test"
+	if !sshPodOnNode(pod, map[string]struct{}{"worker-05.example.test": {}}) {
+		t.Fatal("helper on target node was not detected")
+	}
+	if sshPodOnNode(pod, map[string]struct{}{"worker-06.example.test": {}}) {
+		t.Fatal("helper on another node was incorrectly detected")
+	}
+}
