@@ -41,6 +41,13 @@ independently-ownable tasks — great for parallel work.
    your tool requires a backend, assert it in `Preflight` and emit an `error`
    finding when it is missing.
 
+   Return one `core.Finding` for every preflight check: `Level: "info"` for
+   success, `"error"` for failure, or `"skip"` with a reason when the check did
+   not run. Continue independent checks after a failure; report dependent
+   checks as skipped when a prerequisite is missing. The CLI renders these as
+   PASS / FAIL / SKIP and includes all results in its closing tally. Legacy
+   `"warn"` findings render as non-fatal SKIP results.
+
 5. **Write a golden-file test for the parser.** Put a captured sample of the
    tool's output under `testdata/`, parse it, and compare to a golden file
    (`example_test.go` is the template; `go test ./... -update` regenerates). This
@@ -121,6 +128,9 @@ scenario's provisioner rechecks that the helper is Running with `sshpass`
 available, recreating it if a preceding node drain removed it. Terminating pods
 are allowed to disappear before recreation; completed or failed pods are
 replaced. Skip shared setup and these readiness checks in replay mode (no cluster).
+
+To bump the Quay `ssh-helper` image pin, see
+[`docs/ssh-helper-image.md`](ssh-helper-image.md).
 
 The opt-in `TestSSHHelperAfterNodeDrain` regression (`-tags=integration`) runs
 the real drain → clone-at-scale → boot-storm sequence. Set

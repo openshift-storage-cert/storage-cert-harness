@@ -24,17 +24,18 @@ import (
 const (
 	sshPodName = "ssh-test-pod"
 	sshPodNS   = "default"
+
+	// Pinned quay.io/virtarraycert/ssh-helper release (0.1.10; bump when >=0.1.11
+	// with /opt/sshhelper/bin log wrappers ships — see storage-cert-harness-images).
+	sshHelperImage = "quay.io/virtarraycert/ssh-helper@sha256:f73550de05f30f6c2c53c7efe24ab1fd5eff0f952bd7aa556aaf7572f9cb4706"
 )
 
 // sshPodManifest is the helper pod virtbench uses for ping and in-VM SSH checks.
-// An init container installs alpine packages into a shared emptyDir; the main
-// container mounts those paths and runs with readOnlyRootFilesystem. The pod is
-// shared across scenarios; pre-existing pods are left running after the run.
-// The readiness check confirms the pod is Running and sshpass is installed.
+// Keep in sync with container-patches/virtbench/examples/utilities/ssh-pod.yaml.
 // Remove manually when decommissioning the cluster:
 //
 //	kubectl delete pod ssh-test-pod -n default
-const sshPodManifest = `apiVersion: v1
+var sshPodManifest = `apiVersion: v1
 kind: Pod
 metadata:
   name: ` + sshPodName + `
@@ -45,71 +46,29 @@ metadata:
 spec:
   securityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
-  initContainers:
-  - name: install-tools
-    image: alpine:latest
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: ["ALL"]
-      readOnlyRootFilesystem: true
-    command:
-    - /bin/sh
-    - -c
-    - |
-      cp -a /bin /lib /usr /sbin /etc /var /staging/
-      apk add --root /staging --no-cache bash openssh-client sshpass iputils
-      mkdir -p /tools/bin /tools/sbin /tools/lib /tools/usr/bin /tools/usr/sbin /tools/usr/lib
-      cp -a /staging/bin/. /tools/bin/
-      cp -a /staging/sbin/. /tools/sbin/
-      cp -a /staging/lib/. /tools/lib/
-      cp -a /staging/usr/bin/. /tools/usr/bin/
-      cp -a /staging/usr/sbin/. /tools/usr/sbin/
-      cp -a /staging/usr/lib/. /tools/usr/lib/
-    volumeMounts:
-    - name: staging
-      mountPath: /staging
-    - name: tools
-      mountPath: /tools
-    - name: tmp
-      mountPath: /tmp
   containers:
   - name: ssh-client
-    image: alpine:latest
+    image: ` + sshHelperImage + `
+    imagePullPolicy: IfNotPresent
     securityContext:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
       readOnlyRootFilesystem: true
-    command: ["/bin/sh", "-c", "tail -f /dev/null"]
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+    command: ["/bin/bash", "-c", "exec sleep infinity"]
     volumeMounts:
-    - name: tools
-      mountPath: /bin
-      subPath: bin
-    - name: tools
-      mountPath: /sbin
-      subPath: sbin
-    - name: tools
-      mountPath: /lib
-      subPath: lib
-    - name: tools
-      mountPath: /usr/bin
-      subPath: usr/bin
-    - name: tools
-      mountPath: /usr/sbin
-      subPath: usr/sbin
-    - name: tools
-      mountPath: /usr/lib
-      subPath: usr/lib
     - name: tmp
       mountPath: /tmp
-    - name: root-home
-      mountPath: /root
+    - name: home
+      mountPath: /home/sshhelper
     resources:
       requests:
         memory: "128Mi"
@@ -118,13 +77,9 @@ spec:
         memory: "256Mi"
         cpu: "200m"
   volumes:
-  - name: staging
-    emptyDir: {}
-  - name: tools
-    emptyDir: {}
   - name: tmp
     emptyDir: {}
-  - name: root-home
+  - name: home
     emptyDir: {}
   restartPolicy: Always
 `
@@ -155,8 +110,8 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kubeconfig := kubeconfigOf(trs)
-	// Wait for the init container to finish installing tools (image pull + apk add).
-	// Bound kubectl calls and polling together, and honor run cancellation.
+	// Wait for image pull and container start. Bound kubectl calls and polling
+	// together, and honor run cancellation.
 	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 	for {
@@ -306,10 +261,11 @@ func getSSHPod(ctx context.Context, kubeconfig string) (*sshPodState, error) {
 	return &pod, nil
 }
 
-// sshpassReady checks that the pod has sshpass installed and ready. The alpine
-// pod installs it via apk on startup; this exec confirms the install completed.
+// sshpassReady checks that the helper image has sshpass on PATH (command -v; the
+// UBI image does not ship which).
 func sshpassReady(ctx context.Context, kubeconfig string) bool {
-	_, ok, _ := runKubectl(ctx, kubeconfig, "exec", "-n", sshPodNS, sshPodName, "--", "which", "sshpass")
+	_, ok, _ := runKubectl(ctx, kubeconfig, "exec", "-n", sshPodNS, sshPodName, "--",
+		"/bin/bash", "-c", "command -v sshpass >/dev/null")
 	return ok
 }
 

@@ -2,6 +2,7 @@ package clustercheck
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -66,27 +67,67 @@ var (
 	KubeVirt = CRD("kubevirts.kubevirt.io")
 )
 
-// Preflight runs the shared cluster-prereq flow: warn if no kube CLI, else check each capability plus the StorageClass when set.
+// HasVolumePopulator reports whether the cluster has registered a populator for
+// the requested CDI source kind. Older CDI versions expose the CRDs but do not
+// register every source kind, so checking the registration is necessary.
+func HasVolumePopulator(ctx context.Context, cli, group, kind string) (bool, error) {
+	out, err := exec.CommandContext(ctx, cli, "get", "volumepopulator", "-o", "json").CombinedOutput() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
+	if err != nil {
+		message := strings.ToLower(string(out))
+		if strings.Contains(message, "the server doesn't have a resource type") || strings.Contains(message, "not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("get volume populators: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	var list struct {
+		Items []struct {
+			// VolumePopulator is a cluster-scoped API whose sourceKind is
+			// top-level, unlike namespaced Kubernetes specs.
+			SourceKind struct {
+				Group string `json:"group"`
+				Kind  string `json:"kind"`
+			} `json:"sourceKind"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(out, &list); err != nil {
+		return false, fmt.Errorf("decode volume populators: %w", err)
+	}
+	for _, item := range list.Items {
+		if item.SourceKind.Group == group && item.SourceKind.Kind == kind {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// Preflight checks each capability and the StorageClass, reporting individual
+// skips when the CLI or StorageClass is not configured.
 func Preflight(ctx context.Context, caps []Capability, storageClass string) []core.Finding {
 	cli := KubeCLI()
-	if cli == "" {
-		return []core.Finding{{Level: "warn", Message: "neither kubectl nor oc found; skipping cluster prereq checks"}}
-	}
 	var findings []core.Finding
 	for _, c := range caps {
-		findings = append(findings, c.Check(ctx, cli))
+		if cli == "" {
+			findings = append(findings, core.Finding{Level: "skip", Message: c.Name + ": neither kubectl nor oc found on PATH"})
+		} else {
+			findings = append(findings, c.Check(ctx, cli))
+		}
 	}
-	if storageClass != "" {
+	switch {
+	case storageClass == "":
+		findings = append(findings, core.Finding{Level: "skip", Message: "storage class existence: no storage_class configured"})
+	case cli == "":
+		findings = append(findings, core.Finding{Level: "skip", Message: fmt.Sprintf("storage class %q existence: neither kubectl nor oc found on PATH", storageClass)})
+	default:
 		findings = append(findings, StorageClassExists(ctx, cli, storageClass))
 	}
 	return findings
 }
 
-// StorageClassExists checks a StorageClass exists on the cluster (warn if absent).
+// StorageClassExists checks a StorageClass exists on the cluster.
 func StorageClassExists(ctx context.Context, cli, name string) core.Finding {
 	out, err := exec.CommandContext(ctx, cli, "get", "storageclass", name, "-o", "name").CombinedOutput() // #nosec G204 -- CLI is selected by cluster detection and args are structured.
 	if err != nil {
-		return core.Finding{Level: "warn", Message: fmt.Sprintf("storage class %q not found on cluster: %s", name, strings.TrimSpace(string(out)))}
+		return core.Finding{Level: "error", Message: fmt.Sprintf("storage class %q lookup failed: %v: %s", name, err, strings.TrimSpace(string(out)))}
 	}
 	return core.Finding{Level: "info", Message: fmt.Sprintf("storage class %q present", name)}
 }
