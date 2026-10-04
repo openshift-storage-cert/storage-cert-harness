@@ -6,9 +6,10 @@ description: >-
   thresholds.json; the workload counts are deliberately
   reduced for development and adapter validation, so this plan is not a
   certification-scale run.
-backend: example-array
+backend: tlvbm
 concurrency: 1
 select:
+  # set only the ids for tests specific to this plan
   ids:
     - TR-VIRT-001  # Boot Storm
     - TR-STOR-002   # Storage IO Latency, load-80
