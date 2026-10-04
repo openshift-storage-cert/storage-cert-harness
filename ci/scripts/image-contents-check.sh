@@ -95,6 +95,13 @@ else
 	fail "/usr/bin/virtbench fio is missing or cannot run"
 fi
 
+echo "==> checking virtbench datasource-clone template"
+if run_cmd test -f /opt/virtbench-runtime/examples/vm-templates/rhel9-vm-datasource.yaml; then
+	echo "  rhel9-vm-datasource.yaml: present"
+else
+	fail "/opt/virtbench-runtime/examples/vm-templates/rhel9-vm-datasource.yaml is missing"
+fi
+
 if [[ "${errors}" -gt 0 ]]; then
 	die "image-contents-check found ${errors} issue(s)"
 fi

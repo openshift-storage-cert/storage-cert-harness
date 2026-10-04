@@ -34,6 +34,7 @@ COPY bin/harness /usr/bin/
 COPY --from=tools /usr/bin/kube-burner /usr/bin/kube-burner-ocp /usr/bin/virtctl /usr/bin/
 COPY --from=tools /usr/bin/oc /usr/bin/kubectl /usr/bin/virtbench /usr/bin/
 COPY --from=tools /opt/virtbench-runtime /opt/virtbench-runtime
+COPY --from=tools /opt/virtbench-runtime/examples/vm-templates /opt/virtbench-runtime/examples/vm-templates
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY --from=tools /opt/virtbench-venv /opt/virtbench-venv
 COPY container-entrypoint.sh /usr/local/bin/
