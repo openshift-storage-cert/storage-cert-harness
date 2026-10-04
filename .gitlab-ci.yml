@@ -190,6 +190,8 @@ image-scan-trivy:
       - logs/*.log
       - dist/trivy-report.json
       - dist/trivy-report.txt
+      - dist/trivy-secret-report.json
+      - dist/trivy-misconfig-report.txt
       - dist/sbom.cdx.json
     expire_in: 1 week
 

@@ -27,6 +27,8 @@ mkdir -p "${REPO_ROOT}/dist"
 trivy_report_json="${REPO_ROOT}/dist/trivy-report.json"
 trivy_report_txt="${REPO_ROOT}/dist/trivy-report.txt"
 trivy_sbom_json="${REPO_ROOT}/dist/sbom.cdx.json"
+trivy_secret_json="${REPO_ROOT}/dist/trivy-secret-report.json"
+trivy_misconfig_txt="${REPO_ROOT}/dist/trivy-misconfig-report.txt"
 
 # Always write reports for CI artifacts (gate runs separately below).
 trivy "${trivy_input[@]}" \
@@ -55,21 +57,30 @@ elif (( trivy_status != 0 )); then
 	exit "${trivy_status}"
 fi
 
-# Secret scanning
+# Secret scan: write report for CI artifacts, then gate (stdout only is not uploaded).
+trivy "${trivy_input[@]}" \
+	--scanners secret \
+	--format json \
+	--output "${trivy_secret_json}"
 trivy "${trivy_input[@]}" \
 	--scanners secret \
 	--exit-code 1
 
-# Misconfiguration scanning
+# Misconfiguration scan: report file + gate on HIGH/CRITICAL.
+trivy "${trivy_input[@]}" \
+	--scanners misconfig \
+	--format table \
+	--output "${trivy_misconfig_txt}" \
+	--severity HIGH,CRITICAL
 trivy "${trivy_input[@]}" \
 	--scanners misconfig \
 	--exit-code 1 \
 	--severity HIGH,CRITICAL
 
-# Generate CycloneDX SBOM (under dist/ for CI artifact upload alongside vuln reports).
+# Generate CycloneDX SBOM (under dist/ for CI artifact upload alongside other reports).
 trivy "${trivy_input[@]}" \
 	--format cyclonedx \
 	--output "${trivy_sbom_json}"
 
-echo "wrote ${trivy_sbom_json}"
+echo "wrote ${trivy_secret_json}, ${trivy_misconfig_txt}, and ${trivy_sbom_json}"
 echo "image-scan-trivy ok"

@@ -93,6 +93,8 @@ jobs:
           path: |
             dist/trivy-report.json
             dist/trivy-report.txt
+            dist/trivy-secret-report.json
+            dist/trivy-misconfig-report.txt
             dist/sbom.cdx.json
             logs/*.log
           if-no-files-found: ignore
