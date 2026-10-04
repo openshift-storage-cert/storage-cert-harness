@@ -30,7 +30,13 @@ trivy_sbom_json="${REPO_ROOT}/dist/sbom.cdx.json"
 trivy_secret_json="${REPO_ROOT}/dist/trivy-secret-report.json"
 trivy_misconfig_txt="${REPO_ROOT}/dist/trivy-misconfig-report.txt"
 
-# Always write reports for CI artifacts (gate runs separately below).
+# SBOM first: secret/misconfig gates use --exit-code 1 and set -e would skip SBOM if they ran first.
+trivy "${trivy_input[@]}" \
+	--format cyclonedx \
+	--output "${trivy_sbom_json}"
+echo "wrote ${trivy_sbom_json}"
+
+# Always write vuln reports for CI artifacts (gate runs separately below).
 trivy "${trivy_input[@]}" \
     "${vuln_flags[@]}" \
 	--format json \
@@ -77,10 +83,5 @@ trivy "${trivy_input[@]}" \
 	--exit-code 1 \
 	--severity HIGH,CRITICAL
 
-# Generate CycloneDX SBOM (under dist/ for CI artifact upload alongside other reports).
-trivy "${trivy_input[@]}" \
-	--format cyclonedx \
-	--output "${trivy_sbom_json}"
-
-echo "wrote ${trivy_secret_json}, ${trivy_misconfig_txt}, and ${trivy_sbom_json}"
+echo "wrote ${trivy_secret_json} and ${trivy_misconfig_txt}"
 echo "image-scan-trivy ok"
