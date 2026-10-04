@@ -58,7 +58,7 @@ if [[ -z "${backend}" ]]; then
 		echo "error: yq is required to read the backend from work/backends.local.yaml; set BACKEND explicitly or install yq" >&2
 		exit 1
 	}
-	if ! backend="$(yq -r '.backends[0].name // ""' work/backends.local.yaml)"; then
+	if ! backend="$(yq e -r '.backends[0].name // ""' work/backends.local.yaml)"; then
 		echo "error: could not parse backend configuration: work/backends.local.yaml" >&2
 		exit 1
 	fi
