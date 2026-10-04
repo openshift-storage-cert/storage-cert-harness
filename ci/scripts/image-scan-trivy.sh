@@ -26,6 +26,7 @@ vuln_flags=(
 mkdir -p "${REPO_ROOT}/dist"
 trivy_report_json="${REPO_ROOT}/dist/trivy-report.json"
 trivy_report_txt="${REPO_ROOT}/dist/trivy-report.txt"
+trivy_sbom_json="${REPO_ROOT}/dist/sbom.cdx.json"
 
 # Always write reports for CI artifacts (gate runs separately below).
 trivy "${trivy_input[@]}" \
@@ -65,9 +66,10 @@ trivy "${trivy_input[@]}" \
 	--exit-code 1 \
 	--severity HIGH,CRITICAL
 
-# Generate CycloneDX SBOM natively
+# Generate CycloneDX SBOM (under dist/ for CI artifact upload alongside vuln reports).
 trivy "${trivy_input[@]}" \
 	--format cyclonedx \
-	--output "${LOG_DIR}/sbom.cdx.json"
-	
+	--output "${trivy_sbom_json}"
+
+echo "wrote ${trivy_sbom_json}"
 echo "image-scan-trivy ok"

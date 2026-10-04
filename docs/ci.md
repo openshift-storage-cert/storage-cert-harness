@@ -272,7 +272,8 @@ pinned native Hadolint release binary installed by `install-tools.sh`; CI uses
 the pinned Hadolint image from `CI_TOOLS_IMAGE`. The script also reports any
 privileged `USER 0` setup lines for context. Run image scans locally with
 `make image-build && make image-scan`.
-Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
+Trivy writes `dist/trivy-report.json`, `dist/trivy-report.txt`, and
+`dist/sbom.cdx.json`; Dive writes
 `dist/dive-report.txt`. GitHub runs the scan jobs with failures allowed, so
 logs and reports are available as job artifacts; it produces no Code scanning
 (SARIF) upload. Local `dist/` output remains available via `make image-scan`.
