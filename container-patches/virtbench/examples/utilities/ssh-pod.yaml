@@ -5,77 +5,33 @@ metadata:
   namespace: default
   labels:
     app: kubevirt-perf-test
+    managed-by: storage-cert-harness
 spec:
   securityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
-  initContainers:
-    - name: install-tools
-      image: alpine:latest
-      securityContext:
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop: ["ALL"]
-        readOnlyRootFilesystem: true
-      command:
-        - /bin/sh
-        - -c
-        - |
-          cp -a /bin /lib /usr /sbin /etc /var /staging/
-          apk add --root /staging --no-cache bash iputils openssh-client netcat-openbsd sshpass
-          mkdir -p /tools/bin /tools/sbin /tools/lib /tools/usr/bin /tools/usr/sbin /tools/usr/lib
-          cp -a /staging/bin/. /tools/bin/
-          cp -a /staging/sbin/. /tools/sbin/
-          cp -a /staging/lib/. /tools/lib/
-          cp -a /staging/usr/bin/. /tools/usr/bin/
-          cp -a /staging/usr/sbin/. /tools/usr/sbin/
-          cp -a /staging/usr/lib/. /tools/usr/lib/
-      volumeMounts:
-        - name: staging
-          mountPath: /staging
-        - name: tools
-          mountPath: /tools
-        - name: tmp
-          mountPath: /tmp
   containers:
     - name: ssh-client
-      image: alpine:latest
+      image: quay.io/virtarraycert/ssh-helper@sha256:f73550de05f30f6c2c53c7efe24ab1fd5eff0f952bd7aa556aaf7572f9cb4706
+      imagePullPolicy: IfNotPresent
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
         readOnlyRootFilesystem: true
-      command:
-        - /bin/sh
-        - -c
-        - tail -f /dev/null
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      command: ["/bin/bash", "-c", "exec sleep infinity"]
       volumeMounts:
-        - name: tools
-          mountPath: /bin
-          subPath: bin
-        - name: tools
-          mountPath: /sbin
-          subPath: sbin
-        - name: tools
-          mountPath: /lib
-          subPath: lib
-        - name: tools
-          mountPath: /usr/bin
-          subPath: usr/bin
-        - name: tools
-          mountPath: /usr/sbin
-          subPath: usr/sbin
-        - name: tools
-          mountPath: /usr/lib
-          subPath: usr/lib
         - name: tmp
           mountPath: /tmp
-        - name: root-home
-          mountPath: /root
+        - name: home
+          mountPath: /home/sshhelper
       resources:
         requests:
           memory: "128Mi"
@@ -84,13 +40,9 @@ spec:
           memory: "256Mi"
           cpu: "200m"
   volumes:
-    - name: staging
-      emptyDir: {}
-    - name: tools
-      emptyDir: {}
     - name: tmp
       emptyDir: {}
-    - name: root-home
+    - name: home
       emptyDir: {}
   restartPolicy: Always
 ---
