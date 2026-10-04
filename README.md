@@ -100,7 +100,9 @@ a report. See [`docs/architecture.md`](docs/architecture.md),
 ## Adding a tool
 
 Copy `internal/tools/example/` and follow
-[`docs/adapter-authoring.md`](docs/adapter-authoring.md).
+[`docs/adapter-authoring.md`](docs/adapter-authoring.md). Virtbench’s shared
+`ssh-test-pod` uses a pinned `quay.io/virtarraycert/ssh-helper` digest;
+see [`docs/ssh-helper-image.md`](docs/ssh-helper-image.md) to update it.
 
 ## Secret handling
 

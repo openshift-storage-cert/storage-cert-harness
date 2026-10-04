@@ -44,20 +44,21 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 }
 echo "validation passed: yq is available"
 
-backend="${BACKEND:-$(${yq_bin} -r '.backend // ""' "${plan}")}"
+backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {
 	echo "error: no backend is specified by ${plan}; set BACKEND explicitly" >&2
 	exit 1
 }
 echo "validation passed: plan backend is '${backend}'"
-backend_name="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .name' work/backends.local.yaml)"
+export YQ_BACKEND="${backend}"
+backend_name="$(${yq_bin} e -r '.backends[] | select(.name == strenv(YQ_BACKEND)) | .name' work/backends.local.yaml)"
 [[ "${backend_name}" == "${backend}" ]] || {
 	echo "error: backend '${backend}' is not defined in work/backends.local.yaml" >&2
 	exit 1
 }
 echo "validation passed: backend '${backend}' is defined"
-storage_class="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .storage_class // ""' work/backends.local.yaml)"
-snapshot_class="$(${yq_bin} -r --arg backend "${backend}" '.backends[] | select(.name == $backend) | .snapshot_class // ""' work/backends.local.yaml)"
+storage_class="$(${yq_bin} e -r '.backends[] | select(.name == strenv(YQ_BACKEND)) | .storage_class // ""' work/backends.local.yaml)"
+snapshot_class="$(${yq_bin} e -r '.backends[] | select(.name == strenv(YQ_BACKEND)) | .snapshot_class // ""' work/backends.local.yaml)"
 [[ -n "${storage_class}" ]] || {
 	echo "error: backend '${backend}' has no storage_class" >&2
 	exit 1
@@ -111,7 +112,7 @@ oc "${oc_args[@]}" get volumesnapshotclass "${snapshot_class}" >/dev/null || {
 }
 echo "validation passed: snapshot class '${snapshot_class}' exists"
 
-plan_nodes="$(${yq_bin} -r '.. | select(tag == "!!map") | select(has("node_name") or has("target_node")) | (.node_name // .target_node) | select(. != null and . != "")' "${plan}")"
+plan_nodes="$(${yq_bin} e -r '.. | select(tag == "!!map") | select(has("node_name") or has("target_node")) | (.node_name // .target_node) | select(. != null and . != "")' "${plan}")"
 while IFS= read -r plan_node; do
 	[[ -z "${plan_node}" ]] && continue
 	oc "${oc_args[@]}" get node "${plan_node}" >/dev/null || {

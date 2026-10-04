@@ -129,6 +129,9 @@ available, recreating it if a preceding node drain removed it. Terminating pods
 are allowed to disappear before recreation; completed or failed pods are
 replaced. Skip shared setup and these readiness checks in replay mode (no cluster).
 
+To bump the Quay `ssh-helper` image pin, see
+[`docs/ssh-helper-image.md`](ssh-helper-image.md).
+
 The opt-in `TestSSHHelperAfterNodeDrain` regression (`-tags=integration`) runs
 the real drain → clone-at-scale → boot-storm sequence. Set
 `VIRTBENCH_LIVE_STORAGE_CLASS` and `VIRTBENCH_LIVE_WORKDIR`, with `KUBECONFIG`
