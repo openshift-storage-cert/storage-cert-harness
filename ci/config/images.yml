@@ -1,8 +1,8 @@
 # Generated from ci/config/images.env by ci/scripts/sync-images-yml.sh. Do not edit.
 # GitLab `image:` is resolved at parse time and cannot source dotenv.
 variables:
-  GO_IMAGE: "registry.access.redhat.com/ubi10/go-toolset:1.26.7-1788946935"
-  BUILD_IMAGE: "registry.access.redhat.com/ubi9/python-312:9.8"
+  GO_IMAGE: "registry.access.redhat.com/ubi10/go-toolset:1.26.7-1788946735"
+  BUILD_IMAGE: "quay.io/virtarraycert/harness-builder@sha256:d36d6b1fc8e227ea8cf7fa3d8018049f68f42e0222a2fda90766ed719507c494"
   RUNTIME_IMAGE: "registry.access.redhat.com/ubi9/python-312-minimal:9.8"
   YAML_LINT_IMAGE: "registry.access.redhat.com/ubi9/python-311:9.8"
   MD_LINT_IMAGE: "registry.access.redhat.com/ubi9/nodejs-20:9.7"
