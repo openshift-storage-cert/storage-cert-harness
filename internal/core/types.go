@@ -254,23 +254,35 @@ type Finding struct {
 
 // Report is the certification run output.
 type Report struct {
-	RunID            string         `json:"run_id"`
-	Status           RunStatus      `json:"status"`
-	Health           RunHealth      `json:"health"`
-	Certifiable      bool           `json:"certifiable"`
-	CompletionReason string         `json:"completion_reason,omitempty"`
-	SchemaVersion    string         `json:"schema_version,omitempty"`
-	Provenance       Provenance     `json:"provenance"`             // where the requirements came from (KB)
-	Environment      Environment    `json:"environment"`            // where the run executed (cluster) — ADR-0014
-	Attestations     []Attestation  `json:"attestations,omitempty"` // self-reported, unobservable-only — ADR-0014
-	Composition      RunComposition `json:"composition"`
-	Executions       []RunExecution `json:"executions,omitempty"`
-	Incidents        []Incident     `json:"incidents,omitempty"`
-	Verdicts         []Verdict      `json:"verdicts"`
-	Measurements     []Measurement  `json:"measurements,omitempty"` // catalog metrics plus requested extras
-	Warnings         []string       `json:"warnings,omitempty"`     // informational; never affects grading
-	Levels           []LevelRollup  `json:"levels,omitempty"`       // verdicts grouped by partner level
-	Summary          Summary        `json:"summary"`
+	RunID             string             `json:"run_id"`
+	Status            RunStatus          `json:"status"`
+	Health            RunHealth          `json:"health"`
+	Certifiable       bool               `json:"certifiable"`
+	CompletionReason  string             `json:"completion_reason,omitempty"`
+	SchemaVersion     string             `json:"schema_version,omitempty"`
+	Provenance        Provenance         `json:"provenance"`  // where the requirements came from (KB)
+	Environment       Environment        `json:"environment"` // where the run executed (cluster) — ADR-0014
+	StorageSelections []StorageSelection `json:"storage_selections,omitempty"`
+	Attestations      []Attestation      `json:"attestations,omitempty"` // self-reported, unobservable-only — ADR-0014
+	Composition       RunComposition     `json:"composition"`
+	Executions        []RunExecution     `json:"executions,omitempty"`
+	Incidents         []Incident         `json:"incidents,omitempty"`
+	Verdicts          []Verdict          `json:"verdicts"`
+	Measurements      []Measurement      `json:"measurements,omitempty"` // catalog metrics plus requested extras
+	Warnings          []string           `json:"warnings,omitempty"`     // informational; never affects grading
+	Levels            []LevelRollup      `json:"levels,omitempty"`       // verdicts grouped by partner level
+	Summary           Summary            `json:"summary"`
+}
+
+// StorageSelection records the classes selected for one snapshot-backed execution.
+// EffectiveStorageClass identifies a private copy used to configure KubeVirt.
+type StorageSelection struct {
+	TR                    string `json:"tr"`
+	Variant               string `json:"variant,omitempty"`
+	Scenario              string `json:"scenario,omitempty"`
+	StorageClass          string `json:"storage_class"`
+	SnapshotClass         string `json:"snapshot_class"`
+	EffectiveStorageClass string `json:"effective_storage_class,omitempty"`
 }
 
 // Measurement is a value the tool measured, surfaced in the report whether or not
@@ -387,6 +399,9 @@ type RunCtx struct {
 	// secrets already resolved. It is optional (may be nil / empty). See
 	// decisions/0005.
 	Backend *ResolvedBackend
+	// RecordStorageSelection records resolved storage choices from an adapter.
+	// The callback must be safe for concurrent calls from scheduled tools.
+	RecordStorageSelection func(StorageSelection)
 	// Checkpoint receives durable report snapshots while a run is in progress.
 	// The callback must be safe for concurrent calls from scheduled tools.
 	Checkpoint func(Report)
