@@ -37,10 +37,12 @@ podman build \
 	"${no_cache[@]}" \
 	--platform "${platform}" \
 	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}" \
-	--build-arg "GO_IMAGE=${GO_IMAGE}" \
 	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}" \
+	--build-arg "KUBE_BURNER_VERSION=${KUBE_BURNER_VERSION}" \
 	--build-arg "KUBE_BURNER_OCP_VERSION=${KUBE_BURNER_OCP_VERSION}" \
-	--build-arg "KUBE_BURNER_CORE_REF=${KUBE_BURNER_CORE_REF}" \
+	--build-arg "OPENSHIFT_CLIENT_VERSION=${OPENSHIFT_CLIENT_VERSION}" \
+	--build-arg "VIRTBENCH_VERSION=${VIRTBENCH_VERSION}" \
+	--build-arg "KUBEVIRT_VERSION=${KUBEVIRT_VERSION}" \
 	--build-arg "TARGETARCH=${arch}" \
 	--build-arg "HARNESS_VERSION=$(tr -d '[:space:]' < NEXT-VERSION)" \
 	--build-arg "IMAGE_VERSION=${image_version}" \

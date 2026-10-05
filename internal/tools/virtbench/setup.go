@@ -25,9 +25,8 @@ const (
 	sshPodName = "ssh-test-pod"
 	sshPodNS   = "default"
 
-	// Pinned quay.io/virtarraycert/ssh-helper release (0.1.10; bump when >=0.1.11
-	// with /opt/sshhelper/bin log wrappers ships — see storage-cert-harness-images).
-	sshHelperImage = "quay.io/virtarraycert/ssh-helper@sha256:f73550de05f30f6c2c53c7efe24ab1fd5eff0f952bd7aa556aaf7572f9cb4706"
+	// Pinned quay.io/virtarraycert/ssh-helper release (0.1.11; log wrappers in /opt/sshhelper/bin).
+	sshHelperImage = "quay.io/virtarraycert/ssh-helper@sha256:369697c3002c1971bb608189d343fe9ea4989d2b66fde1bd1b64e924416533d1"
 )
 
 // sshPodManifest is the helper pod virtbench uses for ping and in-VM SSH checks.

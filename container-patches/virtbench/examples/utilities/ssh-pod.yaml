@@ -16,7 +16,7 @@ spec:
       type: RuntimeDefault
   containers:
     - name: ssh-client
-      image: quay.io/virtarraycert/ssh-helper@sha256:f73550de05f30f6c2c53c7efe24ab1fd5eff0f952bd7aa556aaf7572f9cb4706
+      image: quay.io/virtarraycert/ssh-helper@sha256:369697c3002c1971bb608189d343fe9ea4989d2b66fde1bd1b64e924416533d1
       imagePullPolicy: IfNotPresent
       securityContext:
         allowPrivilegeEscalation: false
