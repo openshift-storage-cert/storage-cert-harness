@@ -34,18 +34,10 @@ spec:
       # this, clusters with LiveMigrate as default strategy would move the VMs
       # before the reboot fires, leaving virtbench with nothing to monitor.
       evictionStrategy: None
-      affinity:
-        nodeAffinity:
-          # Required at scheduling so VMs land on the target node.
-          # IgnoredDuringExecution: the affinity is NOT enforced at runtime,
-          # so VMs can be live-migrated to surviving nodes on failure.
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - {{HOSTNAME_LABEL}}
+      # Required at scheduling so VMs land on the target node. The custom
+      # virtbench FAR mode removes this selector before fencing.
+      nodeSelector:
+        kubernetes.io/hostname: {{HOSTNAME_LABEL}}
       domain:
         cpu:
           cores: 1

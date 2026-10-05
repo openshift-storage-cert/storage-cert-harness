@@ -17,8 +17,8 @@ import (
 var failureRecoveryVMTemplate string
 
 // provisionFailureRecoveryVMs creates vm_count VMs (one per namespace) on the
-// target node using requiredDuringSchedulingIgnoredDuringExecution affinity —
-// they MUST land on the node at creation but CAN be live-migrated away on failure.
+// target node using a required nodeSelector. The custom virtbench FAR mode
+// removes that selector before fencing so recreated VMIs can land elsewhere.
 // Namespaces follow the pattern {nsPrefix}-{i}, which virtbench picks up via
 // --namespace-prefix and Teardown sweeps via listNamespacesByPrefix.
 func provisionFailureRecoveryVMs(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) error {
