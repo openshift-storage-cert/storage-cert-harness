@@ -8,12 +8,21 @@ ci_log_init "image-contents-check"
 
 eng="$(container_engine)"
 img_ver="$(image_version)"
-ref="${QUAY_IMAGE}:${img_ver}"
-
-[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
+local_ref_file="${REPO_ROOT}/work/local-image-ref"
+using_local_image=0
+if [[ -s "${local_ref_file}" ]]; then
+	ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+	using_local_image=1
+	echo "using local image ${ref}"
+else
+	ref="${QUAY_IMAGE}:${img_ver}"
+	[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
+fi
 
 # Load the image if not already available
-if [[ "${eng}" == "buildah" ]]; then
+if [[ "${using_local_image}" -eq 1 ]]; then
+	run_cmd() { "${eng}" run --rm --platform linux/amd64 --entrypoint "" "${ref}" "$@"; }
+elif [[ "${eng}" == "buildah" ]]; then
 	img_id="$(buildah pull "docker-archive:${IMAGE_TAR}" 2>/dev/null || true)"
 	run_cmd() { buildah run "${img_id}" -- "$@"; }
 else
@@ -28,10 +37,14 @@ fail() {
 }
 
 echo "==> checking dist/harness-image.tar"
-test -s "${IMAGE_TAR}" || fail "image tarball is empty"
+if [[ "${using_local_image}" -eq 0 ]]; then
+	test -s "${IMAGE_TAR}" || fail "image tarball is empty"
+else
+	echo "  skipped for local image"
+fi
 
 echo "==> checking image architecture"
-if command -v skopeo >/dev/null 2>&1; then
+if [[ "${using_local_image}" -eq 0 ]] && command -v skopeo >/dev/null 2>&1; then
 	arch="$(skopeo inspect --raw "docker-archive:${IMAGE_TAR}" 2>/dev/null | grep -o '"architecture":"[^"]*"' | head -1 || true)"
 	if [[ -n "${arch}" ]] && [[ "${arch}" != *"amd64"* ]]; then
 		fail "image architecture is not amd64: ${arch}"
