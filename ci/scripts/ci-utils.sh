@@ -167,6 +167,26 @@ acquire_local_image_lock() {
 	flock -x 9
 }
 
+# Drop the previous local image pointer, its engine image, and shared dist
+# metadata before starting a new build. Caller must hold acquire_local_image_lock.
+invalidate_previous_local_image_build() {
+	local local_ref_file="${REPO_ROOT}/work/local-image-ref" old_ref eng
+
+	if [[ -s "${local_ref_file}" ]]; then
+		old_ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+		if [[ -n "${old_ref}" ]] && command -v podman >/dev/null 2>&1; then
+			if podman image exists "${old_ref}" >/dev/null 2>&1; then
+				echo "==> removing previous local image ${old_ref}"
+				podman rmi -f "${old_ref}" >/dev/null 2>&1 || true
+			fi
+		fi
+	fi
+
+	rm -f -- "${local_ref_file}"
+	rm -f -- "${IMAGE_TAR}"
+	rm -f -- "${REPO_ROOT}/dist/image-version.txt" "${REPO_ROOT}/dist/binary-version.txt"
+}
+
 # Remove local harness image tarball, tags, and engine build cache. Caller must
 # already hold acquire_local_image_lock (or run via clean-image-cache.sh).
 clean_local_image_cache() {
@@ -174,6 +194,8 @@ clean_local_image_cache() {
 	eng="$(container_engine)"
 	img_ver="$(image_version)"
 	ref="${QUAY_IMAGE}:${img_ver}"
+
+	invalidate_previous_local_image_build
 
 	echo "==> removing dist image tarball"
 	rm -f -- "${IMAGE_TAR}"

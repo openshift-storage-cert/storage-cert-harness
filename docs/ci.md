@@ -359,15 +359,18 @@ on `work/local-image.lock`. The lock serializes access to `bin/harness`,
 metadata so a local build or validation cannot overlap a regular image build or
 cache prune. `make image-build-local` rebuilds the binary while holding the lock.
 `make image-build-fresh` prunes cache and rebuilds in the same locked
-`image-build.sh` process (`IMAGE_BUILD_FRESH=1`). Regular image builds remove a
-previous local image reference before starting; local image validation always
-runs the local image with Podman and preserves its native platform.
+`image-build.sh` process (`IMAGE_BUILD_FRESH=1`). `image-build.sh` and
+`image-build-local.sh` call `invalidate_previous_local_image_build` before
+starting a rebuild (remove `work/local-image-ref`, the prior Podman image,
+`dist/harness-image.tar`, and `dist/*-version.txt`). Local image validation
+always runs the local image with Podman and preserves its native platform;
+`image-contents-check.sh` and `run-image-tests.sh` refuse a stale ref when the
+named image is not present in Podman.
 
 The lock is released automatically when the owning process exits, including
-when a command fails. It is not a transaction: a failed build can leave
-partial image artifacts or stale version files, so rerun the relevant build
-before validation after an error. The lock file itself may remain on disk and
-is reused by subsequent runs.
+when a command fails. It is not a transaction: a failed build can leave partial
+engine layers, so rerun the relevant build before validation after an error.
+The lock file itself may remain on disk and is reused by subsequent runs.
 
 ## Job images (no Docker Hub)
 

@@ -126,6 +126,14 @@ echo "validation passed: all plan-specified nodes exist"
 mkdir -p work/harness-smoke-work work/harness-smoke-report
 
 image="$(tr -d '[:space:]' < work/local-image-ref)"
+[[ -n "${image}" ]] || {
+	echo "error: work/local-image-ref is empty; run 'make image-build-local' first" >&2
+	exit 1
+}
+podman image exists "${image}" >/dev/null 2>&1 || {
+	echo "error: local image ${image} is missing (stale work/local-image-ref); run 'make image-build-local' first" >&2
+	exit 1
+}
 arch="${GOARCH:-$(uname -m)}"
 case "${arch}" in
 	x86_64) arch=amd64 ;;

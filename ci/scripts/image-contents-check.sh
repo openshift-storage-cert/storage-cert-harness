@@ -13,6 +13,10 @@ local_ref_file="${REPO_ROOT}/work/local-image-ref"
 using_local_image=0
 if [[ -s "${local_ref_file}" ]]; then
 	ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+	[[ -n "${ref}" ]] || die "work/local-image-ref is empty; run ci/scripts/image-build-local.sh first"
+	require_cmd podman
+	podman image exists "${ref}" >/dev/null 2>&1 ||
+		die "local image ${ref} is missing (stale work/local-image-ref); run ci/scripts/image-build-local.sh first"
 	using_local_image=1
 	echo "using local image ${ref}"
 else

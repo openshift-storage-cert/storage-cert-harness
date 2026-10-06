@@ -10,7 +10,7 @@ acquire_local_image_lock
 if [[ "${IMAGE_BUILD_FRESH:-0}" == "1" ]]; then
 	clean_local_image_cache
 fi
-rm -f -- "${REPO_ROOT}/work/local-image-ref"
+invalidate_previous_local_image_build
 
 eng="$(container_engine)"
 bin_ver="$(binary_version)"

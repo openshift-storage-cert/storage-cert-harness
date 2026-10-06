@@ -8,6 +8,10 @@ cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
 acquire_local_image_lock
+if [[ "${IMAGE_BUILD_FRESH:-0}" == "1" ]]; then
+	clean_local_image_cache
+fi
+invalidate_previous_local_image_build
 "${repo_root}/ci/scripts/build.sh"
 
 command -v podman >/dev/null 2>&1 || {
