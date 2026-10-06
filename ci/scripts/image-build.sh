@@ -6,6 +6,8 @@ set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "image-build"
+acquire_local_image_lock
+rm -f -- "${REPO_ROOT}/work/local-image-ref"
 
 eng="$(container_engine)"
 bin_ver="$(binary_version)"

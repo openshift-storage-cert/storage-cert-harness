@@ -350,6 +350,22 @@ Use `IMAGE_BUILD_NO_CACHE=1` (or `make image-build-fresh`) when refreshing layer
 after a new builder digest. `make image-build-local` tags a unique local name;
 CI writes `dist/harness-image.tar` for scan jobs.
 
+### Local image build lock
+
+`image-build.sh`, `image-build-local.sh`, `image-contents-check.sh`, and
+`run-image-tests.sh` acquire an exclusive `flock` on `work/local-image.lock`.
+The lock serializes access to `work/local-image-ref` and the shared
+`dist/*-version.txt` metadata so a local build or validation cannot overlap a
+regular image build. Regular image builds remove a previous local image
+reference before starting; local image validation always runs the local image
+with Podman and preserves its native platform.
+
+The lock is released automatically when the owning process exits, including
+when a command fails. It is not a transaction: a failed build can leave
+partial image artifacts or stale version files, so rerun the relevant build
+before validation after an error. The lock file itself may remain on disk and
+is reused by subsequent runs.
+
 ## Job images (no Docker Hub)
 
 Pins live in **`ci/config/images.env`**. Shell scripts source

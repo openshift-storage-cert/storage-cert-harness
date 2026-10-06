@@ -7,6 +7,7 @@ cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
 ci_log_init "run-image-tests"
+acquire_local_image_lock
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2

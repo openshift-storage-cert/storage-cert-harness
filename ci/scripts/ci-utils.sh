@@ -159,3 +159,10 @@ container_engine() {
 	command -v "${eng}" >/dev/null 2>&1 || die "required command not found: ${eng} (default is podman; see docs/ci.md / ./ci/install-tools.sh)"
 	echo "${eng}"
 }
+
+acquire_local_image_lock() {
+	require_cmd flock
+	mkdir -p "${REPO_ROOT}/work"
+	exec 9>"${REPO_ROOT}/work/local-image.lock"
+	flock -x 9
+}

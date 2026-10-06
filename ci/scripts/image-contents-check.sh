@@ -5,6 +5,7 @@ set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "image-contents-check"
+acquire_local_image_lock
 
 eng="$(container_engine)"
 img_ver="$(image_version)"
@@ -21,7 +22,8 @@ fi
 
 # Load the image if not already available
 if [[ "${using_local_image}" -eq 1 ]]; then
-	run_cmd() { "${eng}" run --rm --platform linux/amd64 --entrypoint "" "${ref}" "$@"; }
+	require_cmd podman
+	run_cmd() { podman run --rm --entrypoint "" "${ref}" "$@"; }
 elif [[ "${eng}" == "buildah" ]]; then
 	img_id="$(buildah pull "docker-archive:${IMAGE_TAR}" 2>/dev/null || true)"
 	run_cmd() { buildah run "${img_id}" -- "$@"; }
