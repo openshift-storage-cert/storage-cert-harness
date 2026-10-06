@@ -4,6 +4,7 @@
 set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
+acquire_local_image_lock
 ci_log_init "image-scan-trivy"
 require_cmd trivy
 

@@ -351,12 +351,16 @@ CI writes `dist/harness-image.tar` for scan jobs.
 
 ### Local image build lock
 
-`image-build.sh`, `image-build-local.sh`, `clean-image-cache.sh`,
-`image-contents-check.sh`, and `run-image-tests.sh` acquire an exclusive `flock`
-on `work/local-image.lock`. The lock serializes access to `bin/harness`,
-`work/local-image-ref`, image tarballs/tags, and the shared `dist/*-version.txt`
-metadata so a local build or validation cannot overlap a regular image build or
-cache prune. `make image-build-local` rebuilds the binary while holding the lock.
+`build.sh`, `clean.sh`, `image-build.sh`, `image-build-local.sh`,
+`clean-image-cache.sh`, `image-contents-check.sh`, `image-scan-trivy.sh`,
+`image-scan-dive.sh`, `image-push.sh`, and `run-image-tests.sh` acquire an
+exclusive `flock` on `work/local-image.lock`. The lock serializes access to
+`bin/harness`, `work/local-image-ref`, image tarballs/tags, and the shared
+`dist/*-version.txt` metadata so a binary build, `make clean`, scan, push, or
+validation cannot overlap an image build or cache prune. `make build` and
+`make clean` use those scripts. `make image-build-local` rebuilds the binary
+while holding the lock (the child `build.sh` sees `LOCAL_IMAGE_LOCK_HELD=1` and
+does not re-acquire).
 `make image-build-fresh` prunes cache and rebuilds in the same locked
 `image-build.sh` process (`IMAGE_BUILD_FRESH=1`). `image-build.sh` and
 `image-build-local.sh` call `invalidate_previous_local_image_build` before

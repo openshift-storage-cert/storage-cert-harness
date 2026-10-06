@@ -161,10 +161,15 @@ container_engine() {
 }
 
 acquire_local_image_lock() {
+	# image-build-local.sh holds the lock while invoking build.sh as a child.
+	if [[ "${LOCAL_IMAGE_LOCK_HELD:-}" == "1" ]]; then
+		return 0
+	fi
 	require_cmd flock
 	mkdir -p "${REPO_ROOT}/work"
 	exec 9>"${REPO_ROOT}/work/local-image.lock"
 	flock -x 9
+	export LOCAL_IMAGE_LOCK_HELD=1
 }
 
 # Drop the previous local image pointer, its engine image, and shared dist

@@ -153,4 +153,4 @@ run-tr-stor-006: build
 		-v
 
 clean:
-	rm -rf bin dist coverage.out logs/*.log logs/*.json
+	./ci/scripts/clean.sh
