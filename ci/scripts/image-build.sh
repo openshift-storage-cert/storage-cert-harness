@@ -6,6 +6,11 @@ set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "image-build"
+acquire_local_image_lock
+if [[ "${IMAGE_BUILD_FRESH:-0}" == "1" ]]; then
+	clean_local_image_cache
+fi
+invalidate_previous_local_image_build
 
 eng="$(container_engine)"
 bin_ver="$(binary_version)"
@@ -33,11 +38,6 @@ build_args+=(
 	--build-arg "TARGETARCH=${target_arch}"
 	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}"
 	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}"
-	--build-arg "KUBE_BURNER_VERSION=${KUBE_BURNER_VERSION}"
-	--build-arg "KUBE_BURNER_OCP_VERSION=${KUBE_BURNER_OCP_VERSION}"
-	--build-arg "OPENSHIFT_CLIENT_VERSION=${OPENSHIFT_CLIENT_VERSION}"
-	--build-arg "VIRTBENCH_VERSION=${VIRTBENCH_VERSION}"
-	--build-arg "KUBEVIRT_VERSION=${KUBEVIRT_VERSION}"
 	--platform "linux/${target_arch}"
 	-t "${ref}"
 	-t "${QUAY_IMAGE}:local"
