@@ -253,8 +253,7 @@ The top-level workflow dispatch input is:
 **Publish gates (GitHub).** On a push to `main`, `image-push` runs when
 `image-build` succeeds. `replay-smoke`, `image-scan-trivy`, and
 `image-scan-dive` run with allowed failures and do not gate publish. A manual
-`workflow_dispatch` with `publish=true` can also push from `main`. A `test-ci`
-push cannot publish an image or advance version files.
+`workflow_dispatch` with `publish=true` can also push from `main`.
 
 **Image lint and scans.**
 
@@ -555,7 +554,7 @@ before `image-build`.
 
 `image-push` is **automatic** on `main` pushes. A `workflow_dispatch` with
 `publish=true` can also trigger push and version bump without a new commit.
-Neither MR/PR runs nor `test-ci` pushes publish an image.
+Neither MR/PR runs nor non-main pushes publish an image.
 
 ## Open items
 
