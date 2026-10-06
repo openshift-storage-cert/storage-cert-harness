@@ -82,16 +82,17 @@ image-build:
 	./ci/scripts/image-build.sh
 
 # Drop cached container layers and rebuild without cache (use after Containerfile cleanup changes).
-image-build-fresh: clean-image-cache
-	IMAGE_BUILD_NO_CACHE=1 ./ci/scripts/image-build.sh
+# Hold the local image lock across cleanup and rebuild (IMAGE_BUILD_FRESH).
+image-build-fresh:
+	IMAGE_BUILD_NO_CACHE=1 IMAGE_BUILD_FRESH=1 ./ci/scripts/image-build.sh
 
 clean-image-cache:
 	./ci/scripts/clean-image-cache.sh
 
-# Build the binary first, then create a uniquely tagged local image from it.
+# Rebuild the binary and a uniquely tagged local image under one exclusive lock.
 image-build-local: export GOOS = linux
 image-build-local: export GOARCH = $(LOCAL_GOARCH)
-image-build-local: build
+image-build-local:
 	./ci/scripts/image-build-local.sh
 
 # Run the live harness smoke plan; override KUBECONFIG to use another kubeconfig.

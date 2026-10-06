@@ -335,9 +335,9 @@ In the supported GitHub Actions flow, `image-push` runs automatically on
 2. Record the immutable digest (`skopeo inspect` on the semver tag).
 3. In this repo, set `HARNESS_BUILDER_VERSION` and `BUILD_IMAGE@sha256:…` in
    `ci/config/images.env`, then run `./ci/scripts/sync-images-yml.sh --check`.
-4. Build the runtime image: `make build` then `make image-build-local` or
-   `./ci/scripts/image-build.sh` (GitHub: `ci-images.yml` after the
-   `harness-binary` artifact).
+4. Build the runtime image: `make image-build-local` (rebuilds `bin/harness`
+   under the same lock) or `./ci/scripts/image-build.sh` (GitHub: `ci-images.yml`
+   after the `harness-binary` artifact).
 
 The `Containerfile` uses `FROM ${BUILD_IMAGE} AS tools` and `COPY --from=tools`
 for `/usr/bin/*`, `/opt/virtbench-runtime` (including `examples/vm-templates`),
@@ -352,13 +352,16 @@ CI writes `dist/harness-image.tar` for scan jobs.
 
 ### Local image build lock
 
-`image-build.sh`, `image-build-local.sh`, `image-contents-check.sh`, and
-`run-image-tests.sh` acquire an exclusive `flock` on `work/local-image.lock`.
-The lock serializes access to `work/local-image-ref` and the shared
-`dist/*-version.txt` metadata so a local build or validation cannot overlap a
-regular image build. Regular image builds remove a previous local image
-reference before starting; local image validation always runs the local image
-with Podman and preserves its native platform.
+`image-build.sh`, `image-build-local.sh`, `clean-image-cache.sh`,
+`image-contents-check.sh`, and `run-image-tests.sh` acquire an exclusive `flock`
+on `work/local-image.lock`. The lock serializes access to `bin/harness`,
+`work/local-image-ref`, image tarballs/tags, and the shared `dist/*-version.txt`
+metadata so a local build or validation cannot overlap a regular image build or
+cache prune. `make image-build-local` rebuilds the binary while holding the lock.
+`make image-build-fresh` prunes cache and rebuilds in the same locked
+`image-build.sh` process (`IMAGE_BUILD_FRESH=1`). Regular image builds remove a
+previous local image reference before starting; local image validation always
+runs the local image with Podman and preserves its native platform.
 
 The lock is released automatically when the owning process exits, including
 when a command fails. It is not a transaction: a failed build can leave

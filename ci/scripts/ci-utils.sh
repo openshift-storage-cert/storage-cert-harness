@@ -166,3 +166,38 @@ acquire_local_image_lock() {
 	exec 9>"${REPO_ROOT}/work/local-image.lock"
 	flock -x 9
 }
+
+# Remove local harness image tarball, tags, and engine build cache. Caller must
+# already hold acquire_local_image_lock (or run via clean-image-cache.sh).
+clean_local_image_cache() {
+	local eng img_ver ref tag
+	eng="$(container_engine)"
+	img_ver="$(image_version)"
+	ref="${QUAY_IMAGE}:${img_ver}"
+
+	echo "==> removing dist image tarball"
+	rm -f -- "${IMAGE_TAR}"
+
+	echo "==> removing local harness image tags (${eng})"
+	for tag in "${ref}" "${QUAY_IMAGE}:local" "${QUAY_IMAGE}:main"; do
+		if "${eng}" image exists "${tag}" >/dev/null 2>&1; then
+			"${eng}" rmi -f "${tag}" >/dev/null 2>&1 || true
+		fi
+	done
+
+	echo "==> pruning ${eng} build cache"
+	case "${eng}" in
+	podman)
+		podman builder prune -af >/dev/null 2>&1 || true
+		podman image prune -af >/dev/null 2>&1 || true
+		;;
+	buildah)
+		buildah rm -af >/dev/null 2>&1 || true
+		buildah rmi -af >/dev/null 2>&1 || true
+		;;
+	docker)
+		docker builder prune -af >/dev/null 2>&1 || true
+		docker image prune -af >/dev/null 2>&1 || true
+		;;
+	esac
+}

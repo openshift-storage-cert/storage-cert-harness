@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a uniquely tagged local image from the already-built bin/harness.
+# Rebuild bin/harness and tag a unique local image under one exclusive lock.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -8,13 +8,14 @@ cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
 acquire_local_image_lock
+"${repo_root}/ci/scripts/build.sh"
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
 	exit 1
 }
 [[ -x bin/harness ]] || {
-	echo "error: bin/harness is missing; run 'make build' first" >&2
+	echo "error: bin/harness is missing after build.sh" >&2
 	exit 1
 }
 

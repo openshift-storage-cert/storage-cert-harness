@@ -7,6 +7,9 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "image-build"
 acquire_local_image_lock
+if [[ "${IMAGE_BUILD_FRESH:-0}" == "1" ]]; then
+	clean_local_image_cache
+fi
 rm -f -- "${REPO_ROOT}/work/local-image-ref"
 
 eng="$(container_engine)"
