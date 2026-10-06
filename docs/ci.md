@@ -290,18 +290,18 @@ Macs natively, and Apple Silicon via Docker/Podman Desktop Rosetta 2.
 | Binary | Purpose | Source in the runtime image |
 |--------|---------|------------------------------|
 | `harness` | CLI (this repo) | `bin/harness` from `build.sh` / CI artifact |
-| `kube-burner` | TR-VIRT-010 adapter | Pre-built in **harness-builder** (`KUBE_BURNER_VERSION`) |
-| `kube-burner-ocp` | TR-STOR-006 adapter | Pre-built in **harness-builder** (`KUBE_BURNER_OCP_VERSION`) |
-| `oc`, `kubectl` | Cluster clients | Pre-built in **harness-builder** (`OPENSHIFT_CLIENT_VERSION`) |
-| `virtctl` | KubeVirt CLI | Pre-built in **harness-builder** (`KUBEVIRT_VERSION`) |
-| `virtbench` | virtbench adapter (local exec) | Pre-built venv + runtime tree in **harness-builder** (`VIRTBENCH_VERSION`) |
+| `kube-burner` | TR-VIRT-010 adapter | Pre-built in **harness-builder** |
+| `kube-burner-ocp` | TR-STOR-006 adapter | Pre-built in **harness-builder** |
+| `oc`, `kubectl` | Cluster clients | Pre-built in **harness-builder** |
+| `virtctl` | KubeVirt CLI | Pre-built in **harness-builder** |
+| `virtbench` | virtbench adapter (local exec) | Pre-built venv + runtime tree in **harness-builder** |
 
 Certification tools are **not** downloaded or compiled in the harness
 `Containerfile`. They are copied from the digest pinned as `BUILD_IMAGE` in
 `ci/config/images.env` (Quay `quay.io/virtarraycert/harness-builder@sha256:…`).
-Semver keys such as `KUBE_BURNER_VERSION` must stay aligned with the
-**storage-cert-harness-images** builder release that produced that digest;
-`HARNESS_BUILDER_VERSION` records the matching builder tag for humans.
+The builder's OCI labels and packaged binaries are the source of truth for
+tool versions and source revisions. `HARNESS_BUILDER_VERSION` records the
+matching builder tag for humans; the digest is the reproducible build input.
 
 The harness image adds harness-owned files only: the `harness` binary,
 `container-entrypoint.sh`, and `container-patches/` (for example
@@ -311,7 +311,7 @@ require `examples/vm-templates/rhel9-vm-datasource.yaml` under
 `/opt/virtbench-runtime` after the entrypoint copies the tree to a temp dir.
 
 All listed binaries must be on `PATH` under `/usr/bin/` (virtbench also uses
-`/opt/virtbench-venv`). Pins live in `ci/config/images.env`.
+`/opt/virtbench-venv`). The builder release owns their version pins.
 `image-contents-check.sh` verifies each binary and the datasource template after
 every image build (locally and in CI).
 
@@ -321,10 +321,9 @@ The **ssh-helper** pod image is separate: digest pins in
 [`ssh-helper-image.md`](ssh-helper-image.md)). Bump those when
 **storage-cert-harness-images** publishes a new `ssh-helper` release.
 
-`KUBE_BURNER_CORE_REF` remains in `images.env` for a possible **git-mode**
-`kube-burner-ocp` build in the images repository only. The slim harness
-`Containerfile` does not pass it and does not run `GO_IMAGE` tool-compile
-stages (that workflow lived in harness PR #79 before builder consumption).
+The slim harness `Containerfile` does not run tool-compile stages or pass
+tool source/version arguments; customized builds belong in the images
+repository before a new builder digest is promoted here.
 
 In the supported GitHub Actions flow, `image-push` runs automatically on
 `main` pushes. `supply-chain` is gating.
@@ -343,7 +342,8 @@ In the supported GitHub Actions flow, `image-push` runs automatically on
 The `Containerfile` uses `FROM ${BUILD_IMAGE} AS tools` and `COPY --from=tools`
 for `/usr/bin/*`, `/opt/virtbench-runtime` (including `examples/vm-templates`),
 and `/opt/virtbench-venv`, then `FROM ${RUNTIME_IMAGE}` for the final non-root
-runtime. Override `BUILD_IMAGE` in the environment only for local experiments;
+runtime. It does not download, compile, or relabel the packaged tools.
+Override `BUILD_IMAGE` in the environment only for local experiments;
 release CI uses the pinned digest from `images.env`.
 
 Use `IMAGE_BUILD_NO_CACHE=1` (or `make image-build-fresh`) when refreshing layers
@@ -362,7 +362,7 @@ generated projection is retained for repository compatibility.
 | lint-yaml | `YAML_LINT_IMAGE` |
 | lint-md | `MD_LINT_IMAGE` |
 | lint-go, unittest, secret-scan, supply-chain, replay-smoke, build | Host Go on GitHub Actions (`setup-go`); `GO_IMAGE` is listed for legacy GitLab job images |
-| image-build | `BUILD_IMAGE` (digest-pinned **harness-builder**), `RUNTIME_IMAGE`, tool version build-args for OCI labels |
+| image-build | `BUILD_IMAGE` (digest-pinned **harness-builder**) and `RUNTIME_IMAGE` |
 | image-scan-trivy | Trivy release binary (`TRIVY_VERSION`) + `dist/harness-image.tar` |
 | image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar` |
 
