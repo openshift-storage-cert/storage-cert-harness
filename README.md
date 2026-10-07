@@ -8,6 +8,18 @@ functional checks, and emits a certification report.
 > working reference tool (`example`) that runs offline. Real tool integrations
 > and a live-cluster runner are in progress.
 
+## Prerequisites
+
+- GNU Make
+- Go 1.26.7 or newer
+
+Verify the required tools:
+
+```sh
+make --version
+go version
+```
+
 ## Quickstart
 
 ```sh
