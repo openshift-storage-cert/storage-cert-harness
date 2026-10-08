@@ -27,10 +27,12 @@ overrides:
     max_wait: 15m
   TR-VIRT-019:
     workload: virt-parallel
+    vms: 2
     initial_vms: 2
     increment: 0
     data_volume_count: 1
     max_iterations: 1
+    skip_migration_job: true
     qps: 5
     burst: 10
     timeout: 15m
