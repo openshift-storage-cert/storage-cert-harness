@@ -35,4 +35,4 @@ overrides:
     skip_migration_job: true
     qps: 5
     burst: 10
-    timeout: 15m
+    timeout: 25m
