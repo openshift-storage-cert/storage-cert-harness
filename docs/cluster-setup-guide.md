@@ -181,6 +181,31 @@ See [ADR-0005](../decisions/0005-test-plans-and-backend-config.md) for the full
 credential-reference syntax. **Do not commit** `backends.yaml` — it is
 gitignored.
 
+`snapshot_class` selects the VolumeSnapshotClass for VM snapshot tests
+(TR-VIRT-010 and TR-VIRT-027) and datasource-clone tests with `use_snapshot: true`.
+Preflight checks that the class exists and that its driver matches the storage
+class. If omitted, direct snapshots use the matching driver's default class;
+VM snapshots use KubeVirt's StorageProfile/default resolution.
+
+KubeVirt does not expose a snapshot-class selector on a VirtualMachineSnapshot.
+For an explicit selection the harness creates a temporary copy of the backend
+StorageClass, preserving its provisioning settings, and configures that copy's
+CDI StorageProfile. This requires permission to create/delete StorageClasses and
+read/patch StorageProfiles. Existing classes, profiles, and default annotations
+are left untouched. Teardown deletes the temporary class.
+
+For `use_snapshot: true`, the harness creates snapshots of the template's source
+PVCs using the resolved class, then stages a VM template referencing those
+snapshots. This requires snapshot create/delete permissions in the source PVC
+namespaces. Source PVCs and DataSources are read-only; blank data disks remain
+blank. Existing snapshot sources must already use the selected class. Teardown
+removes snapshots created by the harness, subject to the class's deletion policy.
+
+Reports include `storage_selections` for each snapshot-backed execution: the
+backend storage class, resolved snapshot class, and any temporary storage class.
+These also appear in the Markdown report and JUnit properties, including when
+environment collection is skipped.
+
 ---
 
 ## Step 6 — Confirm `thresholds.json`

@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
-# Build a uniquely tagged local image from the already-built bin/harness.
+# Rebuild bin/harness and tag a unique local image under one exclusive lock.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 
-# shellcheck source=images.sh
-source "${repo_root}/ci/scripts/images.sh"
+# shellcheck source=ci-utils.sh
+source "${repo_root}/ci/scripts/ci-utils.sh"
+acquire_local_image_lock
+if [[ "${IMAGE_BUILD_FRESH:-0}" == "1" ]]; then
+	clean_local_image_cache
+fi
+invalidate_previous_local_image_build
+"${repo_root}/ci/scripts/build.sh"
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
 	exit 1
 }
 [[ -x bin/harness ]] || {
-	echo "error: bin/harness is missing; run 'make build' first" >&2
+	echo "error: bin/harness is missing after build.sh" >&2
 	exit 1
 }
 
-image_version="$(tr -d '[:space:]' < NEXT-IMAGE-VERSION)"
+binary_version="$(binary_version)"
+image_version="$(image_version)"
 suffix="$(od -An -N4 -tx1 /dev/urandom | tr -d '[:space:]')"
 image="storage-cert-harness:${image_version}-${suffix}"
 arch="${GOARCH:-$(uname -m)}"
@@ -37,18 +44,18 @@ podman build \
 	"${no_cache[@]}" \
 	--platform "${platform}" \
 	--build-arg "BUILD_IMAGE=${BUILD_IMAGE}" \
-	--build-arg "GO_IMAGE=${GO_IMAGE}" \
 	--build-arg "RUNTIME_IMAGE=${RUNTIME_IMAGE}" \
-	--build-arg "KUBE_BURNER_OCP_VERSION=${KUBE_BURNER_OCP_VERSION}" \
-	--build-arg "KUBE_BURNER_CORE_REF=${KUBE_BURNER_CORE_REF}" \
 	--build-arg "TARGETARCH=${arch}" \
-	--build-arg "HARNESS_VERSION=$(tr -d '[:space:]' < NEXT-VERSION)" \
+	--build-arg "HARNESS_VERSION=${binary_version}" \
 	--build-arg "IMAGE_VERSION=${image_version}" \
 	-t "${image}" \
 	-f Containerfile .
 
 mkdir -p work
 printf '%s\n' "${image}" > work/local-image-ref
+mkdir -p dist
+printf '%s\n' "${image_version}" > dist/image-version.txt
+printf '%s\n' "${binary_version}" > dist/binary-version.txt
 echo "built ${image}"
 echo "platform ${platform}"
 echo "saved image reference to work/local-image-ref"

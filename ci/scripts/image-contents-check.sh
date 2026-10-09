@@ -5,15 +5,30 @@ set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
 ci_log_init "image-contents-check"
+acquire_local_image_lock
 
 eng="$(container_engine)"
 img_ver="$(image_version)"
-ref="${QUAY_IMAGE}:${img_ver}"
-
-[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
+local_ref_file="${REPO_ROOT}/work/local-image-ref"
+using_local_image=0
+if [[ -s "${local_ref_file}" ]]; then
+	ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+	[[ -n "${ref}" ]] || die "work/local-image-ref is empty; run ci/scripts/image-build-local.sh first"
+	require_cmd podman
+	podman image exists "${ref}" >/dev/null 2>&1 ||
+		die "local image ${ref} is missing (stale work/local-image-ref); run ci/scripts/image-build-local.sh first"
+	using_local_image=1
+	echo "using local image ${ref}"
+else
+	ref="${QUAY_IMAGE}:${img_ver}"
+	[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
+fi
 
 # Load the image if not already available
-if [[ "${eng}" == "buildah" ]]; then
+if [[ "${using_local_image}" -eq 1 ]]; then
+	require_cmd podman
+	run_cmd() { podman run --rm --entrypoint "" "${ref}" "$@"; }
+elif [[ "${eng}" == "buildah" ]]; then
 	img_id="$(buildah pull "docker-archive:${IMAGE_TAR}" 2>/dev/null || true)"
 	run_cmd() { buildah run "${img_id}" -- "$@"; }
 else
@@ -28,10 +43,14 @@ fail() {
 }
 
 echo "==> checking dist/harness-image.tar"
-test -s "${IMAGE_TAR}" || fail "image tarball is empty"
+if [[ "${using_local_image}" -eq 0 ]]; then
+	test -s "${IMAGE_TAR}" || fail "image tarball is empty"
+else
+	echo "  skipped for local image"
+fi
 
 echo "==> checking image architecture"
-if command -v skopeo >/dev/null 2>&1; then
+if [[ "${using_local_image}" -eq 0 ]] && command -v skopeo >/dev/null 2>&1; then
 	arch="$(skopeo inspect --raw "docker-archive:${IMAGE_TAR}" 2>/dev/null | grep -o '"architecture":"[^"]*"' | head -1 || true)"
 	if [[ -n "${arch}" ]] && [[ "${arch}" != *"amd64"* ]]; then
 		fail "image architecture is not amd64: ${arch}"
@@ -93,6 +112,13 @@ if run_cmd env VIRTBENCH_REPO=/opt/virtbench-runtime /usr/bin/virtbench fio --he
 	echo "  virtbench fio: present"
 else
 	fail "/usr/bin/virtbench fio is missing or cannot run"
+fi
+
+echo "==> checking virtbench datasource-clone template"
+if run_cmd test -f /opt/virtbench-runtime/examples/vm-templates/rhel9-vm-datasource.yaml; then
+	echo "  rhel9-vm-datasource.yaml: present"
+else
+	fail "/opt/virtbench-runtime/examples/vm-templates/rhel9-vm-datasource.yaml is missing"
 fi
 
 if [[ "${errors}" -gt 0 ]]; then

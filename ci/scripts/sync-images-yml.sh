@@ -44,29 +44,13 @@ variables:
 EOF
 )"
 
-check_containerfile_arg() {
-  local name="$1"
-  local want="$2"
-  local line="ARG ${name}=${want}"
-  if ! grep -qxF "${line}" "${_dir}/../../Containerfile"; then
-    echo "error: Containerfile is missing '${line}' (must match the pinned tool versions)" >&2
-    return 1
-  fi
-}
-
 if [[ "${1:-}" == "--check" ]]; then
 	# Do not use diff(1): the yamllint job image has no diffutils.
 	if [[ "$(cat "${out}")" != "${body}" ]]; then
 		echo "error: ci/config/images.yml is stale; run ./ci/scripts/sync-images-yml.sh" >&2
 		exit 1
 	fi
-	check_containerfile_arg KUBE_BURNER_VERSION "${KUBE_BURNER_VERSION}"
-	check_containerfile_arg KUBE_BURNER_OCP_VERSION "${KUBE_BURNER_OCP_VERSION}"
-	check_containerfile_arg KUBE_BURNER_CORE_REF "${KUBE_BURNER_CORE_REF}"
-	check_containerfile_arg OPENSHIFT_CLIENT_VERSION "${OPENSHIFT_CLIENT_VERSION}"
-	check_containerfile_arg VIRTBENCH_VERSION "${VIRTBENCH_VERSION}"
-	check_containerfile_arg KUBEVIRT_VERSION "${KUBEVIRT_VERSION}"
-  echo "ci/config/images.yml and Containerfile tool-version ARGs are synchronized"
+  echo "ci/config/images.yml is synchronized"
 	exit 0
 fi
 

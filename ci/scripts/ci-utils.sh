@@ -159,3 +159,72 @@ container_engine() {
 	command -v "${eng}" >/dev/null 2>&1 || die "required command not found: ${eng} (default is podman; see docs/ci.md / ./ci/install-tools.sh)"
 	echo "${eng}"
 }
+
+acquire_local_image_lock() {
+	# image-build-local.sh holds the lock while invoking build.sh as a child.
+	if [[ "${LOCAL_IMAGE_LOCK_HELD:-}" == "1" ]]; then
+		return 0
+	fi
+	require_cmd flock
+	mkdir -p "${REPO_ROOT}/work"
+	exec 9>"${REPO_ROOT}/work/local-image.lock"
+	flock -x 9
+	export LOCAL_IMAGE_LOCK_HELD=1
+}
+
+# Drop the previous local image pointer, its engine image, and shared dist
+# metadata before starting a new build. Caller must hold acquire_local_image_lock.
+invalidate_previous_local_image_build() {
+	local local_ref_file="${REPO_ROOT}/work/local-image-ref" old_ref eng
+
+	if [[ -s "${local_ref_file}" ]]; then
+		old_ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+		if [[ -n "${old_ref}" ]] && command -v podman >/dev/null 2>&1; then
+			if podman image exists "${old_ref}" >/dev/null 2>&1; then
+				echo "==> removing previous local image ${old_ref}"
+				podman rmi -f "${old_ref}" >/dev/null 2>&1 || true
+			fi
+		fi
+	fi
+
+	rm -f -- "${local_ref_file}"
+	rm -f -- "${IMAGE_TAR}"
+	rm -f -- "${REPO_ROOT}/dist/image-version.txt" "${REPO_ROOT}/dist/binary-version.txt"
+}
+
+# Remove local harness image tarball, tags, and engine build cache. Caller must
+# already hold acquire_local_image_lock (or run via clean-image-cache.sh).
+clean_local_image_cache() {
+	local eng img_ver ref tag
+	eng="$(container_engine)"
+	img_ver="$(image_version)"
+	ref="${QUAY_IMAGE}:${img_ver}"
+
+	invalidate_previous_local_image_build
+
+	echo "==> removing dist image tarball"
+	rm -f -- "${IMAGE_TAR}"
+
+	echo "==> removing local harness image tags (${eng})"
+	for tag in "${ref}" "${QUAY_IMAGE}:local" "${QUAY_IMAGE}:main"; do
+		if "${eng}" image exists "${tag}" >/dev/null 2>&1; then
+			"${eng}" rmi -f "${tag}" >/dev/null 2>&1 || true
+		fi
+	done
+
+	echo "==> pruning ${eng} build cache"
+	case "${eng}" in
+	podman)
+		podman builder prune -af >/dev/null 2>&1 || true
+		podman image prune -af >/dev/null 2>&1 || true
+		;;
+	buildah)
+		buildah rm -af >/dev/null 2>&1 || true
+		buildah rmi -af >/dev/null 2>&1 || true
+		;;
+	docker)
+		docker builder prune -af >/dev/null 2>&1 || true
+		docker image prune -af >/dev/null 2>&1 || true
+		;;
+	esac
+}

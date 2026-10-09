@@ -47,6 +47,12 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 	if sc == "" {
 		return stages.RunHandle{}, fmt.Errorf("kube-burner: storage_class required (pass --backends/--backend)")
 	}
+	if effective, ok := core.GetAs[string](bag, "snapshot_storage_class"); ok && effective != "" {
+		sc = effective
+	}
+	if selection, ok := core.GetAs[clustercheck.SnapshotSelection](bag, "snapshot_selection"); ok && rc.RecordStorageSelection != nil {
+		rc.RecordStorageSelection(core.StorageSelection{TR: tr.ID, Variant: tr.Variant, StorageClass: selection.StorageClass, SnapshotClass: selection.SnapshotClass, EffectiveStorageClass: sc})
+	}
 
 	subdir := filepath.Join(resultsDir, tr.ID)
 	if err := os.RemoveAll(subdir); err != nil {
@@ -166,6 +172,15 @@ type teardown struct{}
 
 // Teardown best-effort deletes the run namespace (VMs, DataVolumes, snapshots).
 func (teardown) Teardown(ctx context.Context, rc *core.RunCtx, bag *core.Bag) error {
+	defer func() {
+		selection, _ := core.GetAs[clustercheck.SnapshotSelection](bag, "snapshot_selection")
+		created, _ := core.GetAs[string](bag, "snapshot_storage_class")
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		defer cancel()
+		if err := selection.CleanupVMStorage(cleanupCtx, created); err != nil {
+			rc.Logger.Warn("kube-burner: remove snapshot storage class", "err", err)
+		}
+	}()
 	p, ok := core.GetAs[Params](bag, "params")
 	if !ok || p.NS == "" {
 		return nil

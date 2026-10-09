@@ -151,6 +151,9 @@ Local checkout of main still gets `-sha`.
 - `image-build.sh`: `--build-arg HARNESS_VERSION=$(binary_version)` (binary
   supplied by the build artifact),
   `--build-arg IMAGE_VERSION=$(image_version)` (OCI label),
+  `--build-arg BUILD_IMAGE=…` (digest-pinned **harness-builder** tool payload;
+  see [Container image build](#container-image-build)),
+  `--build-arg RUNTIME_IMAGE=…` (UBI python-minimal runtime base),
   tag `${QUAY_IMAGE}:$(image_version)`, `:main`, and `:latest` on main push.
   Write `dist/image-version.txt`.
 
@@ -250,8 +253,7 @@ The top-level workflow dispatch input is:
 **Publish gates (GitHub).** On a push to `main`, `image-push` runs when
 `image-build` succeeds. `replay-smoke`, `image-scan-trivy`, and
 `image-scan-dive` run with allowed failures and do not gate publish. A manual
-`workflow_dispatch` with `publish=true` can also push from `main`. A `test-ci`
-push cannot publish an image or advance version files.
+`workflow_dispatch` with `publish=true` can also push from `main`.
 
 **Image lint and scans.**
 
@@ -269,7 +271,9 @@ pinned native Hadolint release binary installed by `install-tools.sh`; CI uses
 the pinned Hadolint image from `CI_TOOLS_IMAGE`. The script also reports any
 privileged `USER 0` setup lines for context. Run image scans locally with
 `make image-build && make image-scan`.
-Trivy writes `dist/trivy-report.json` and `dist/trivy-report.txt`; Dive writes
+Trivy writes `dist/trivy-report.json`, `dist/trivy-report.txt`,
+`dist/trivy-secret-report.json`, `dist/trivy-misconfig-report.txt`, and
+`dist/sbom.cdx.json`; Dive writes
 `dist/dive-report.txt`. GitHub runs the scan jobs with failures allowed, so
 logs and reports are available as job artifacts; it produces no Code scanning
 (SARIF) upload. Local `dist/` output remains available via `make image-scan`.
@@ -282,36 +286,94 @@ inspect the complete history.
 The release image is `linux/amd64` only. It covers x86 hosts natively, Intel
 Macs natively, and Apple Silicon via Docker/Podman Desktop Rosetta 2.
 
-| Binary | Purpose | Install method |
-|--------|---------|----------------|
-| `harness` | CLI (this repo) | Go build from source |
-| `kube-burner` | TR-VIRT-010 adapter | GitHub release tarball (`KUBE_BURNER_VERSION`) |
-| `kube-burner-ocp` | TR-STOR-006 adapter | Upstream OCP source (`KUBE_BURNER_OCP_VERSION`) with upstream core (`KUBE_BURNER_CORE_REF`) |
-| `virtbench` | virtbench adapter local-exec | Pinned `VIRTBENCH_VERSION` |
+| Binary | Purpose | Source in the runtime image |
+|--------|---------|------------------------------|
+| `harness` | CLI (this repo) | `bin/harness` from `build.sh` / CI artifact |
+| `kube-burner` | TR-VIRT-010 adapter | Pre-built in **harness-builder** |
+| `kube-burner-ocp` | TR-STOR-006 adapter | Pre-built in **harness-builder** |
+| `oc`, `kubectl` | Cluster clients | Pre-built in **harness-builder** |
+| `virtctl` | KubeVirt CLI | Pre-built in **harness-builder** |
+| `virtbench` | virtbench adapter (local exec) | Pre-built venv + runtime tree in **harness-builder** |
 
-All three must be on `PATH` under `/usr/bin/`. Pins live in
-`ci/config/images.env`. `image-contents-check.sh` verifies each binary is
-present and runnable after every image build (locally and in CI).
+Certification tools are **not** downloaded or compiled in the harness
+`Containerfile`. They are copied from the digest pinned as `BUILD_IMAGE` in
+`ci/config/images.env` (Quay `quay.io/virtarraycert/harness-builder@sha256:…`).
+The builder's OCI labels and packaged binaries are the source of truth for
+tool versions and source revisions. `HARNESS_BUILDER_VERSION` records the
+matching builder tag for humans; the digest is the reproducible build input.
 
-The temporary `kube-burner-ocp` build uses the upstream v1.12.7 source and
-resolves its `github.com/kube-burner/kube-burner/v2` dependency from upstream
-`main` (`KUBE_BURNER_CORE_REF`). This consumes the vendor-node-condition fix
-merged in [upstream PR #1312](https://github.com/kube-burner/kube-burner/pull/1312),
-without depending on a personal fork. Both local and CI image builds
-compile the OCP binary for the target architecture using the existing `GO_IMAGE`
-toolchain. The resolved core module version is included in the OCP binary's
-`version` output and Go build metadata.
+The harness image adds harness-owned files only: the `harness` binary,
+`container-entrypoint.sh`, and `container-patches/` (for example
+`examples/utilities/ssh-pod.yaml`). Virtbench `examples/vm-templates/` comes
+from the **harness-builder** payload copied into `/opt/virtbench-runtime`. `virtbench` scenarios such as `datasource-clone`
+require `examples/vm-templates/rhel9-vm-datasource.yaml` under
+`/opt/virtbench-runtime` after the entrypoint copies the tree to a temp dir.
 
-`main` is a moving reference. Use `IMAGE_BUILD_NO_CACHE=1` when rebuilding to
-refresh it; an existing image layer can otherwise retain an earlier resolution.
-`KUBE_BURNER_CORE_REF` also accepts an upstream commit or release tag for a fixed
-build.
-Once an upstream OCP release includes the fixed core dependency, return to its
-release-tarball download. The standalone `kube-burner` CLI continues to use
-`KUBE_BURNER_VERSION`.
+All listed binaries must be on `PATH` under `/usr/bin/` (virtbench also uses
+`/opt/virtbench-venv`). The builder release owns their version pins.
+`image-contents-check.sh` verifies each binary and the datasource template after
+every image build (locally and in CI).
+
+The **ssh-helper** pod image is separate: digest pins in
+`internal/tools/virtbench/setup.go` and
+`container-patches/virtbench/examples/utilities/ssh-pod.yaml` (see
+[`ssh-helper-image.md`](ssh-helper-image.md)). Bump those when
+**storage-cert-harness-images** publishes a new `ssh-helper` release.
+
+The slim harness `Containerfile` does not run tool-compile stages or pass
+tool source/version arguments; customized builds belong in the images
+repository before a new builder digest is promoted here.
 
 In the supported GitHub Actions flow, `image-push` runs automatically on
 `main` pushes. `supply-chain` is gating.
+
+## Container image build
+
+1. **storage-cert-harness-images** builds and publishes **harness-builder**
+   (release tarballs today; customized source builds land there first).
+2. Record the immutable digest (`skopeo inspect` on the semver tag).
+3. In this repo, set `HARNESS_BUILDER_VERSION` and `BUILD_IMAGE@sha256:…` in
+   `ci/config/images.env`, then run `./ci/scripts/sync-images-yml.sh --check`.
+4. Build the runtime image: `make image-build-local` (rebuilds `bin/harness`
+   under the same lock) or `./ci/scripts/image-build.sh` (GitHub: `ci-images.yml`
+   after the `harness-binary` artifact).
+
+The `Containerfile` uses `FROM ${BUILD_IMAGE} AS tools` and `COPY --from=tools`
+for `/usr/bin/*`, `/opt/virtbench-runtime` (including `examples/vm-templates`),
+and `/opt/virtbench-venv`, then `FROM ${RUNTIME_IMAGE}` for the final non-root
+runtime. It does not download, compile, or relabel the packaged tools.
+Override `BUILD_IMAGE` in the environment only for local experiments;
+release CI uses the pinned digest from `images.env`.
+
+Use `IMAGE_BUILD_NO_CACHE=1` (or `make image-build-fresh`) when refreshing layers
+after a new builder digest. `make image-build-local` tags a unique local name;
+CI writes `dist/harness-image.tar` for scan jobs.
+
+### Local image build lock
+
+`build.sh`, `clean.sh`, `image-build.sh`, `image-build-local.sh`,
+`clean-image-cache.sh`, `image-contents-check.sh`, `image-scan-trivy.sh`,
+`image-scan-dive.sh`, `image-push.sh`, and `run-image-tests.sh` acquire an
+exclusive `flock` on `work/local-image.lock`. The lock serializes access to
+`bin/harness`, `work/local-image-ref`, image tarballs/tags, and the shared
+`dist/*-version.txt` metadata so a binary build, `make clean`, scan, push, or
+validation cannot overlap an image build or cache prune. `make build` and
+`make clean` use those scripts. `make image-build-local` rebuilds the binary
+while holding the lock (the child `build.sh` sees `LOCAL_IMAGE_LOCK_HELD=1` and
+does not re-acquire).
+`make image-build-fresh` prunes cache and rebuilds in the same locked
+`image-build.sh` process (`IMAGE_BUILD_FRESH=1`). `image-build.sh` and
+`image-build-local.sh` call `invalidate_previous_local_image_build` before
+starting a rebuild (remove `work/local-image-ref`, the prior Podman image,
+`dist/harness-image.tar`, and `dist/*-version.txt`). Local image validation
+always runs the local image with Podman and preserves its native platform;
+`image-contents-check.sh` and `run-image-tests.sh` refuse a stale ref when the
+named image is not present in Podman.
+
+The lock is released automatically when the owning process exits, including
+when a command fails. It is not a transaction: a failed build can leave partial
+engine layers, so rerun the relevant build before validation after an error.
+The lock file itself may remain on disk and is reused by subsequent runs.
 
 ## Job images (no Docker Hub)
 
@@ -324,17 +386,18 @@ generated projection is retained for repository compatibility.
 | --- | --- |
 | lint-yaml | `YAML_LINT_IMAGE` |
 | lint-md | `MD_LINT_IMAGE` |
-| lint-go, unittest, secret-scan, supply-chain, replay-smoke, build | `BUILD_IMAGE` |
-| image-build | `BUILDAH_IMAGE` |
-| image-scan-trivy | `BUILD_IMAGE` + Trivy release binary (`TRIVY_VERSION`) |
-| image-scan-dive | `BUILD_IMAGE` + Dive release binary (`DIVE_VERSION`) |
+| lint-go, unittest, secret-scan, supply-chain, replay-smoke, build | Host Go on GitHub Actions (`setup-go`); `GO_IMAGE` is listed for legacy GitLab job images |
+| image-build | `BUILD_IMAGE` (digest-pinned **harness-builder**) and `RUNTIME_IMAGE` |
+| image-scan-trivy | Trivy release binary (`TRIVY_VERSION`) + `dist/harness-image.tar` |
+| image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar` |
 
-`ubi9/go-toolset` only goes to Go 1.25; this module is **1.26**, so `BUILD_IMAGE`
-is ubi10, pinned at the repository's supported Go toolchain version (Go **1.26.9+**), not `:latest`. `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use
-the UBI **minor stream** (`:9.8` / `:9.7`), not `:latest` and not a rebuild
-id. golangci-lint is still the GitHub **release tarball**
-(`GOLANGCI_LINT_VERSION`) into `$(go env GOPATH)/bin` (go-toolset is
-non-root; `/usr/local/bin` is not writable).
+`GO_IMAGE` (`ubi10/go-toolset`, Go **1.26.9+**) is not used by the harness
+`Containerfile`. `BUILD_IMAGE` is **not** the UBI python builder base; it names
+the published **harness-builder** image that already contains the cert tools.
+`YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use the UBI **minor stream** (`:9.8` /
+`:9.7`), not `:latest`. golangci-lint is the GitHub **release tarball**
+(`GOLANGCI_LINT_VERSION`) into `$(go env GOPATH)/bin` on CI and `~/.local/bin`
+locally — not Docker Hub and not tied to `BUILD_IMAGE`.
 
 ### Populating `quay.io/virtarraycert/ci_tools`
 
@@ -363,15 +426,15 @@ make install-tools
 
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
 `ci/config/images.env`: golangci-lint is a GitHub release binary installed
-into `BUILD_IMAGE` (not the Docker Hub `golangci/golangci-lint` image). That
-golangci-lint build needs Go 1.26.9+ because `go.mod` is 1.26.9.
+into `~/.local/bin` (local) or `$(go env GOPATH)/bin` (CI). That build needs
+Go 1.26.9+ because `go.mod` is 1.26.9.
 
 | Tool | Scripts | Installed by |
 | ------ | --------- | -------------- |
 | **podman** | `image-build.sh`, `image-push.sh` | OS package (`dnf`/`apt`). Default engine. |
 | `yamllint` | `lint-yaml.sh` | `pip install --user yamllint` |
 | `markdownlint-cli2` | `lint-md.sh` | `npm install -g --prefix ~/.local` |
-| `golangci-lint` | `lint-go.sh` | GitHub release tarball (CI: `BUILD_IMAGE` → `GOPATH/bin`; local: `~/.local/bin`). Not Docker Hub. |
+| `golangci-lint` | `lint-go.sh` | GitHub release tarball → `~/.local/bin` or `GOPATH/bin`. Not Docker Hub. |
 | `govulncheck` | `supply-chain.sh` | `go install …@latest` |
 | `gosec` | `supply-chain.sh` | GitHub release tarball (`GOSEC_VERSION`). Not `go install`. |
 | `trivy` | `supply-chain.sh`, `image-scan-trivy.sh` | GitHub release tarball → `~/.local/bin` |
@@ -431,8 +494,8 @@ uploads `logs/*.log` when a job fails (not the README).
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
 | `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
-| `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (no push). Local: **podman**. |
-| `image-contents-check.sh` | Verify `harness`, `kube-burner`, `kubectl`, `virtctl`, `kube-burner-ocp`, and `virtbench` are in the image |
+| `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (copies tools from digest-pinned `BUILD_IMAGE`). Local: **podman**. |
+| `image-contents-check.sh` | Verify `harness`, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
@@ -495,7 +558,7 @@ before `image-build`.
 
 `image-push` is **automatic** on `main` pushes. A `workflow_dispatch` with
 `publish=true` can also trigger push and version bump without a new commit.
-Neither MR/PR runs nor `test-ci` pushes publish an image.
+Neither MR/PR runs nor non-main pushes publish an image.
 
 ## Open items
 
