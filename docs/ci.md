@@ -391,7 +391,7 @@ generated projection is retained for repository compatibility.
 | image-scan-trivy | Trivy release binary (`TRIVY_VERSION`) + `dist/harness-image.tar` |
 | image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar` |
 
-`GO_IMAGE` (`ubi10/go-toolset`, Go **1.26.7+**) is not used by the harness
+`GO_IMAGE` (`ubi10/go-toolset`, Go **1.26.9+**) is not used by the harness
 `Containerfile`. `BUILD_IMAGE` is **not** the UBI python builder base; it names
 the published **harness-builder** image that already contains the cert tools.
 `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use the UBI **minor stream** (`:9.8` /
@@ -415,7 +415,7 @@ Tags come from `TRIVY_VERSION` / `DIVE_VERSION` in `ci/config/images.env`
 
 ## Local tools
 
-Install once (idempotent). Requires Go 1.26.7+, git, python3, pip, and npm
+Install once (idempotent). Requires Go 1.26.9+, git, python3, pip, and npm
 already on `PATH`. Tool versions are pinned in `ci/config/images.env`.
 
 ```sh
@@ -427,7 +427,7 @@ make install-tools
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
 `ci/config/images.env`: golangci-lint is a GitHub release binary installed
 into `~/.local/bin` (local) or `$(go env GOPATH)/bin` (CI). That build needs
-Go 1.26.7+ because `go.mod` is 1.26.7.
+Go 1.26.9+ because `go.mod` is 1.26.9.
 
 | Tool | Scripts | Installed by |
 | ------ | --------- | -------------- |

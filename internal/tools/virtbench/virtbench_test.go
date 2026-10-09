@@ -360,7 +360,7 @@ func TestBuildArgs(t *testing.T) {
 			"storage_driver":   "csi",
 		},
 	}
-	got, err := datasourceCloneArgs(false, "virtbench")(&core.RunCtx{}, tr, "/work/res")
+	got, err := datasourceCloneArgs(false, "virtbench")(&core.RunCtx{}, nil, tr, "/work/res")
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestBuildArgs(t *testing.T) {
 // never matches the VM it created and the run hangs (the live-run bug).
 func TestBuildArgsVMNameDefault(t *testing.T) {
 	tr := core.TestRequirement{ID: "TR-VIRT-001", Params: map[string]any{"storage_class": "sc"}}
-	got, err := datasourceCloneArgs(true, "virtbench")(&core.RunCtx{}, tr, "/work/res")
+	got, err := datasourceCloneArgs(true, "virtbench")(&core.RunCtx{}, nil, tr, "/work/res")
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestBuildArgsBootStorm(t *testing.T) {
 		"end":           100,
 		"storage_class": "ocs-storagecluster-ceph-rbd",
 	}}
-	got, err := datasourceCloneArgs(true, "virtbench")(&core.RunCtx{}, tr, "/work/res")
+	got, err := datasourceCloneArgs(true, "virtbench")(&core.RunCtx{}, nil, tr, "/work/res")
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestBuildArgsDiskOps(t *testing.T) {
 		"end":           50,
 		"storage_class": "ocs-storagecluster-ceph-rbd",
 	}}
-	got, err := diskOpsArgs("disk-ops")(&core.RunCtx{}, tr, "/work/res")
+	got, err := diskOpsArgs("disk-ops")(&core.RunCtx{}, nil, tr, "/work/res")
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestBuildArgsFIO(t *testing.T) {
 		"num_vms":         1,
 		"fio_bs":          "4k",
 	}}
-	got, err := fioArgs("fio-latency")(&core.RunCtx{}, tr, resultsDir)
+	got, err := fioArgs("fio-latency")(&core.RunCtx{}, nil, tr, resultsDir)
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestBuildArgsFIO(t *testing.T) {
 		"profile":         "load-80",
 		"concurrency":     40,
 	}}
-	got, err = fioArgs("fio-latency")(&core.RunCtx{}, fleet, resultsDir)
+	got, err = fioArgs("fio-latency")(&core.RunCtx{}, nil, fleet, resultsDir)
 	if err != nil {
 		t.Fatalf("build fleet args: %v", err)
 	}
@@ -487,7 +487,7 @@ func TestBuildArgsFIO(t *testing.T) {
 			t.Errorf("fleet fio args missing %q; got %q", want, joined)
 		}
 	}
-	if _, err := fioArgs("fio-latency")(&core.RunCtx{}, core.TestRequirement{ID: "TR-STOR-002", Params: map[string]any{
+	if _, err := fioArgs("fio-latency")(&core.RunCtx{}, nil, core.TestRequirement{ID: "TR-STOR-002", Params: map[string]any{
 		"storage_class": "sc", "num_vms": 0,
 	}}, "/work/res"); err == nil {
 		t.Error("zero FIO VM count: want error, got nil")
@@ -499,7 +499,7 @@ func TestBuildArgsFIO(t *testing.T) {
 		"num_vms":       1,
 		"fio_bs":        "4k",
 	}}
-	got, err = fioArgs("fio-latency")(&core.RunCtx{}, defaultTR, defaultResultsDir)
+	got, err = fioArgs("fio-latency")(&core.RunCtx{}, nil, defaultTR, defaultResultsDir)
 	if err != nil {
 		t.Fatalf("build args with embedded template: %v", err)
 	}
@@ -618,13 +618,13 @@ func TestFIOPlansUseConfiguredVMCount(t *testing.T) {
 }
 
 func TestBuildArgsRequiresStorageClass(t *testing.T) {
-	if _, err := datasourceCloneArgs(false, "virtbench")(&core.RunCtx{}, core.TestRequirement{ID: "TR-VIRT-002"}, "/work/res"); err == nil {
+	if _, err := datasourceCloneArgs(false, "virtbench")(&core.RunCtx{}, nil, core.TestRequirement{ID: "TR-VIRT-002"}, "/work/res"); err == nil {
 		t.Error("no storage class: want error, got nil")
 	}
-	if _, err := diskOpsArgs("disk-ops")(&core.RunCtx{}, core.TestRequirement{ID: "TR-STOR-001"}, "/work/res"); err == nil {
+	if _, err := diskOpsArgs("disk-ops")(&core.RunCtx{}, nil, core.TestRequirement{ID: "TR-STOR-001"}, "/work/res"); err == nil {
 		t.Error("disk-ops no storage class: want error, got nil")
 	}
-	if _, err := fioArgs("fio-latency")(&core.RunCtx{}, core.TestRequirement{ID: "TR-STOR-002"}, "/work/res"); err == nil {
+	if _, err := fioArgs("fio-latency")(&core.RunCtx{}, nil, core.TestRequirement{ID: "TR-STOR-002"}, "/work/res"); err == nil {
 		t.Error("fio no storage class: want error, got nil")
 	}
 }
@@ -632,13 +632,176 @@ func TestBuildArgsRequiresStorageClass(t *testing.T) {
 func TestBuildArgsBackendStorageClassWins(t *testing.T) {
 	tr := core.TestRequirement{ID: "TR-VIRT-002", Params: map[string]any{"storage_class": "from-param"}}
 	rc := &core.RunCtx{Backend: &core.ResolvedBackend{StorageClass: "from-backend"}}
-	got, err := datasourceCloneArgs(false, "virtbench")(rc, tr, "/work/res")
+	got, err := datasourceCloneArgs(false, "virtbench")(rc, nil, tr, "/work/res")
 	if err != nil {
 		t.Fatalf("buildArgs: %v", err)
 	}
 	joined := strings.Join(got, " ")
 	if !strings.Contains(joined, "--storage-class from-backend") {
 		t.Errorf("backend storage class should win; got %q", joined)
+	}
+}
+
+func TestParseFailureRecovery(t *testing.T) {
+	goldenParse(t, ParseFailureRecovery, FailureRecoveryFileName, "parse_failurerecovery.golden.json", "TR-VIRT-007")
+}
+
+// TestParseFailureRecoveryNoPingFails ensures that when virtbench omits
+// ping_time_sec (VMs came back Running but were never ping-confirmed),
+// node-failure-vm-recovery is graded fail, not pass.
+func TestParseFailureRecoveryNoPingFails(t *testing.T) {
+	noPing := []byte(`{
+		"total_vms": 3, "successful": 3, "failed": 0,
+		"total_test_duration_sec": 42.5,
+		"metrics": [
+			{"metric": "running_time_sec", "avg": 0.13, "max": 0.13, "min": 0.13, "count": 3}
+		]
+	}`)
+	got, err := ParseFailureRecovery(noPing, "TR-VIRT-007")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Checks["node-failure-vm-recovery"] != core.OutcomeFail {
+		t.Errorf("node-failure-vm-recovery = %q, want fail (no ping_time_sec in output)",
+			got[0].Checks["node-failure-vm-recovery"])
+	}
+}
+
+func TestParseFailureRecoveryPartialPingFails(t *testing.T) {
+	partial := []byte(`{
+		"total_vms": 3, "successful": 3, "failed": 0,
+		"metrics": [
+			{"metric": "running_time_sec", "avg": 10, "count": 3},
+			{"metric": "ping_time_sec", "avg": 12, "count": 2}
+		]
+	}`)
+	got, err := ParseFailureRecovery(partial, "TR-VIRT-007")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Checks["node-failure-vm-recovery"] != core.OutcomeFail {
+		t.Errorf("partial ping coverage was accepted: %q", got[0].Checks["node-failure-vm-recovery"])
+	}
+}
+
+func TestParseFailureRecoveryMetricNamesMatchKB(t *testing.T) {
+	in, _ := os.ReadFile(filepath.Join("testdata", FailureRecoveryFileName))
+	got, err := ParseFailureRecovery(in, "TR-VIRT-007")
+	if err != nil {
+		t.Fatalf("ParseFailureRecovery: %v", err)
+	}
+	names := map[string]bool{}
+	for _, m := range got[0].Metrics {
+		names[m.Name] = true
+	}
+	for _, want := range []string{"vm_ha_restart_time", "time_to_ping"} {
+		if !names[want] {
+			t.Errorf("missing SLA-scored metric %q; got %v", want, names)
+		}
+	}
+	if got[0].Native != core.OutcomePass {
+		t.Errorf("native = %q, want pass", got[0].Native)
+	}
+}
+
+func TestBuildArgsFailureRecovery(t *testing.T) {
+	tr := core.TestRequirement{
+		ID: "TR-VIRT-007",
+		Params: map[string]any{
+			"node":                "worker-0",
+			"vm_name":             "rhel-9-vm",
+			"namespace_prefix":    "failure-recovery",
+			"vm_recovery_timeout": 90,
+		},
+	}
+	got, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, core.NewBag(), tr, "/work/res")
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{
+		"failure-recovery",
+		"--node worker-0",
+		"--vm-name rhel-9-vm",
+		"--namespace-prefix failure-recovery",
+		"--yes",
+		"--recovery-timeout 90",
+		"--save-results",
+		"--results-folder /work/res",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("failure-recovery args missing %q; got %q", want, joined)
+		}
+	}
+}
+
+func TestBuildArgsFailureRecoveryFAR(t *testing.T) {
+	tr := core.TestRequirement{ID: "TR-VIRT-007", Params: map[string]any{
+		"node":       "worker-0",
+		"mode":       "far-operator",
+		"far_config": "/far-config.json",
+	}}
+	got, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, core.NewBag(), tr, "/work/res")
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{"--mode far-operator", "--far-config /far-config.json", "--far-name worker-0", "--remove-node-selector", "--cleanup", "--cleanup-vms"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("FAR flag %q missing; got %q", want, joined)
+		}
+	}
+}
+
+func TestFailureRecoveryValidate(t *testing.T) {
+	for _, tr := range []core.TestRequirement{
+		{ID: "TR-VIRT-007", Params: map[string]any{"vm_count": 0}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"vm_count": -1}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"mode": "unknown"}},
+		{ID: "TR-VIRT-007", Params: map[string]any{"mode": "far-operator"}},
+	} {
+		if err := failureRecoveryValidate(tr); err == nil {
+			t.Errorf("failureRecoveryValidate(%v) returned nil", tr.Params)
+		}
+	}
+}
+
+func TestBuildArgsFailureRecoveryNodeFromBag(t *testing.T) {
+	b := core.NewBag()
+	b.Set("picked_node", "auto-worker-3")
+	tr := core.TestRequirement{ID: "TR-VIRT-007", Params: map[string]any{"storage_class": "sc"}}
+	got, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, b, tr, "/work/res")
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	if !strings.Contains(strings.Join(got, " "), "--node auto-worker-3") {
+		t.Errorf("expected --node auto-worker-3 from bag; got %v", got)
+	}
+}
+
+func TestBuildArgsFailureRecoveryRequiresNode(t *testing.T) {
+	if _, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, core.NewBag(), core.TestRequirement{ID: "TR-VIRT-007"}, "/work/res"); err == nil {
+		t.Error("missing node: want error, got nil")
+	}
+}
+
+func TestBuildArgsFailureRecoveryOptionalFlags(t *testing.T) {
+	tr := core.TestRequirement{
+		ID: "TR-VIRT-007",
+		Params: map[string]any{
+			"node":                "worker-1",
+			"vm_recovery_timeout": 300,
+		},
+	}
+	got, err := failureRecoveryArgs("failure-recovery")(&core.RunCtx{}, core.NewBag(), tr, "/work/res")
+	if err != nil {
+		t.Fatalf("buildArgs: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	for _, want := range []string{"--yes", "--save-results", "--recovery-timeout 300"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("flag %q missing; got %q", want, joined)
+		}
 	}
 }
 
