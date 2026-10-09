@@ -330,7 +330,7 @@ generated projection is retained for repository compatibility.
 | image-scan-dive | `BUILD_IMAGE` + Dive release binary (`DIVE_VERSION`) |
 
 `ubi9/go-toolset` only goes to Go 1.25; this module is **1.26**, so `BUILD_IMAGE`
-is ubi10, pinned at `1.26.7-*` (Go **1.26.7+**), not `:latest`. `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use
+is ubi10, pinned at the repository's supported Go toolchain version (Go **1.26.9+**), not `:latest`. `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use
 the UBI **minor stream** (`:9.8` / `:9.7`), not `:latest` and not a rebuild
 id. golangci-lint is still the GitHub **release tarball**
 (`GOLANGCI_LINT_VERSION`) into `$(go env GOPATH)/bin` (go-toolset is
@@ -352,7 +352,7 @@ Tags come from `TRIVY_VERSION` / `DIVE_VERSION` in `ci/config/images.env`
 
 ## Local tools
 
-Install once (idempotent). Requires Go 1.26.7+, git, python3, pip, and npm
+Install once (idempotent). Requires Go 1.26.9+, git, python3, pip, and npm
 already on `PATH`. Tool versions are pinned in `ci/config/images.env`.
 
 ```sh
@@ -364,7 +364,7 @@ make install-tools
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
 `ci/config/images.env`: golangci-lint is a GitHub release binary installed
 into `BUILD_IMAGE` (not the Docker Hub `golangci/golangci-lint` image). That
-golangci-lint build needs Go 1.26.7+ because `go.mod` is 1.26.7.
+golangci-lint build needs Go 1.26.9+ because `go.mod` is 1.26.9.
 
 | Tool | Scripts | Installed by |
 | ------ | --------- | -------------- |

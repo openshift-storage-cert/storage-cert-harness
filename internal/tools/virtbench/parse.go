@@ -543,12 +543,17 @@ func drainDistRow(msg string) (node string, count int, ok bool) {
 // metric-map + emit-order for failure-recovery. KB gate: recovery_time
 // (running_time_sec) and ping_time_sec (required — absent means no VMs
 // responded to ping, which is a test failure).
+const (
+	failureRecoveryRunningMetric = "running_time_sec"
+	failureRecoveryPingMetric    = "ping_time_sec"
+)
+
 var (
 	failureRecoveryMetricBase = map[string]string{
-		"running_time_sec": "vm_ha_restart_time",
-		"ping_time_sec":    "time_to_ping",
+		failureRecoveryRunningMetric: "vm_ha_restart_time",
+		failureRecoveryPingMetric:    "time_to_ping",
 	}
-	failureRecoveryMetricOrder = []string{"running_time_sec", "ping_time_sec"}
+	failureRecoveryMetricOrder = []string{failureRecoveryRunningMetric, failureRecoveryPingMetric}
 )
 
 // ParseFailureRecovery converts a virtbench failure-recovery summary into one
@@ -580,7 +585,7 @@ func ParseFailureRecovery(data []byte, trID string) ([]core.TestResult, error) {
 	complete := summary.TotalVMs > 0 && summary.Successful == summary.TotalVMs && summary.Failed == 0
 	pingComplete := false
 	for _, metric := range summary.Metrics {
-		if metric.Name == "ping_time_sec" && metric.Count == summary.TotalVMs {
+		if metric.Name == failureRecoveryPingMetric && metric.Count == summary.TotalVMs {
 			pingComplete = true
 		}
 	}
