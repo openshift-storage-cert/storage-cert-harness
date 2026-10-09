@@ -994,7 +994,8 @@ func failureRecoveryArgs(nsPrefix string) func(rc *core.RunCtx, bag *core.Bag, t
 			if farConfig == "" {
 				return nil, fmt.Errorf("virtbench: %s: far_config is required for far-operator mode", tr.ID)
 			}
-			args = append(args, "--far-config", farConfig, "--remove-node-selector", "--cleanup", "--cleanup-vms")
+			args = append(args, "--far-config", farConfig, "--far-name", node,
+				"--remove-node-selector", "--cleanup", "--cleanup-vms")
 		}
 		if sc := storageClass(nil, tr); sc != "" {
 			args = append(args, "--storage-class", sc)

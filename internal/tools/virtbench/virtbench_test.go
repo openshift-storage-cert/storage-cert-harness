@@ -746,7 +746,7 @@ func TestBuildArgsFailureRecoveryFAR(t *testing.T) {
 		t.Fatalf("buildArgs: %v", err)
 	}
 	joined := strings.Join(got, " ")
-	for _, want := range []string{"--mode far-operator", "--far-config /far-config.json", "--remove-node-selector", "--cleanup", "--cleanup-vms"} {
+	for _, want := range []string{"--mode far-operator", "--far-config /far-config.json", "--far-name worker-0", "--remove-node-selector", "--cleanup", "--cleanup-vms"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("FAR flag %q missing; got %q", want, joined)
 		}
