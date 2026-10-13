@@ -73,7 +73,9 @@ func TestParseResults_PVCDensity_NativeFail(t *testing.T) {
 func TestParseResults_VirtParallel_Golden(t *testing.T) {
 	data := readFixtures(t, "virt-parallel",
 		"jobSummary.json",
-		"vmiLatencyQuantilesMeasurement-virt-parallel-create-vms-0.json")
+		"vmiLatencyQuantilesMeasurement-virt-parallel-create-vms-0.json",
+		"vmiLatencyMeasurement-virt-parallel-create-vms-0.json",
+		"vmimLatencyMeasurement-virt-parallel-migrate-vms-0.json")
 	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
 	if err != nil {
 		t.Fatalf("ParseResults: %v", err)
@@ -103,7 +105,8 @@ func TestParseResults_VirtParallel_Golden(t *testing.T) {
 }
 
 func TestParseResults_VirtParallelFailedGolden(t *testing.T) {
-	data := map[string][]byte{"jobSummary.json": mustRead(t, "virt-parallel", "jobSummary-fail.json")}
+	data := readFixtures(t, "virt-parallel", "jobSummary.json", "vmiLatencyMeasurement-virt-parallel-create-vms-0.json", "vmimLatencyMeasurement-virt-parallel-migrate-vms-0.json")
+	data["jobSummary.json"] = mustRead(t, "virt-parallel", "jobSummary-fail.json")
 	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
 	if err != nil {
 		t.Fatalf("ParseResults: %v", err)
