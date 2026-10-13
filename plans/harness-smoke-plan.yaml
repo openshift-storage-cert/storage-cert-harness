@@ -3,7 +3,7 @@ name: harness-smoke
 description: >-
   Internal smoke-scale selection covering all runtime tools in the
   storage-cert-harness image. This is not a certification-scale run.
-backend: tlvbm
+backend: oc-edge-112
 concurrency: 1
 select:
   ids:
