@@ -147,7 +147,7 @@ func drainTeardown(ctx context.Context, rc *core.RunCtx, bag *core.Bag) error {
 // the virt-launcher pods — no eviction, no live-migration); --force keeps a stray
 // unmanaged pod from aborting the drain; --log-file pins the log where the
 // collector looks. Reads only params, never a threshold.
-func drainArgs(_ *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+func drainArgs(_ *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
 	target := strParamOr(tr, "target_node", "")
 	if target == "" {
 		return nil, fmt.Errorf("virtbench: %s: target_node param is required (the worker to drain)", tr.ID)

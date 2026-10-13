@@ -1,0 +1,53 @@
+{
+  "schema_version": "2.0",
+  "provenance": {
+    "kb_git_commit": "tr-virt-007-as-authored",
+    "kb_commit_date": "2026-09-08",
+    "generated_date": "2026-09-08"
+  },
+  "test_requirements": [
+    {
+      "id": "TR-VIRT-007",
+      "title": "VM HA Restart After Node Failure",
+      "partner_level": 3,
+      "verified": "unverified",
+      "automation_tool": "virtbench failure-recovery",
+      "category": "Life-cycle",
+      "description": "Validate HA restart time after an unplanned node failure — volume re-attach + VM restart on a surviving node.",
+      "sla_status": "defined",
+      "sla_count": 1,
+      "checks_status": "defined",
+      "checks_count": 2,
+      "params": {
+        "mode": {"default": "monitor"},
+        "node": {"required": false, "default": ""},
+        "far_config": {"required": false, "default": ""}
+      },
+      "sla": [
+        {
+          "metric": "vm_ha_restart_time",
+          "type": "duration",
+          "unit": "s",
+          "measured_by": ["virtbench failure-recovery"]
+        }
+      ],
+      "checks": [
+        {
+          "id": "node-failure-vm-recovery",
+          "kind": "scenario",
+          "name": "Node-failure VM recovery",
+          "expectation": "all VMs recover to Running+Ready on surviving nodes; ping restored",
+          "status": "defined"
+        },
+        {
+          "id": "reattach-failure-modes",
+          "kind": "capability",
+          "name": "Volume re-attach on failover is prompt and correct",
+          "expected": "supported",
+          "feature": "failover-reattach",
+          "status": "defined"
+        }
+      ]
+    }
+  ]
+}

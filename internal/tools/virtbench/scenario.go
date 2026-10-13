@@ -30,16 +30,18 @@ type Scenario struct {
 	// BuildArgs assembles the CLI from params/backend only (never a threshold).
 	// resultsRoot is the harness workdir virtbench must write results into, passed
 	// via the scenario's results flag so the collector can find the output.
-	BuildArgs func(rc *core.RunCtx, tr core.TestRequirement, resultsRoot string) ([]string, error)
+	BuildArgs func(rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error)
 	// Run optionally replaces the shared single-command runner for scenarios that
 	// need a supported multi-command tool lifecycle. Nil uses the shared runner.
 	Run func(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) (stages.RunHandle, error)
 	// Parse turns the result file into normalized TestResults for the TR.
 	Parse func(data []byte, trID string) ([]core.TestResult, error)
+	// StorageClassOptional suppresses the storage_class preflight error for
+	// scenarios that operate on existing VMs and don't provision storage.
+	StorageClassOptional bool
 
 	// The fields below are optional hooks a scenario sets when it needs more than
 	// the generic plumbing; every clone/disk-ops scenario leaves them zero.
-	// drain-nodes uses them (decisions/0013).
 
 	// Preflight runs extra scenario-specific checks after the generic ones (binary,
 	// storage_class). Hooks must report skips without contacting the cluster in
@@ -49,6 +51,10 @@ type Scenario struct {
 	// replay), for a scenario that must stage the cluster before Run — drain clones
 	// the VMs onto the target here. It may stash bag state for Teardown. Nil skips.
 	Provision func(ctx context.Context, rc *core.RunCtx, bag *core.Bag, tr core.TestRequirement, resultsRoot string) error
+	// ProvisionVMs, when non-nil, is called by the Provisioner after the results
+	// dir is ready and before virtbench runs — for scenarios that need to create
+	// VMs on the cluster (e.g. failure-recovery places VMs with node affinity).
+	ProvisionVMs func(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) error
 	// Teardown adds scenario-specific cleanup that the generic engine runs in
 	// addition to (before) its namespace sweep, on the same fresh bounded context —
 	// drain uncordons the workers it cordoned. Nil adds nothing.
@@ -84,11 +90,12 @@ type Scenario struct {
 // save_results()). Each scenario has its own; SummaryFileName is kept exported for
 // the existing datasource-clone golden test.
 const (
-	SummaryFileName    = "summary_vm_creation_results.json"
-	BootStormFileName  = "summary_boot_storm_results.json"
-	DiskOpsFileName    = "disk_ops_results.json"
-	FIOFileName        = "fio_raw.json"
-	FIOSummaryFileName = "summary_fio_benchmark.json"
+	SummaryFileName         = "summary_vm_creation_results.json"
+	BootStormFileName       = "summary_boot_storm_results.json"
+	DiskOpsFileName         = "disk_ops_results.json"
+	FIOFileName             = "fio_raw.json"
+	FIOSummaryFileName      = "summary_fio_benchmark.json"
+	FailureRecoveryFileName = "summary_failure_recovery_results.json"
 	// DrainFileName is the log drain-nodes writes with --log-file; it is not JSON —
 	// ParseDrain reads the timing and VMI distribution from the human log.
 	DrainFileName = "drain.log"
@@ -136,9 +143,11 @@ var scenarios = []Scenario{
 		ProvidesTR:     "TR-VIRT-018",
 		ResultFile:     SummaryFileName,
 		NSPrefix:       "virtbench",
-		BuildArgs:      cloneAtScaleArgs("virtbench"),
-		Parse:          ParseSummary,
-		Validate:       cloneAtScaleValidate,
+		BuildArgs: func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+			return cloneAtScaleArgs("virtbench")(rc, tr, resultsRoot)
+		},
+		Parse:    ParseSummary,
+		Validate: cloneAtScaleValidate,
 		// TR-018's gate is p99 clone provisioning; compute it from the per-VM
 		// samples (the summary carries only avg/max/min).
 		DetailFile:  DetailCloneFileName,
@@ -169,16 +178,30 @@ var scenarios = []Scenario{
 		Validate:       fioValidate,
 	},
 	{
-		AutomationTool:   "virtbench datasource-clone --single-node",
-		ProvidesTR:       "TR-VIRT-013",
-		ResultFile:       SummaryFileName,
-		NSPrefix:         singleNodeNSPrefix,
-		BuildArgs:        singleNodeCeilingArgs(singleNodeNSPrefix),
+		AutomationTool: "virtbench datasource-clone --single-node",
+		ProvidesTR:     "TR-VIRT-013",
+		ResultFile:     SummaryFileName,
+		NSPrefix:       singleNodeNSPrefix,
+		BuildArgs: func(rc *core.RunCtx, _ *core.Bag, tr core.TestRequirement, resultsRoot string) ([]string, error) {
+			return singleNodeCeilingArgs(singleNodeNSPrefix)(rc, tr, resultsRoot)
+		},
 		Parse:            ParseSingleNodeCeiling,
 		Preflight:        singleNodeCeilingPreflight,
 		Validate:         singleNodeCeilingValidate,
 		DeriveMetrics:    singleNodeLunMetric,
 		TolerateRunError: true, // virtbench exits 1 whenever any VM failed — expected here (singlenode.go)
+	},
+	{
+		// HA badge (TR-VIRT-007): create VMs on the target node with node affinity,
+		// then monitor them recovering after a node failure.
+		AutomationTool: "virtbench failure-recovery",
+		ProvidesTR:     "TR-VIRT-007",
+		ResultFile:     FailureRecoveryFileName,
+		NSPrefix:       "failure-recovery",
+		BuildArgs:      failureRecoveryArgs("failure-recovery"),
+		Parse:          ParseFailureRecovery,
+		Validate:       failureRecoveryValidate,
+		ProvisionVMs:   provisionFailureRecoveryVMs,
 	},
 }
 

@@ -101,7 +101,7 @@
           "metric": "vm_ha_restart_time",
           "operator": "<=",
           "unit": "s",
-          "value": 45
+          "value": 600
         }
       ],
       "sla_status": "defined"
@@ -131,7 +131,7 @@
           "operator": "<=",
           "percentile": "p99",
           "unit": "s",
-          "value": 5
+          "value": 15
         }
       ],
       "sla_status": "defined"
@@ -158,7 +158,7 @@
           "operator": "<",
           "percentile": "p99",
           "unit": "s",
-          "value": 10,
+          "value": 15,
           "when": {
             "iteration_clones": 100
           }

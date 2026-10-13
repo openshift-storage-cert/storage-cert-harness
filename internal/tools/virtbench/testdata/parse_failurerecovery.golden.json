@@ -1,0 +1,64 @@
+[
+  {
+    "tr_id": "TR-VIRT-007",
+    "metrics": [
+      {
+        "name": "vm_ha_restart_time",
+        "value": 30.5,
+        "unit": "s"
+      },
+      {
+        "name": "vm_ha_restart_time_max",
+        "value": 35,
+        "unit": "s"
+      },
+      {
+        "name": "vm_ha_restart_time_min",
+        "value": 26,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping",
+        "value": 32.1,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_max",
+        "value": 37,
+        "unit": "s"
+      },
+      {
+        "name": "time_to_ping_min",
+        "value": 28,
+        "unit": "s"
+      },
+      {
+        "name": "vms_total",
+        "value": 3
+      },
+      {
+        "name": "vms_successful",
+        "value": 3
+      },
+      {
+        "name": "vms_failed",
+        "value": 0
+      },
+      {
+        "name": "vm_success_rate",
+        "value": 100,
+        "unit": "%"
+      },
+      {
+        "name": "total_test_duration",
+        "value": 42.5,
+        "unit": "s"
+      }
+    ],
+    "checks": {
+      "node-failure-vm-recovery": "pass",
+      "reattach-failure-modes": "pass"
+    },
+    "native": "pass"
+  }
+]
