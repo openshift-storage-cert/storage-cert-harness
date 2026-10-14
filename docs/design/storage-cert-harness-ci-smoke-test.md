@@ -304,7 +304,7 @@ to run workflows (or comment on the PR) may request another smoke:
 | --- | --- | --- |
 | **PR comment** | `/run-live-smoke` on `issue_comment` where `issue.pull_request` is set; bot/workflow validates same-repo + not `[skip live-smoke]` + lease free | Contributors with `write` or `maintain` on repo (tune in workflow) |
 | **GitHub CLI** | `gh pr comment <PR> --repo openshift-storage-cert/storage-cert-harness --body '/run-live-smoke'` | Same as PR comment (triggers `issue_comment` workflow) |
-| **GitHub UI** | `workflow_dispatch` with input `pr_number` (no free-form `git_ref`) | Same; link run in PR summary |
+| **GitHub UI** | `workflow_dispatch` with inputs `pr_number` or `git_ref` (branch/SHA from PR) | Same; link run in PR summary |
 | **Actions button** | Re-run workflow from the PR’s “Checks” tab for the smoke workflow (if exposed) | Document in `docs/ci.md` |
 
 **Guards (all on-demand paths):**
@@ -844,9 +844,10 @@ secrets and lease.
 ### GitHub Actions
 
 Implementation: [`.github/workflows/ci-live-smoke.yml`](../../.github/workflows/ci-live-smoke.yml).
-Each trigger uses a **`ubuntu-latest` resolve job** (no `live-smoke` environment) to
-validate same-repo PR metadata and emit `head_sha`, then a **self-hosted** job
-checks out that SHA with `persist-credentials: false` and `fetch-depth: 1`.
+Each trigger uses **`ubuntu-latest` resolve + bundle jobs** (no `live-smoke`
+environment) to validate same-repo PR metadata, check out the PR head SHA, and
+upload a short-lived workflow artifact. **Self-hosted** jobs download that
+artifact only (no `actions/checkout` of PR refs on secret-bearing runners).
 `workflow_dispatch` accepts **`pr_number` only** (not arbitrary `git_ref`).
 
 Wire smoke as a **separate** workflow with a **required** PR status check. PR

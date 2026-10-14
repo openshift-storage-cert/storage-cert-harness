@@ -32,7 +32,7 @@ overrides:
     increment: 0
     data_volume_count: 1
     max_iterations: 1
-    skip_migration_job: true
+    skip_migration_job: false
     qps: 5
     burst: 10
     timeout: 20m
