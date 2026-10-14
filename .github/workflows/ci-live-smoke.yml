@@ -13,12 +13,6 @@ on:
     branches: [main]
   issue_comment:
     types: [created]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: Same-repo pull request number to smoke
-        required: true
-        type: number
 
 permissions:
   contents: read
@@ -124,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-comment.outputs.head_sha }}
+          ref: refs/heads/main
           fetch-depth: 1
           persist-credentials: false
       - name: Run live cluster smoke
