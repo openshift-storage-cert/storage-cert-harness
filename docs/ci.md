@@ -583,7 +583,12 @@ output.
 
 ### Dedicated CI cluster (live smoke)
 
-Today's jobs use hosted GitHub runners (no cluster). A later **live-smoke** job
+Workflow [ci-live-smoke.yml](../.github/workflows/ci-live-smoke.yml) is **off**
+until repository variable `CI_LIVE_SMOKE_ENABLED` is set to `true` and the
+`live-smoke` environment has cluster secrets. Until then, use local
+`make run-harness-smoke`.
+
+Today's other jobs use hosted GitHub runners (no cluster). The **live-smoke** job
 (planned; see design doc below) runs against a real OpenShift cluster using the
 harness smoke plan. It will use GitHub environment secrets for
 `CI_CLUSTER_KUBECONFIG` and `HARNESS_THRESHOLDS_JSON`. Never echo them (`set +x`);

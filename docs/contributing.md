@@ -34,11 +34,17 @@ make set-next-version BINARY=1.0.0   # or IMAGE=1.0.0; see docs/ci.md Versioning
 
 ## Live cluster smoke before you open a PR
 
-Upstream CI schedules **live smoke** on the shared lab when a PR to `main` is
-**opened** (once per PR, path filters apply). A **failed** live-smoke run **blocks
-merging the PR** until you investigate the error, fix your branch if needed, and
-get a **passing** re-run (on demand — below). You are also expected to run smoke on
-your own lab **before** opening the PR (next section).
+**CI automation:** GitHub live smoke runs only when
+`vars.CI_LIVE_SMOKE_ENABLED=true` and the `live-smoke` environment is configured
+(see [design doc](design/storage-cert-harness-ci-smoke-test.md) and
+[ci-live-smoke.yml](../.github/workflows/ci-live-smoke.yml)). Until operators
+enable it, use the local commands below.
+
+When enabled, upstream CI schedules **live smoke** on the shared lab when a PR to
+`main` is **opened** (once per PR, path filters apply). A **failed** live-smoke
+run **blocks merging the PR** until you investigate, fix your branch, and get a
+**passing** re-run (on demand — below). Run smoke on your own lab **before**
+opening the PR (next section).
 
 ### When you must run smoke locally
 
@@ -66,7 +72,9 @@ Prerequisites: [cluster-setup-guide.md](cluster-setup-guide.md),
 ```sh
 make build
 make image-build-local
-KUBECONFIG=/path/to/your/kubeconfig make run-harness-smoke
+KUBECONFIG=/path/to/your/kubeconfig \
+  BACKEND=oc-edge-112 \
+  make run-harness-smoke
 ```
 
 Optional: `KUBECTL_INSECURE_SKIP_TLS_VERIFY=true` for lab TLS. Reports land under
@@ -74,7 +82,8 @@ Optional: `KUBECTL_INSECURE_SKIP_TLS_VERIFY=true` for lab TLS. Reports land unde
 
 ### After the PR is open — on-demand CI smoke
 
-The shared cluster runs smoke **once** when the PR is created. If the job **fails**,
+When `CI_LIVE_SMOKE_ENABLED` is true, the shared cluster runs smoke **once** when
+the PR is created. If the job **fails**,
 read the workflow logs and `report` artifacts, fix the issue, then trigger another
 run — **do not merge** until live-smoke is green. To run smoke again
 (same-repo PRs only):
