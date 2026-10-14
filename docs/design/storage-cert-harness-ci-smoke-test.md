@@ -170,7 +170,7 @@ the ops runbook instead.
 | `pull_request` → `main`, type **`opened`** | **Yes, once per PR** if path filter matches and same-repo | Does **not** re-run on `synchronize` (new commits) |
 | `pull_request` → `main`, contributor **on demand** | Yes | Comment or UI action — [§1.4](#14-contributor-on-demand-smoke-on-a-pr) |
 | Push to `main` | **No** (default) | Lint/build/publish only; optional nightly smoke is [§11](#11-remaining-open-items) |
-| `workflow_dispatch` | On demand | `git_ref` + optional PR link |
+| `workflow_dispatch` | On demand | `pr_number` only (SHA resolved on `ubuntu-latest` before self-hosted checkout) |
 | Fork PR → upstream | **No** | No upstream kubeconfig |
 
 **Merge gate:** PR live-smoke is a **required** status check on pull requests to
@@ -304,7 +304,7 @@ to run workflows (or comment on the PR) may request another smoke:
 | --- | --- | --- |
 | **PR comment** | `/run-live-smoke` on `issue_comment` where `issue.pull_request` is set; bot/workflow validates same-repo + not `[skip live-smoke]` + lease free | Contributors with `write` or `maintain` on repo (tune in workflow) |
 | **GitHub CLI** | `gh pr comment <PR> --repo openshift-storage-cert/storage-cert-harness --body '/run-live-smoke'` | Same as PR comment (triggers `issue_comment` workflow) |
-| **GitHub UI** | `workflow_dispatch` with inputs `pr_number` or `git_ref` (branch/SHA from PR) | Same; link run in PR summary |
+| **GitHub UI** | `workflow_dispatch` with input `pr_number` (no free-form `git_ref`) | Same; link run in PR summary |
 | **Actions button** | Re-run workflow from the PR’s “Checks” tab for the smoke workflow (if exposed) | Document in `docs/ci.md` |
 
 **Guards (all on-demand paths):**
@@ -841,36 +841,13 @@ On GitLab/GHA **timeout** or **cancel**:
 `run-image-tests.sh` remains the developer entry; live-cluster-smoke wraps CI
 secrets and lease.
 
-### GitHub Actions (illustrative)
+### GitHub Actions
 
-```yaml
-# .github/workflows/ci-live-smoke.yml
-on:
-  pull_request:
-    types: [opened]
-    branches: [main]
-  issue_comment:
-    types: [created]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: PR number to smoke (same-repo)
-        required: false
-
-jobs:
-  live-smoke:
-    if: >-
-      github.repository == 'openshift-storage-cert/storage-cert-harness' &&
-      # same-repo PR guards + skip token — see section 1
-    runs-on: [self-hosted, storage-cert-smoke]
-    environment: live-smoke
-    timeout-minutes: 240
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || inputs.git_ref }}
-      - run: ./ci/scripts/live-cluster-smoke.sh
-```
+Implementation: [`.github/workflows/ci-live-smoke.yml`](../../.github/workflows/ci-live-smoke.yml).
+Each trigger uses a **`ubuntu-latest` resolve job** (no `live-smoke` environment) to
+validate same-repo PR metadata and emit `head_sha`, then a **self-hosted** job
+checks out that SHA with `persist-credentials: false` and `fetch-depth: 1`.
+`workflow_dispatch` accepts **`pr_number` only** (not arbitrary `git_ref`).
 
 Wire smoke as a **separate** workflow with a **required** PR status check. PR
 `opened` runs **once**; `issue_comment` `/run-live-smoke` handles re-runs after
