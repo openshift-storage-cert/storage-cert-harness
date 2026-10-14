@@ -334,18 +334,32 @@ not sensitive).
 This does not replace unit tests or replay-smoke; it catches integration issues
 before consuming shared CI cluster time.
 
-**Illustrative comment trigger:**
+**Illustrative comment trigger** (on-demand re-run; must not run for fork PRs or
+untrusted commenters):
 
 ```yaml
 on:
   issue_comment:
     types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   live-smoke-comment:
     if: >-
+      vars.CI_LIVE_SMOKE_ENABLED == 'true' &&
+      github.repository == 'openshift-storage-cert/storage-cert-harness' &&
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '/run-live-smoke') &&
-      github.event.comment.author_association != 'NONE'
+      contains(fromJSON('["MEMBER","OWNER","COLLABORATOR","MAINTAINER"]'),
+        github.event.comment.author_association)
+    environment: live-smoke
+    # Follow-on job checks out the PR via pull_request_url and verifies:
+    #   github.event.pull_request.head.repo.full_name == github.repository
+    # before any step uses CI_CLUSTER_KUBECONFIG (use pull_request_target only
+    # for checkout metadata, never to run untrusted code with secrets).
 ```
 
 ### GitHub Actions timeouts (current repo and limits)
@@ -370,7 +384,7 @@ smoke needs a self-hosted runner with cluster access).
 use 240–360 unless benchmarks justify more.
 - **End-to-end pipeline time** (developer-visible): if `live-smoke` runs **in
 parallel** with `publish` after `images`, wall clock ≈ `max(live-smoke, lint→publish chain)` (~**30–60 min** for the hosted chain + **up to ~240 min** smoke ⇒ often **~2–4 h** total). If smoke **blocks** publish, wall clock is the **sum** (~**2.5–5 h** worst case).
-- Add explicit `timeout-minutes` to **all** jobs in a follow-up hygie                   ne task so
+- Add explicit `timeout-minutes` to **all** jobs in a follow-up hygie                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ne task so
 stuck jobs fail fast (for example lint 30, test 45, image-build 90).
 
 ---
@@ -534,7 +548,7 @@ print `oc whoami` tokens or backend secrets (`set +x` around secret material).
 
 ### Backend naming
 
-`harness-smoke-plan.yaml` sets `backend: tlvbm`. The CI backends file **must**
+`harness-smoke-plan.yaml` sets `backend: oc-edge-112`. The CI backends file **must**
 define a backend with that exact name (or override `BACKEND=` in CI) matching the
 CI cluster StorageClass / VolumeSnapshotClass.
 
@@ -593,7 +607,7 @@ Upload **sanitized** artifacts: `report.md`, junit if present, redacted `report.
 When Layer C fails, the GitHub Actions job exits non-zero so the PR check is
 **failed** and branch protection **blocks merge** until a subsequent run passes.
 
----
+                                                                                  ---
 
 ## 5. Smoke plan scope (full catalog, no HA, 20-minute cap per TR)
 
@@ -652,7 +666,7 @@ generated in CI.
 | Plan field | CI value | Notes |
 | --- | --- | --- |
 | `name` | `harness-smoke` | |
-| `backend` | edge-112 backend name (e.g. `tlvbm` or edge-112-specific) | Must match `HARNESS_BACKENDS_YAML` |
+| `backend` | `oc-edge-112` (or site-specific name aligned with plan) | Must match `HARNESS_BACKENDS_YAML` |
 | `concurrency` | `1` | One TR at a time |
 | `select.ids` | All non-HA TRs from §5 | Exclude `TR-VIRT-007` |
 | `overrides` | Per-TR table below | **Minimal** VMs, iterations, timeouts |
