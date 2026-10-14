@@ -36,7 +36,8 @@ provision/teardown would repeatedly recreate it and cannot own shared cleanup.
 ### Consequences
 
 virtbench's `virtbench` group provider creates the `ssh-test-pod` only if absent
-and deletes it only if it created it. Replay skips shared cluster setup.
+and deletes it on group teardown (including leftovers from prior runs). Replay
+skips shared cluster setup and teardown.
 Expensive shared images, RBAC, or operators should use providers instead of
 per-job work. virtbench's own `--cleanup` handles its workload namespaces.
 

@@ -1,6 +1,7 @@
 package virtbench
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -39,6 +40,7 @@ apply)
   /bin/cat >/dev/null
   printf '%s\n' Running > "$SSH_TEST_STATE" ;;
 delete) printf '%s\n' missing > "$SSH_TEST_STATE" ;;
+annotate) ;;
 exec) [ "$state" = Running ] ;;
 *) exit 1 ;;
 esac
@@ -119,7 +121,7 @@ func TestSSHHelperWaitsForTerminatingPod(t *testing.T) {
 	}
 }
 
-func TestSSHHelperLateCreationIsCleanedUpAndOwnershipResets(t *testing.T) {
+func TestSSHHelperLateCreationIsAlwaysCleanedUpOnTeardown(t *testing.T) {
 	setState, commands := fakeSSHCluster(t, "Running")
 	s := &sshPodSetup{}
 	rc := sshTestRunCtx(t)
@@ -135,7 +137,7 @@ func TestSSHHelperLateCreationIsCleanedUpAndOwnershipResets(t *testing.T) {
 	if err := s.Teardown(ctx, rc, nil); err != nil {
 		t.Fatal(err)
 	}
-	// A subsequent run reuses an externally created helper and must leave it.
+	// A subsequent run reuses an externally created helper and still removes it.
 	setState("Running")
 	if err := s.Setup(t.Context(), rc, nil); err != nil {
 		t.Fatal(err)
@@ -143,8 +145,8 @@ func TestSSHHelperLateCreationIsCleanedUpAndOwnershipResets(t *testing.T) {
 	if err := s.Teardown(t.Context(), rc, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := commands(); strings.Count(got, "delete pod") != 1 {
-		t.Fatalf("expected only the recreated pod to be cleaned up: %s", got)
+	if got := commands(); strings.Count(got, "delete pod") != 2 {
+		t.Fatalf("expected teardown to delete the helper on every run: %s", got)
 	}
 }
 
@@ -159,8 +161,12 @@ func TestSSHHelperHealthyPodIsReused(t *testing.T) {
 	if err := s.Teardown(t.Context(), sshTestRunCtx(t), nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := commands(); strings.Contains(got, "apply") || strings.Contains(got, "delete") {
-		t.Fatalf("healthy pre-existing pod was changed: %s", got)
+	got := commands()
+	if strings.Contains(got, "apply") {
+		t.Fatalf("healthy pre-existing pod was recreated: %s", got)
+	}
+	if strings.Count(got, "delete pod") != 1 {
+		t.Fatalf("healthy pre-existing pod was not cleaned up on teardown: %s", got)
 	}
 }
 
@@ -205,7 +211,7 @@ func TestSSHHelperReplayDoesNotUseCluster(t *testing.T) {
 func TestSSHHelperManifestAvoidsTargetNodes(t *testing.T) {
 	manifest := sshPodManifestForNodes(map[string]struct{}{
 		"worker-05": {},
-	})
+	}, nil)
 	for _, want := range []string{
 		"requiredDuringSchedulingIgnoredDuringExecution",
 		"key: kubernetes.io/hostname",
@@ -219,9 +225,75 @@ func TestSSHHelperManifestAvoidsTargetNodes(t *testing.T) {
 }
 
 func TestSSHHelperManifestWithoutTargetKeepsDefaultScheduling(t *testing.T) {
-	manifest := sshPodManifestForNodes(nil)
+	manifest := sshPodManifestForNodes(nil, nil)
 	if strings.Contains(manifest, "nodeAffinity") {
 		t.Fatalf("unexpected node affinity without a target node:\n%s", manifest)
+	}
+}
+
+func TestSSHHelperManifestIncludesBootstrapAnnotations(t *testing.T) {
+	rc := &core.RunCtx{RunID: "run-abc", PartKind: "initial"}
+	manifest := sshPodManifestForNodes(nil, sshPodBootstrapAnnotations(rc))
+	for _, want := range []string{
+		"annotations:",
+		"storage-cert-harness.redhat.com/run-id: \"run-abc\"",
+		"storage-cert-harness.redhat.com/part-kind: \"initial\"",
+		"storage-cert-harness.redhat.com/bootstrap-at:",
+	} {
+		if !strings.Contains(manifest, want) {
+			t.Errorf("manifest missing %q:\n%s", want, manifest)
+		}
+	}
+}
+
+func TestLogExistingSSHPodAtStartupOrphanAndConcurrent(t *testing.T) {
+	var log bytes.Buffer
+	rc := &core.RunCtx{
+		RunID:  "run-new",
+		Logger: slog.New(slog.NewTextHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	pod := &sshPodState{}
+	pod.Metadata.Labels = map[string]string{"managed-by": "storage-cert-harness"}
+	pod.Metadata.Annotations = map[string]string{
+		"storage-cert-harness.redhat.com/run-id":         "run-old",
+		"storage-cert-harness.redhat.com/bootstrap-host": "worker-1",
+	}
+	pod.Status.Phase = "Running"
+	pod.Status.PodIP = "10.0.0.1"
+	logExistingSSHPodAtStartup(rc, pod)
+	got := log.String()
+	if !strings.Contains(got, "orphan ssh helper pod found") {
+		t.Fatalf("missing orphan log: %s", got)
+	}
+	if !strings.Contains(got, "when this harness run completes") {
+		t.Fatalf("missing cleanup promise: %s", got)
+	}
+	if !strings.Contains(got, "another storage-cert-harness run may still be using") {
+		t.Fatalf("missing concurrent harness warning: %s", got)
+	}
+	if !strings.Contains(got, "run-old") || !strings.Contains(got, "run-new") {
+		t.Fatalf("missing run ids: %s", got)
+	}
+}
+
+func TestLogExistingSSHPodAtStartupSameRunNoOrphan(t *testing.T) {
+	var log bytes.Buffer
+	rc := &core.RunCtx{
+		RunID:  "run-same",
+		Logger: slog.New(slog.NewTextHandler(&log, nil)),
+	}
+	pod := &sshPodState{}
+	pod.Metadata.Labels = map[string]string{"managed-by": "storage-cert-harness"}
+	pod.Metadata.Annotations = map[string]string{
+		"storage-cert-harness.redhat.com/run-id": "run-same",
+	}
+	logExistingSSHPodAtStartup(rc, pod)
+	got := log.String()
+	if strings.Contains(got, "orphan") {
+		t.Fatalf("same run should not be logged as orphan: %s", got)
+	}
+	if !strings.Contains(got, "already exists for this harness run") {
+		t.Fatalf("missing reuse log: %s", got)
 	}
 }
 
