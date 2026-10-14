@@ -2,8 +2,9 @@
 # CI_LIVE_SMOKE_ENABLED=true and configure the live-smoke environment.
 # See docs/design/storage-cert-harness-ci-smoke-test.md
 #
-# Ref resolution runs on github-hosted ubuntu-latest (no live-smoke secrets).
-# Cluster work runs on self-hosted runners after checkout of the validated SHA only.
+# PR head refs are checked out only on github-hosted ubuntu-latest, bundled as a
+# workflow artifact, then extracted on self-hosted runners (no actions/checkout
+# of PR SHAs on runners that use live-smoke secrets — avoids cache poisoning).
 
 name: CI Live Smoke
 
@@ -13,6 +14,12 @@ on:
     branches: [main]
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Same-repo pull request number to smoke
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -45,21 +52,44 @@ jobs:
             core.setOutput('head_sha', pr.head.sha);
             core.setOutput('pr_number', String(pr.number));
 
-  live-smoke-pr-open:
+  bundle-pr-open:
     needs: resolve-pr-open
     if: needs.resolve-pr-open.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      src_artifact: ${{ steps.meta.outputs.name }}
+    steps:
+      - id: meta
+        run: echo "name=live-smoke-src-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-pr-open.outputs.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.name }}
+          retention-days: 1
+          path: .
+
+  live-smoke-pr-open:
+    needs: [resolve-pr-open, bundle-pr-open]
+    if: >-
+      needs.resolve-pr-open.result == 'success' &&
+      needs.bundle-pr-open.result == 'success'
     runs-on: [self-hosted, storage-cert-smoke]
     environment: live-smoke
     timeout-minutes: 240
     concurrency:
       group: live-smoke-pr-${{ needs.resolve-pr-open.outputs.pr_number }}
       cancel-in-progress: false
+    env:
+      LIVE_SMOKE_HEAD_SHA: ${{ needs.resolve-pr-open.outputs.head_sha }}
+      LIVE_SMOKE_PR_NUMBER: ${{ needs.resolve-pr-open.outputs.pr_number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
-          ref: ${{ needs.resolve-pr-open.outputs.head_sha }}
-          fetch-depth: 1
-          persist-credentials: false
+          name: ${{ needs.bundle-pr-open.outputs.src_artifact }}
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
@@ -106,21 +136,44 @@ jobs:
             core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('pr_number', String(pr.data.number));
 
-  live-smoke-comment:
+  bundle-comment:
     needs: resolve-comment
     if: needs.resolve-comment.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      src_artifact: ${{ steps.meta.outputs.name }}
+    steps:
+      - id: meta
+        run: echo "name=live-smoke-src-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-comment.outputs.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.name }}
+          retention-days: 1
+          path: .
+
+  live-smoke-comment:
+    needs: [resolve-comment, bundle-comment]
+    if: >-
+      needs.resolve-comment.result == 'success' &&
+      needs.bundle-comment.result == 'success'
     runs-on: [self-hosted, storage-cert-smoke]
     environment: live-smoke
     timeout-minutes: 240
     concurrency:
       group: live-smoke-pr-${{ needs.resolve-comment.outputs.pr_number }}
       cancel-in-progress: false
+    env:
+      LIVE_SMOKE_HEAD_SHA: ${{ needs.resolve-comment.outputs.head_sha }}
+      LIVE_SMOKE_PR_NUMBER: ${{ needs.resolve-comment.outputs.pr_number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
-          ref: refs/heads/main
-          fetch-depth: 1
-          persist-credentials: false
+          name: ${{ needs.bundle-comment.outputs.src_artifact }}
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
@@ -168,21 +221,44 @@ jobs:
             core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('pr_number', String(pr.data.number));
 
-  live-smoke-dispatch:
+  bundle-dispatch:
     needs: resolve-dispatch
-    if: false # Disabled: prevent privileged execution of workflow_dispatch-selected refs on self-hosted runner.
+    if: needs.resolve-dispatch.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      src_artifact: ${{ steps.meta.outputs.name }}
+    steps:
+      - id: meta
+        run: echo "name=live-smoke-src-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-dispatch.outputs.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.name }}
+          retention-days: 1
+          path: .
+
+  live-smoke-dispatch:
+    needs: [resolve-dispatch, bundle-dispatch]
+    if: >-
+      needs.resolve-dispatch.result == 'success' &&
+      needs.bundle-dispatch.result == 'success'
     runs-on: [self-hosted, storage-cert-smoke]
     environment: live-smoke
     timeout-minutes: 240
     concurrency:
       group: live-smoke-pr-${{ needs.resolve-dispatch.outputs.pr_number }}
       cancel-in-progress: false
+    env:
+      LIVE_SMOKE_HEAD_SHA: ${{ needs.resolve-dispatch.outputs.head_sha }}
+      LIVE_SMOKE_PR_NUMBER: ${{ needs.resolve-dispatch.outputs.pr_number }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
-          ref: ${{ needs.resolve-dispatch.outputs.head_sha }}
-          fetch-depth: 1
-          persist-credentials: false
+          name: ${{ needs.bundle-dispatch.outputs.src_artifact }}
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
