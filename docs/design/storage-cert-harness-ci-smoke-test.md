@@ -26,8 +26,11 @@ there is **no queue** — a second run fails fast if the lease is held.
 - Contributors **must** run the smoke plan at least once on a **personal /
   dedicated non-CI lab** before opening a PR when their diff triggers CI smoke
   (documented in `README.md` and `docs/contributing.md`).
-- PR smoke is **advisory** (post-mortem); it does **not** block merge. `[skip
-  live-smoke]` allows merge when the dedicated storage/cluster is unavailable.
+- **Failed PR smoke is a merge gate:** the live-smoke check must **pass** before
+  the PR can merge. Investigate failures (logs, `report.json`, artifacts), fix or
+  re-run on demand (§1.4) — do not merge with a failed smoke run. `[skip
+  live-smoke]` is only for when the dedicated storage/cluster is **unavailable**
+  (smoke not scheduled), not to bypass a failed run.
 - Changes to **`go.mod` / `go.sum` / `vendor/**` alone do not trigger** smoke.
 
 Measure **per-TR and full-suite** duration on edge-112 before locking CI
@@ -150,7 +153,7 @@ the ops runbook instead.
 | ECOPROJECT-5462 AC                         | This design                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | Hosted runner used only for cluster smoke  | Satisfied by dedicating a runner label / GitLab tag to the live-smoke job only                            |
-| PR targeting `main` runs smoke             | **Adopted** — once on `opened`, path filters; advisory only                                                |
+| PR targeting `main` runs smoke             | **Adopted** — once on `opened`, path filters; **required** merge gate on failure                           |
 | Push to `main` does not run smoke          | **Adopted** — automatic smoke is PR-based, not post-merge push                                            |
 | PR to non-`main` branch does not run smoke | Satisfied                                                                                                 |
 | Fork PRs cannot read cluster secrets       | Satisfied via protected environments / `main`-only workflows / no `pull_request` trigger for live smoke   |
@@ -170,8 +173,12 @@ the ops runbook instead.
 | `workflow_dispatch` | On demand | `git_ref` + optional PR link |
 | Fork PR → upstream | **No** | No upstream kubeconfig |
 
-**Merge gate:** PR smoke is **informational** (post-mortem). Failed smoke does
-**not** block merge. Do not add live-smoke as a required branch protection check.
+**Merge gate:** PR live-smoke is a **required** status check on pull requests to
+`main` (branch protection). A **failed** workflow run **blocks merge** until the
+contributor investigates the failure, fixes the branch if needed, and a **passing**
+re-run is recorded (on-demand §1.4). Treat failures as release blockers for that
+PR — not post-mortem-only. Configure GitHub branch rules to require the
+`live-smoke` (or workflow) check name once the job exists.
 
 **Frequency:** Opening a PR triggers **at most one** automatic smoke. Pushing
 additional commits to the PR branch does **not** trigger another automatic run;
@@ -279,9 +286,10 @@ that PR (automatic and on-demand workflows must respect it).
 
 | Mechanism | Behavior |
 | --- | --- |
-| PR title/body contains `[skip live-smoke]` | No live-smoke job; **merge is still allowed** — lint, test, build, image jobs unchanged |
-| Dedicated storage/cluster **down** or lease unavailable | Contributors use skip token to merge; record `live_smoke_skipped=true` and backlog manual smoke when the lab returns |
-| No token | Automatic once-on-open smoke runs when path filters match |
+| PR title/body contains `[skip live-smoke]` | No live-smoke job scheduled; **merge allowed without smoke** — lab outage/maintenance only; record `live_smoke_skipped=true` |
+| Dedicated storage/cluster **down** or lease unavailable | Use skip token; backlog manual smoke when the lab returns — **not** for hiding harness failures |
+| Smoke job **failed** (harness error/fail verdict) | **Blocks merge** until fixed and a **passing** on-demand re-run |
+| No token, smoke passes | Merge allowed when other required checks pass |
 
 **Policy:** Skipping is for maintenance, lab outages, or emergencies — not routine.
 PR template documents the token ([ECOPROJECT-5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536)).
@@ -362,7 +370,7 @@ smoke needs a self-hosted runner with cluster access).
 use 240–360 unless benchmarks justify more.
 - **End-to-end pipeline time** (developer-visible): if `live-smoke` runs **in
 parallel** with `publish` after `images`, wall clock ≈ `max(live-smoke, lint→publish chain)` (~**30–60 min** for the hosted chain + **up to ~240 min** smoke ⇒ often **~2–4 h** total). If smoke **blocks** publish, wall clock is the **sum** (~**2.5–5 h** worst case).
-- Add explicit `timeout-minutes` to **all** jobs in a follow-up hygiene task so
+- Add explicit `timeout-minutes` to **all** jobs in a follow-up hygie                   ne task so
 stuck jobs fail fast (for example lint 30, test 45, image-build 90).
 
 ---
@@ -581,6 +589,9 @@ Fail the job if:
 
 Upload **sanitized** artifacts: `report.md`, junit if present, redacted `report.json`
 (strip backend connection strings if ever embedded).
+
+When Layer C fails, the GitHub Actions job exits non-zero so the PR check is
+**failed** and branch protection **blocks merge** until a subsequent run passes.
 
 ---
 
@@ -847,9 +858,10 @@ jobs:
       - run: ./ci/scripts/live-cluster-smoke.sh
 ```
 
-Wire smoke as a **separate** workflow (not blocking merge). PR `opened` runs
-**once**; `issue_comment` `/run-live-smoke` handles contributor re-runs. No
-`push` to `main` trigger for smoke in the default design.
+Wire smoke as a **separate** workflow with a **required** PR status check. PR
+`opened` runs **once**; `issue_comment` `/run-live-smoke` handles re-runs after
+fixes. Failed runs block merge. No `push` to `main` trigger for smoke in the
+default design.
 
 ### GitLab
 
@@ -883,11 +895,12 @@ Log retention: keep smoke logs 14–30 days; no full cluster dumps.
 | 5 | **ECOPROJECT-5535** — job `timeout-minutes` on all GHA jobs | Pending |
 | 6 | **Update ECOPROJECT-5406** — PR smoke, not post-merge-only | Pending |
 | 7 | **Nightly smoke** on `main` (optional backlog when PR skipped / lab was down) | Optional |
-| 8 | **Publish gate** — whether failed PR smoke should ever block image publish on merge | Open (default: no — advisory only) |
+| 8 | **Branch protection** — add required `live-smoke` check on PRs to `main` | Pending (with workflow implementation) |
 
 **Closed team decisions (for reference):** PR `opened` once (not per commit);
-not on push to `main`; advisory not merge gate; no lease queue; exclude
-`vendor`/`go.mod` from path triggers; contributor on-demand via §1.4.
+not on push to `main`; **failed PR smoke blocks merge**; no lease queue; exclude
+`vendor`/`go.mod` from path triggers; contributor on-demand via §1.4; `[skip
+live-smoke]` only when lab unavailable.
 
 ---
 
@@ -897,7 +910,8 @@ not on push to `main`; advisory not merge gate; no lease queue; exclude
 - [ ] PR **opened** to `main` (same-repo, path match) runs smoke **once**; second commit on PR does **not** auto-run.
 - [ ] `/run-live-smoke` comment or `workflow_dispatch` re-runs smoke on same-repo PR.
 - [ ] PR with **only** `vendor`/`go.mod` change does **not** auto-run smoke.
-- [ ] `[skip live-smoke]` in PR title/body skips smoke; merge still allowed (lab down scenario).
+- [ ] Failed PR smoke blocks merge; passing on-demand re-run unblocks.
+- [ ] `[skip live-smoke]` in PR title/body skips smoke scheduling only (lab down); not used to bypass failures.
 - [ ] Second concurrent smoke **fails fast** (no queue); Lease shows holder annotations (plan, SHA, PR, API host).
 - [ ] Harness **error** or CI **cancel** still **releases** lease and runs janitor.
 - [ ] All catalog TRs except `TR-VIRT-007` (and §6.4 exclusions) execute on edge-112.

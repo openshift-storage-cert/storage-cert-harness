@@ -593,15 +593,17 @@ full graded reports that contain real SLA bars.
 Design: [storage-cert-harness-ci-smoke-test.md](design/storage-cert-harness-ci-smoke-test.md)
 (in this repository).
 
-**What live smoke affects.** When implemented, only the live-smoke workflow job
-is skipped or run. Lint, unit test, build, image scan, and publish continue as
-today unless a separate gate is added later.
+**What live smoke affects.** When implemented, the live-smoke workflow runs on PR
+open (and on demand). A **failed** smoke run is a **merge gate**: branch
+protection should require a passing live-smoke check before merging to `main`.
+Investigate failures and re-run smoke after fixes. Lint, unit test, build, image
+scan, and publish jobs are unchanged; only merge is blocked on smoke failure.
 
 #### Skip live smoke (`[skip live-smoke]`)
 
-Full-catalog live smoke can add hours to a `main` pipeline. To skip **only** the
-live-cluster job on a merge to `main`, include this token in the **commit message
-that lands on `main`**:
+Full-catalog live smoke can add hours to a PR pipeline. To skip **scheduling**
+live-cluster smoke (for example lab outage), include this token in the **PR title
+or description** (or merge commit message on squash):
 
 ```text
 [skip live-smoke]
@@ -611,7 +613,8 @@ that lands on `main`**:
 |------|--------|
 | Case sensitivity | The token is **case-sensitive**. `[Skip live-smoke]` does **not** skip. |
 | Squash merges | GitHub uses the PR title and description for the squash commit message — put `[skip live-smoke]` in the PR title or description when you need a skipped smoke on merge. |
-| Without token | Live smoke runs on `main` when path filters match (see design doc). |
+| Without token | Live smoke runs on PR open when path filters match (see design doc). |
+| Failed smoke job | **Blocks PR merge** until a passing re-run; skip token does not override a failed run |
 | Cluster lease | Skipped runs must not acquire the cluster lease. |
 | CI behavior (when implemented) | Log that smoke was skipped; GitHub check conclusion **Skipped** (not Success); workflow summary includes SHA, actor, token, and `live_smoke_skipped=true` for audit and follow-up (nightly or manual smoke). |
 

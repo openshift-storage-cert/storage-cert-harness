@@ -149,7 +149,9 @@ Lint, unit tests, secret-scan, supply-chain, offline replay-smoke, binary build
 
 CI runs the **live smoke plan** on the shared lab cluster when a pull request is
 opened (see [`docs/design/storage-cert-harness-ci-smoke-test.md`](docs/design/storage-cert-harness-ci-smoke-test.md)).
-That run is **advisory** and does not replace validation on **your own** cluster.
+A **failed** CI smoke run **blocks merging the PR** until you investigate and get
+a passing re-run. That does not replace validation on **your own** cluster before
+you open the PR.
 
 If your change touches paths that **trigger** CI live smoke (`cmd/`, `internal/`,
 `catalog.json`, `Containerfile`, image/tool pins, etc. — **not** `vendor/` or
