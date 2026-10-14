@@ -176,7 +176,7 @@ jobs:
 
   live-smoke-dispatch:
     needs: resolve-dispatch
-    if: needs.resolve-dispatch.result == 'success'
+    if: false # Disabled: prevent privileged execution of workflow_dispatch-selected refs on self-hosted runner.
     runs-on: [self-hosted, storage-cert-smoke]
     environment: live-smoke
     timeout-minutes: 240
