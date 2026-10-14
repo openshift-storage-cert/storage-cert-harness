@@ -145,6 +145,30 @@ Lint, unit tests, secret-scan, supply-chain, offline replay-smoke, binary build
 (linux/amd64 artifact), and container image build/scan (podman locally):
 [`docs/ci.md`](docs/ci.md). One-time: `./ci/scripts/install-tools.sh`.
 
+### Live cluster smoke (contributor responsibility)
+
+CI runs the **live smoke plan** on the shared lab cluster when a pull request is
+opened (see [`docs/design/storage-cert-harness-ci-smoke-test.md`](docs/design/storage-cert-harness-ci-smoke-test.md)).
+That run is **advisory** and does not replace validation on **your own** cluster.
+
+If your change touches paths that **trigger** CI live smoke (`cmd/`, `internal/`,
+`catalog.json`, `Containerfile`, image/tool pins, etc. — **not** `vendor/` or
+`go.mod` alone), you **must** run the smoke plan at least **once** on a
+**dedicated lab cluster you control** (not the CI edge cluster) before you rely on
+upstream CI:
+
+```sh
+# kubeconfig + backends for your lab — see docs/cluster-setup-guide.md
+make build
+make image-build-local
+KUBECONFIG=/path/to/kubeconfig make run-harness-smoke
+```
+
+Use the same plan as CI: `plans/harness-smoke-plan.yaml`. After the PR is open,
+CI smoke runs **once** automatically; **further** runs are **on demand** (PR
+comment `/run-live-smoke`, GitHub Actions UI, or `gh pr comment` — see
+[`docs/contributing.md`](docs/contributing.md)).
+
 ## License
 
 Apache-2.0 (see `LICENSE`).
