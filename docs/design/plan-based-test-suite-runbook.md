@@ -1,7 +1,8 @@
 # Run a Test Suite from a Plan
 
-This is a development smoke run for the QE MTV cluster. It is not a
-certification-scale execution.
+This is a development smoke run for a lab OpenShift cluster. It is not a
+certification-scale execution. Use **private** runbooks for site-specific hostnames,
+kubeconfig paths, and credentials.
 
 ## Test selection
 
@@ -15,72 +16,67 @@ runtime tool shipped in the image:
 | `TR-VIRT-010` | VM snapshot creation | `kube-burner` |
 | `TR-VIRT-019` | Parallel VM lifecycle | `kube-burner-ocp` |
 
-Keep the plan's `backend` and node overrides aligned with the local cluster.
-For this environment, `node` and `node_name` must be one of:
+Keep the plan's `backend` and node overrides aligned with your cluster. The plan
+sets `backend: oc-edge-112`; `work/backends.local.yaml` must define a backend
+with that **exact** name (or pass `BACKEND=<name>` when running).
 
-```text
-openshift-worker-0.ocp-edge3.lab.eng.tlv2.redhat.com
-openshift-worker-1.ocp-edge3.lab.eng.tlv2.redhat.com
-openshift-worker-2.ocp-edge3.lab.eng.tlv2.redhat.com
-```
-
-The plan names the backend `tlvbm`, and the backend configuration must
-contain a backend with exactly that name. The supplied local example currently
-contains `tlvbm`; rename that entry if `tlvbm` is the intended backend name.
+For node-scoped TRs, set `node_name` / `target_node` in plan overrides to worker
+nodes that exist in **your** cluster (for example `<worker-0>.<lab-domain>`).
 
 ## Run the plan
 
-From `storage-cert-harness`, build the local image and run it against the QE
-MTV kubeconfig:
+From `storage-cert-harness`, build the harness binary and local image, then run
+smoke against your kubeconfig:
 
 ```sh
-KUBECONFIG=/home/nlevanon/workspace/csi-betterment/storage-cert-harness/work/kubeconfig \
-KUBECTL_INSECURE_SKIP_TLS_VERIFY=true \
+export KUBECONFIG=/path/to/your/kubeconfig
+export KUBECTL_INSECURE_SKIP_TLS_VERIFY=true   # only if your lab requires it
+
+make build
 make image-build-local
+BACKEND=oc-edge-112 make run-harness-smoke
 ```
 
-Then run the selected plan. The command mounts the repository's work files,
-the KB export, the local backend configuration, and a writable output folder:
+Equivalent manual `podman run` (same plan and backend as CI):
 
 ```sh
 podman run --rm --network host --userns=keep-id \
   --user "$(id -u):$(id -g)" \
   -v "$(pwd)/work/kubeconfig:/kubeconfig:ro,Z" \
   -e KUBECONFIG=/kubeconfig \
-  -v "$(pwd)/work:/work:ro,Z" \
+  -e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" \
+  -v "$(pwd)/work:/work:Z" \
   -v "$(pwd)/plans:/plans:ro,Z" \
   -v "$(pwd)/work/backends.local.yaml:/backends.yaml:ro,Z" \
-  -v "$(pwd)/out/harness-smoke:/output:Z" \
+  -w /work \
   "$(tr -d '[:space:]' < work/local-image-ref)" run \
   --plan /plans/harness-smoke-plan.yaml \
   --catalog /work/catalog.json \
   --thresholds /work/thresholds.json \
   --backends /backends.yaml \
-  --backend tlvbm \
-  --workdir /output/work \
-  --output /output \
+  --backend oc-edge-112 \
+  --workdir /work/harness-smoke-work \
+  --output /work/harness-smoke-report \
   --no-attestations \
   --verbose
 ```
 
-Reports and tool artifacts are written to `out/harness-smoke`. The Make target
-`KUBECONFIG=... make run-harness-smole` performs the same preflight checks and
-runs this plan.
+Reports and tool artifacts are written to `work/harness-smoke-report/`. The Make
+target `BACKEND=oc-edge-112 KUBECONFIG=... make run-harness-smoke` performs the
+same preflight checks and runs this plan.
 
 ## Validate the cluster first
 
 ```sh
-export KUBECONFIG=/home/nlevanon/workspace/csi-betterment/storage-cert-harness/work/kubeconfig
-export KUBECTL_INSECURE_SKIP_TLS_VERIFY=true
+export KUBECONFIG=/path/to/your/kubeconfig
+export KUBECTL_INSECURE_SKIP_TLS_VERIFY=true   # if required by your lab
 oc whoami --show-server
 oc whoami
 oc get nodes -l node-role.kubernetes.io/worker
 oc get clusterversion
-oc get storageclass rhos-san-iscsi
-oc get volumesnapshotclass csi-trident-volumesnapshotclass
+oc get storageclass <your-storage-class>
+oc get volumesnapshotclass <your-snapshot-class>
 ```
 
 Use `oc config view --minify` to inspect the active context and cluster
-endpoint. `oc config get-contexts` lists available contexts, and
-`oc config current-context` shows which one the kubeconfig selects. Do not
-commit the kubeconfig or backend credentials.
+endpoint. Do not commit kubeconfig or backend credentials.
