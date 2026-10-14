@@ -93,8 +93,6 @@ type sshPodSetup struct {
 	mu sync.Mutex
 }
 
-// The group setup and individual provisioners share ownership tracking so a pod
-// recreated after a drain is still cleaned up by the group's final teardown.
 var sharedSSHSetup = &sshPodSetup{}
 
 func (*sshPodSetup) SetupInfo() stages.SetupInfo {
@@ -104,15 +102,26 @@ func (*sshPodSetup) SetupInfo() stages.SetupInfo {
 // Setup ensures the ssh helper pod exists and has sshpass, creating it if absent.
 // Idempotent: reuses a pod that is already usable (so re-runs and a pre-existing
 // pod are fine). Called at group startup and before each live scenario.
-func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.TestRequirement) error {
+func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.TestRequirement) (err error) {
 	// Replay grades pre-collected results with no cluster — no helper pod needed.
-	if replayDir(trs) != "" {
+	if allReplayTRs(trs) {
 		rc.Logger.Info("virtbench: replay mode, skipping ssh helper pod setup")
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	kubeconfig := kubeconfigOf(trs)
+	var createdPodThisSetup bool
+	defer func() {
+		if err != nil && createdPodThisSetup {
+			rc.Logger.Info("virtbench: rolling back ssh helper pod after failed setup", "pod", sshPodNS+"/"+sshPodName)
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teardownBudget)
+			defer cancel()
+			if delErr := deleteSSHPod(cleanupCtx, kubeconfig); delErr != nil {
+				rc.Logger.Warn("virtbench: failed to roll back ssh helper pod after failed setup", "err", delErr)
+			}
+		}
+	}()
 	avoidNodeNames, avoidHostnameLabels, err := sshHelperAvoidNodes(ctx, kubeconfig, trs)
 	if err != nil {
 		return err
@@ -140,6 +149,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 			if err := kubectlApply(ctx, kubeconfig, sshPodManifestForNodes(avoidHostnameLabels, sshPodBootstrapAnnotations(rc))); err != nil {
 				return fmt.Errorf("create ssh helper pod: %w", err)
 			}
+			createdPodThisSetup = true
 			continue
 		case pod.Metadata.DeletionTimestamp != "":
 			// Applying an existing terminating pod cannot revive it. Wait for
@@ -331,7 +341,7 @@ func stampSSHPodHarness(ctx context.Context, kubeconfig string, rc *core.RunCtx,
 // this run created it or reused a leftover from a prior run. Best-effort; never
 // fails the run.
 func (s *sshPodSetup) Teardown(ctx context.Context, rc *core.RunCtx, trs []core.TestRequirement) error {
-	if replayDir(trs) != "" {
+	if allReplayTRs(trs) {
 		return nil
 	}
 	s.mu.Lock()
@@ -347,6 +357,10 @@ func (s *sshPodSetup) Teardown(ctx context.Context, rc *core.RunCtx, trs []core.
 	// Cleanup must still run if the benchmark was cancelled.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teardownBudget)
 	defer cancel()
+	return deleteSSHPod(ctx, kubeconfig)
+}
+
+func deleteSSHPod(ctx context.Context, kubeconfig string) error {
 	out, ok, err := runKubectl(ctx, kubeconfig, "delete", "pod", sshPodName, "-n", sshPodNS, "--wait=false", "--ignore-not-found")
 	if err == nil && !ok {
 		return fmt.Errorf("delete ssh helper pod: %s", strings.TrimSpace(out))

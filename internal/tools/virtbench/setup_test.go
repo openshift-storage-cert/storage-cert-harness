@@ -19,9 +19,10 @@ import (
 func fakeSSHCluster(t *testing.T, state string) (setState func(string), commands func() string) {
 	t.Helper()
 	dir := t.TempDir()
-	statePath, logPath := filepath.Join(dir, "state"), filepath.Join(dir, "commands")
+	statePath, logPath, annotPath := filepath.Join(dir, "state"), filepath.Join(dir, "commands"), filepath.Join(dir, "annotations")
 	t.Setenv("SSH_TEST_STATE", statePath)
 	t.Setenv("SSH_TEST_LOG", logPath)
+	t.Setenv("SSH_TEST_ANNOTATIONS", annotPath)
 	script := `#!/bin/sh
 printf '%s\n' "$*" >> "$SSH_TEST_LOG"
 if [ "$1" = --kubeconfig ]; then shift 2; fi
@@ -38,9 +39,12 @@ get)
   esac ;;
 apply)
   /bin/cat >/dev/null
-  printf '%s\n' Running > "$SSH_TEST_STATE" ;;
+  post="${SSH_TEST_APPLY_STATE:-Running}"
+  printf '%s\n' "$post" > "$SSH_TEST_STATE" ;;
 delete) printf '%s\n' missing > "$SSH_TEST_STATE" ;;
-annotate) ;;
+annotate)
+  if [ -z "$SSH_TEST_ANNOTATIONS" ]; then exit 1; fi
+  printf '%s\n' "$*" >> "$SSH_TEST_ANNOTATIONS" ;;
 exec) [ "$state" = Running ] ;;
 *) exit 1 ;;
 esac
@@ -193,6 +197,101 @@ func TestSSHHelperCancelledWait(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("cancelled setup took %s", elapsed)
+	}
+}
+
+func TestAllReplayTRsMixedBatch(t *testing.T) {
+	mixed := []core.TestRequirement{
+		{Params: map[string]any{"results_dir": "/replay"}},
+		{ID: "TR-VIRT-001"},
+	}
+	if allReplayTRs(mixed) {
+		t.Fatal("mixed replay/live batch must not be treated as all replay")
+	}
+	if !allReplayTRs([]core.TestRequirement{{Params: map[string]any{"results_dir": "/replay"}}}) {
+		t.Fatal("replay-only batch should be all replay")
+	}
+}
+
+func TestSSHHelperTeardownWithMixedReplayAndLive(t *testing.T) {
+	_, commands := fakeSSHCluster(t, "Running")
+	rc := sshTestRunCtx(t)
+	trs := []core.TestRequirement{
+		{Params: map[string]any{"results_dir": t.TempDir()}},
+		{Params: map[string]any{"kubeconfig": "/test/config"}},
+	}
+	if err := sharedSSHSetup.Teardown(t.Context(), rc, trs); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(commands(), "delete pod") != 1 {
+		t.Fatalf("teardown must delete helper when batch is mixed replay/live: %s", commands())
+	}
+}
+
+func TestSSHHelperFailedSetupRollsBackCreatedPod(t *testing.T) {
+	t.Setenv("SSH_TEST_APPLY_STATE", "Pending")
+	_, commands := fakeSSHCluster(t, "missing")
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if err := (&sshPodSetup{}).Setup(ctx, sshTestRunCtx(t), nil); err == nil {
+		t.Fatal("want setup failure while pod stays non-ready")
+	}
+	got := commands()
+	if strings.Count(got, "apply -f -") != 1 {
+		t.Fatalf("expected one pod create, got: %s", got)
+	}
+	if strings.Count(got, "delete pod") != 1 {
+		t.Fatalf("expected rollback delete after failed setup, got: %s", got)
+	}
+}
+
+func TestSSHHelperAnnotatesReusedPod(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state")
+	annotPath := filepath.Join(dir, "annotations")
+	logPath := filepath.Join(dir, "commands")
+	t.Setenv("SSH_TEST_STATE", statePath)
+	t.Setenv("SSH_TEST_LOG", logPath)
+	t.Setenv("SSH_TEST_ANNOTATIONS", annotPath)
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> "$SSH_TEST_LOG"
+if [ "$1" = --kubeconfig ]; then shift 2; fi
+read -r state < "$SSH_TEST_STATE"
+case "$1" in
+get) printf '{"status":{"phase":"Running","podIP":"10.0.0.2"}}\n' ;;
+annotate)
+  if [ -z "$SSH_TEST_ANNOTATIONS" ]; then exit 1; fi
+  printf '%s\n' "$*" >> "$SSH_TEST_ANNOTATIONS" ;;
+exec) exit 0 ;;
+*) exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "kubectl"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, []byte("Running\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	rc := &core.RunCtx{
+		RunID:   "run-annotate-test",
+		WorkDir: t.TempDir(),
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	trs := []core.TestRequirement{{Params: map[string]any{"kubeconfig": "/test/config"}}}
+	if err := (&sshPodSetup{}).Setup(t.Context(), rc, trs); err != nil {
+		t.Fatal(err)
+	}
+	annot, err := os.ReadFile(annotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(annot)
+	if !strings.Contains(got, "storage-cert-harness.redhat.com/run-id=run-annotate-test") {
+		t.Fatalf("annotate missing run-id for reused pod: %s", got)
+	}
+	if !strings.Contains(got, "--overwrite") {
+		t.Fatalf("annotate missing --overwrite: %s", got)
 	}
 }
 
