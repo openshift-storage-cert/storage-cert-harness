@@ -81,8 +81,8 @@ func TestParseResults_VirtParallel_Golden(t *testing.T) {
 	if res.Native != core.OutcomePass {
 		t.Errorf("native=%s, want pass", res.Native)
 	}
-	if _, ok := res.Checks[virtParallelCheck]; ok {
-		t.Fatalf("%s should be omitted for a two-VM smoke run", virtParallelCheck)
+	if res.Checks[virtParallelCheck] != core.OutcomeSkip {
+		t.Fatalf("%s=%v, want skip for a two-VM smoke run", virtParallelCheck, res.Checks[virtParallelCheck])
 	}
 	want := map[string]float64{"vmiLatency_VMReady": 10}
 	got := p99s(res)
@@ -111,8 +111,8 @@ func TestParseResults_VirtParallelFailedGolden(t *testing.T) {
 	if res.Native != core.OutcomeFail {
 		t.Fatalf("failed result = native %q checks %+v", res.Native, res.Checks)
 	}
-	if _, ok := res.Checks[virtParallelCheck]; ok {
-		t.Fatalf("%s should be omitted for a two-VM smoke run", virtParallelCheck)
+	if res.Checks[virtParallelCheck] != core.OutcomeSkip {
+		t.Fatalf("%s=%v, want skip for a two-VM smoke run", virtParallelCheck, res.Checks[virtParallelCheck])
 	}
 	if got := res.Metrics[0].Value; got != 128 {
 		t.Fatalf("lifecycle metric = %v, want 128", got)

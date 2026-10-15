@@ -65,9 +65,10 @@ func mapVirtMigrationResults(summaries []jobSummary, _ map[string][]byte, result
 // mapVirtParallelResults maps the results of the virt-parallel workload to the test result.
 // It checks if the workload reached the required scale and calculates the total lifecycle duration.
 func mapVirtParallelResults(summaries []jobSummary, _ map[string][]byte, result *core.TestResult) error {
-	// Check if the virt-parallel workload reached the scale required for the check.
 	if virtParallelReachesCheckScale(summaries) {
 		result.Checks[virtParallelCheck] = result.Native
+	} else {
+		result.Checks[virtParallelCheck] = core.OutcomeSkip
 	}
 
 	var lifecycleSeconds float64

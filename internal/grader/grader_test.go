@@ -85,17 +85,17 @@ func TestGradeSLAReportOnly(t *testing.T) {
 	}
 }
 
-func TestGradeSLAMissingMetricSkipsAsNotApplicable(t *testing.T) {
+func TestGradeSLAMissingMetricErrors(t *testing.T) {
 	g := New()
 	tr := core.TestRequirement{ID: "TR-1", AutomationTool: tool,
 		SLAs: []core.SLA{{Metric: "latency_ms", MeasuredBy: []string{tool}}},
 		Bars: []core.SLA{{Metric: "latency_ms", Operator: "<=", Value: f64(2)}}}
 	vs := g.GradeTR(context.Background(), tr, core.TestResult{TRID: "TR-1"}, nil)
 	v := verdictByItem(vs, "sla:latency_ms")
-	if v == nil || v.Outcome != core.OutcomeSkip {
-		t.Fatalf("missing metric should be a not-applicable skip, got %+v", vs)
+	if v == nil || v.Outcome != core.OutcomeError {
+		t.Fatalf("missing metric for a graded SLA should error, got %+v", vs)
 	}
-	if v.Reason != "not applicable: metric \"latency_ms\" was not produced" {
+	if v.Reason != "missing required metric \"latency_ms\" for graded SLA" {
 		t.Errorf("unexpected missing metric reason: %q", v.Reason)
 	}
 }
@@ -183,16 +183,16 @@ func TestGradeChecks(t *testing.T) {
 	}
 }
 
-func TestGradeCheckMissingOutcomeSkipsAsNotApplicable(t *testing.T) {
+func TestGradeCheckMissingOutcomeErrors(t *testing.T) {
 	g := New()
 	tr := core.TestRequirement{ID: "TR-1",
 		Checks: []core.Check{{ID: "cap", Kind: core.CheckCapability, Status: core.StatusDefined}}}
 	vs := g.GradeTR(context.Background(), tr, core.TestResult{TRID: "TR-1"}, nil)
 	v := verdictByItem(vs, "check:cap")
-	if v == nil || v.Outcome != core.OutcomeSkip {
-		t.Fatalf("missing check outcome should be a not-applicable skip, got %+v", vs)
+	if v == nil || v.Outcome != core.OutcomeError {
+		t.Fatalf("missing check outcome should error, got %+v", vs)
 	}
-	if v.Reason != "not applicable: tool produced no outcome for capability check" {
+	if v.Reason != "missing required outcome for capability check" {
 		t.Errorf("unexpected missing check reason: %q", v.Reason)
 	}
 }
