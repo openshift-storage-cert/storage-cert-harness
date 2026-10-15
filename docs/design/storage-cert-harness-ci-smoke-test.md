@@ -304,8 +304,8 @@ to run workflows (or comment on the PR) may request another smoke:
 | --- | --- | --- |
 | **PR comment** | `/run-live-smoke` on `issue_comment` where `issue.pull_request` is set; bot/workflow validates same-repo + not `[skip live-smoke]` + lease free | Contributors with `write` or `maintain` on repo (tune in workflow) |
 | **GitHub CLI** | `gh pr comment <PR> --repo openshift-storage-cert/storage-cert-harness --body '/run-live-smoke'` | Same as PR comment (triggers `issue_comment` workflow) |
-| **GitHub UI** | `workflow_dispatch` with inputs `pr_number` or `git_ref` (branch/SHA from PR) | Same; link run in PR summary |
-| **Actions button** | Re-run workflow from the PR’s “Checks” tab for the smoke workflow (if exposed) | Document in `docs/ci.md` |
+| **GitHub UI** | `workflow_dispatch` with input `pr_number` (no free-form `git_ref`) | Same; link run in PR summary |
+| **Actions button** | Re-run the **PR-open** workflow from Checks | Resolver re-fetches the PR head via API so reruns use the **current** head SHA |
 
 **Guards (all on-demand paths):**
 
@@ -846,8 +846,11 @@ secrets and lease.
 Implementation: [`.github/workflows/ci-live-smoke.yml`](../../.github/workflows/ci-live-smoke.yml).
 Each trigger uses **`ubuntu-latest` resolve + bundle jobs** (no `live-smoke`
 environment) to validate same-repo PR metadata, check out the PR head SHA, and
-upload a short-lived workflow artifact. **Self-hosted** jobs download that
-artifact only (no `actions/checkout` of PR refs on secret-bearing runners).
+upload a short-lived workflow artifact. **Self-hosted** jobs check out **`main`**
+only (trusted [`ci/scripts/live-cluster-smoke.sh`](../../ci/scripts/live-cluster-smoke.sh)),
+download the PR tree to `pr-src/`, and run the script with **`bash`** (not PR
+executables). The PR-open resolver loads the current head via the **Pulls API**
+so Actions UI reruns do not stick on the original `opened` event SHA.
 `workflow_dispatch` accepts **`pr_number` only** (not arbitrary `git_ref`).
 
 Wire smoke as a **separate** workflow with a **required** PR status check. PR
@@ -881,7 +884,7 @@ Log retention: keep smoke logs 14–30 days; no full cluster dumps.
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | **edge-112 sign-off** — full non-HA smoke plan on lab cluster (§2) | Pending |
-| 2 | **Implement** `live-cluster-smoke.sh` (lease, annotations, janitor, timing artifact) | Pending |
+| 2 | **Implement** `live-cluster-smoke.sh` (lease, annotations, janitor, timing artifact) | Scaffold on `main`; full run pending |
 | 3 | **Implement** `ci-live-smoke.yml` (PR `opened` once, comment/UI on-demand) | Pending |
 | 4 | **ECOPROJECT-5536** — skip token on PR; workflow summary `live_smoke_skipped` | Docs done |
 | 5 | **ECOPROJECT-5535** — job `timeout-minutes` on all GHA jobs | Pending |

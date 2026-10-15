@@ -92,7 +92,7 @@ run — **do not merge** until live-smoke is green. To run smoke again
 | --- | --- |
 | PR comment | Post `/run-live-smoke` on the pull request |
 | GitHub CLI | `gh pr comment <number> --body '/run-live-smoke'` |
-| Actions UI | Re-run the live-smoke workflow or use `workflow_dispatch` with the PR **number** (resolves head SHA on a hosted runner before cluster access) |
+| Actions UI | Re-run the PR-open smoke workflow (uses current PR head via API) or `workflow_dispatch` with the PR **number** |
 
 Do not use `[skip live-smoke]` in the PR title/body unless the lab is down or
 maintainers agree — see [ci.md](ci.md) (Skip live smoke). Fork PRs
