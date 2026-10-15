@@ -20,9 +20,11 @@ func fakeSSHCluster(t *testing.T, state string) (setState func(string), commands
 	t.Helper()
 	dir := t.TempDir()
 	statePath, logPath, annotPath := filepath.Join(dir, "state"), filepath.Join(dir, "commands"), filepath.Join(dir, "annotations")
+	deleteFailuresPath := filepath.Join(dir, "delete-failures")
 	t.Setenv("SSH_TEST_STATE", statePath)
 	t.Setenv("SSH_TEST_LOG", logPath)
 	t.Setenv("SSH_TEST_ANNOTATIONS", annotPath)
+	t.Setenv("SSH_TEST_DELETE_FAILURES_FILE", deleteFailuresPath)
 	script := `#!/bin/sh
 printf '%s\n' "$*" >> "$SSH_TEST_LOG"
 if [ "$1" = --kubeconfig ]; then shift 2; fi
@@ -41,7 +43,15 @@ apply)
   /bin/cat >/dev/null
   post="${SSH_TEST_APPLY_STATE:-Running}"
   printf '%s\n' "$post" > "$SSH_TEST_STATE" ;;
-delete) printf '%s\n' missing > "$SSH_TEST_STATE" ;;
+delete)
+	if [ ! -f "$SSH_TEST_DELETE_FAILURES_FILE" ]; then printf '%s\n' "${SSH_TEST_DELETE_FAILURES:-0}" > "$SSH_TEST_DELETE_FAILURES_FILE"; fi
+	read -r failures < "$SSH_TEST_DELETE_FAILURES_FILE"
+	if [ "$failures" -gt 0 ]; then
+		printf '%s\n' $((failures - 1)) > "$SSH_TEST_DELETE_FAILURES_FILE"
+		echo 'Error from server (InternalError): transient delete failure' >&2
+		exit 1
+	fi
+	printf '%s\n' missing > "$SSH_TEST_STATE" ;;
 annotate)
   if [ -z "$SSH_TEST_ANNOTATIONS" ]; then exit 1; fi
   printf '%s\n' "$*" >> "$SSH_TEST_ANNOTATIONS" ;;
@@ -151,6 +161,17 @@ func TestSSHHelperLateCreationIsAlwaysCleanedUpOnTeardown(t *testing.T) {
 	}
 	if got := commands(); strings.Count(got, "delete pod") != 2 {
 		t.Fatalf("expected teardown to delete the helper on every run: %s", got)
+	}
+}
+
+func TestSSHHelperTeardownRetriesTransientDeleteFailure(t *testing.T) {
+	t.Setenv("SSH_TEST_DELETE_FAILURES", "1")
+	_, commands := fakeSSHCluster(t, "Running")
+	if err := (&sshPodSetup{}).Teardown(t.Context(), sshTestRunCtx(t), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(commands(), "delete pod"); got != 2 {
+		t.Fatalf("expected one retry after transient delete failure, got %d attempts: %s", got, commands())
 	}
 }
 

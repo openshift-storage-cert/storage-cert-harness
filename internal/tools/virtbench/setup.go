@@ -28,6 +28,9 @@ const (
 	sshPodName = "ssh-test-pod"
 	sshPodNS   = "default"
 
+	sshPodDeleteAttempts  = 3
+	sshPodDeleteRetryWait = 100 * time.Millisecond
+
 	// Pinned quay.io/virtarraycert/ssh-helper release (0.1.11; log wrappers in /opt/sshhelper/bin).
 	sshHelperImage = "quay.io/virtarraycert/ssh-helper@sha256:369697c3002c1971bb608189d343fe9ea4989d2b66fde1bd1b64e924416533d1"
 
@@ -130,7 +133,7 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 	// Bound kubectl calls and polling together, and honor run cancellation.
 	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
-	loggedExisting := false
+	isSSHPodExistingLogged := false
 	for {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("wait for ssh helper pod %s/%s: %w", sshPodNS, sshPodName, err)
@@ -139,9 +142,9 @@ func (s *sshPodSetup) Setup(ctx context.Context, rc *core.RunCtx, trs []core.Tes
 		if err != nil {
 			return err
 		}
-		if pod != nil && !loggedExisting {
-			loggedExisting = true
+		if pod != nil && !isSSHPodExistingLogged {
 			logExistingSSHPodAtStartup(rc, pod)
+			isSSHPodExistingLogged = true
 		}
 		switch {
 		case pod == nil:
@@ -350,10 +353,11 @@ func (s *sshPodSetup) Teardown(ctx context.Context, rc *core.RunCtx, trs []core.
 	pod, err := getSSHPod(ctx, kubeconfig)
 	if err != nil {
 		rc.Logger.Warn("virtbench: could not inspect ssh helper pod before teardown", "err", err)
-	} else if pod != nil {
+	} else if pod == nil {
+		rc.Logger.Info("virtbench: ssh helper pod not found; nothing to delete", "pod", sshPodNS+"/"+sshPodName)
+	} else {
 		rc.Logger.Info("virtbench: deleting ssh helper pod", sshPodLogAttrs(pod, pod.Metadata.Labels["managed-by"])...)
 	}
-	rc.Logger.Info("virtbench: removing shared ssh helper pod", "pod", sshPodNS+"/"+sshPodName)
 	// Cleanup must still run if the benchmark was cancelled.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teardownBudget)
 	defer cancel()
@@ -361,11 +365,29 @@ func (s *sshPodSetup) Teardown(ctx context.Context, rc *core.RunCtx, trs []core.
 }
 
 func deleteSSHPod(ctx context.Context, kubeconfig string) error {
-	out, ok, err := runKubectl(ctx, kubeconfig, "delete", "pod", sshPodName, "-n", sshPodNS, "--wait=false", "--ignore-not-found")
-	if err == nil && !ok {
-		return fmt.Errorf("delete ssh helper pod: %s", strings.TrimSpace(out))
+	var lastErr error
+	for attempt := 0; attempt < sshPodDeleteAttempts; attempt++ {
+		out, ok, err := runKubectl(ctx, kubeconfig, "delete", "pod", sshPodName, "-n", sshPodNS, "--wait=false", "--ignore-not-found")
+		if err == nil && ok {
+			return nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("delete ssh helper pod: %s", strings.TrimSpace(out))
+		}
+		if attempt+1 == sshPodDeleteAttempts {
+			break
+		}
+		timer := time.NewTimer(sshPodDeleteRetryWait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
-	return err
+	return lastErr
 }
 
 // --- kubectl helpers ---------------------------------------------------------
