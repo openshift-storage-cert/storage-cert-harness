@@ -45,6 +45,18 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 }
 echo "validation passed: yq is available"
 
+grading_mode="$(${yq_bin} e -r '.grading_mode // "cert"' "${plan}")"
+thresholds_file="thresholds.json"
+if [[ "${grading_mode}" == "smoke" ]]; then
+	thresholds_file="thresholds-smoke.json"
+fi
+[[ -s "${thresholds_file}" ]] || {
+	echo "error: thresholds bundle missing for grading_mode=${grading_mode}: ${thresholds_file}" >&2
+	exit 1
+}
+cp -f "${thresholds_file}" work/thresholds.json
+echo "validation passed: using ${thresholds_file} (grading_mode=${grading_mode})"
+
 backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {
 	echo "error: no backend is specified by ${plan}; set BACKEND explicitly" >&2
