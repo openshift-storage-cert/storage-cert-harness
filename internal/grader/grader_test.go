@@ -56,6 +56,20 @@ func TestGradeSLAPassAndFail(t *testing.T) {
 	}
 }
 
+func TestGradeSLASmokeNotQualified(t *testing.T) {
+	g := New()
+	tr := core.TestRequirement{
+		ID: "TR-1", AutomationTool: tool, GradingMode: core.GradingModeSmoke,
+		SLAs: []core.SLA{{Metric: "iops", MeasuredBy: []string{tool}}},
+		Bars: []core.SLA{{Metric: "iops", Operator: ">=", Value: f64(90)}},
+	}
+	res := core.TestResult{TRID: "TR-1", Metrics: []core.Metric{{Name: "iops", Value: 50}}}
+	got := outcomes(g.GradeTR(context.Background(), tr, res, nil))
+	if got["sla:iops"] != core.OutcomeNotQualified {
+		t.Errorf("smoke SLA miss should be not_qualified, got %s", got["sla:iops"])
+	}
+}
+
 // A descriptor whose active tool is not in measured_by skips cleanly.
 func TestGradeSLAMeasuredBySkip(t *testing.T) {
 	g := New()
