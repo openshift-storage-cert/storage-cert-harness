@@ -6,6 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
+archive_run_image_tests_log
 ci_log_init "run-image-tests"
 acquire_local_image_lock
 
@@ -135,7 +136,14 @@ while IFS= read -r plan_node; do
 done <<< "${plan_nodes}"
 echo "validation passed: all plan-specified nodes exist"
 
+if [[ "${HARNESS_SMOKE_KEEP_WORK:-false}" == "true" ]]; then
+	echo "smoke hygiene: skipping work cleanup (HARNESS_SMOKE_KEEP_WORK=true)"
+else
+	echo "smoke hygiene: preflight complete; cleaning artifacts from previous smoke runs"
+	clean_harness_smoke_artifacts
+fi
 mkdir -p work/harness-smoke-work work/harness-smoke-report
+echo "validation passed: harness smoke work directories ready"
 
 image="$(tr -d '[:space:]' < work/local-image-ref)"
 [[ -n "${image}" ]] || {

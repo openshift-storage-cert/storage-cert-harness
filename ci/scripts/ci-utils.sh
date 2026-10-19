@@ -192,6 +192,42 @@ invalidate_previous_local_image_build() {
 	rm -f -- "${REPO_ROOT}/dist/image-version.txt" "${REPO_ROOT}/dist/binary-version.txt"
 }
 
+# Archive the previous run-image-tests log (if any) before ci_log_init truncates it.
+archive_run_image_tests_log() {
+	local log="${LOG_DIR}/run-image-tests.log"
+	if [[ ! -f "${log}" || ! -s "${log}" ]]; then
+		echo "smoke hygiene: no previous run-image-tests log to archive"
+		return 0
+	fi
+	local archived
+	archived="${LOG_DIR}/run-image-tests-$(date -u +%Y%m%dT%H%M%SZ).log"
+	echo "smoke hygiene: archiving previous log ${log} -> ${archived}"
+	mv -- "${log}" "${archived}"
+	echo "smoke hygiene: archived previous smoke log"
+}
+
+# Drop harness smoke work/report trees under work/ (kubeconfig, backends, catalog, image ref kept).
+clean_harness_smoke_artifacts() {
+	local work="${REPO_ROOT}/work"
+	local removed=0
+	echo "smoke hygiene: removing prior harness smoke artifacts under ${work}/"
+	for dir in harness-smoke-work harness-smoke-report; do
+		local path="${work:?}/${dir}"
+		if [[ -d "${path}" ]]; then
+			echo "smoke hygiene: deleting ${path}"
+			rm -rf "${path}"
+			removed=1
+		else
+			echo "smoke hygiene: ${path} not present (skip)"
+		fi
+	done
+	if [[ "${removed}" -eq 1 ]]; then
+		echo "smoke hygiene: prior work/report trees removed"
+	else
+		echo "smoke hygiene: no prior work/report directories to remove"
+	fi
+}
+
 # Remove local harness image tarball, tags, and engine build cache. Caller must
 # already hold acquire_local_image_lock (or run via clean-image-cache.sh).
 clean_local_image_cache() {
