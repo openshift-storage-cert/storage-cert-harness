@@ -26,7 +26,11 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 	out := log.String()
 	for _, want := range []string{
 		`status=started completed=0 total=3 remaining=3 queued="[TR-1 TR-2 [small] TR-3]"`,
-		`status=completed test=TR-1 outcome=pass completed=1 total=3 remaining=2`,
+		`status=started test=TR-1`,
+		`status=completed test=TR-1 outcome=pass`,
+		`completed=1 total=3 remaining=2`,
+		`finished_at=`,
+		`duration_s=`,
 		`status=complete completed=3 total=3 remaining=0`,
 		`passed=[TR-1]`,
 		`failed="[TR-2 [small]]"`,

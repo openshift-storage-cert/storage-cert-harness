@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
 )
@@ -14,10 +15,11 @@ type progressTracker struct {
 	logger        *slog.Logger
 	onStateChange func(label string, state progressState, outcome core.Outcome)
 
-	mu       sync.Mutex
-	order    []string
-	state    map[string]progressState
-	outcomes map[string]core.Outcome
+	mu        sync.Mutex
+	order     []string
+	state     map[string]progressState
+	outcomes  map[string]core.Outcome
+	startedAt map[string]time.Time
 }
 
 type progressState uint8
@@ -31,10 +33,11 @@ const (
 
 func newProgressTracker(logger *slog.Logger, trs []core.TestRequirement) *progressTracker {
 	p := &progressTracker{
-		logger:   logger,
-		order:    make([]string, 0, len(trs)),
-		state:    make(map[string]progressState, len(trs)),
-		outcomes: make(map[string]core.Outcome, len(trs)),
+		logger:    logger,
+		order:     make([]string, 0, len(trs)),
+		state:     make(map[string]progressState, len(trs)),
+		outcomes:  make(map[string]core.Outcome, len(trs)),
+		startedAt: make(map[string]time.Time, len(trs)),
 	}
 	for _, tr := range trs {
 		label := core.ExecutionLabel(tr.ID, tr.Variant)
@@ -62,8 +65,18 @@ func (p *progressTracker) start(tr core.TestRequirement) {
 		return
 	}
 	p.state[label] = progressRunning
+	started := time.Now().UTC()
+	p.startedAt[label] = started
 	completed, total := p.countsLocked()
 	running, queued := p.listsLocked(progressRunning, progressQueued)
+	p.loggerInfo("test progress",
+		"status", "started",
+		"test", label,
+		"started_at", started.Format(time.RFC3339),
+		"completed", completed,
+		"total", total,
+		"remaining", total-completed,
+	)
 	p.loggerDebug("plan progress detail",
 		"status", "running",
 		"test", label,
@@ -93,11 +106,18 @@ func (p *progressTracker) complete(tr core.TestRequirement, outcome core.Outcome
 	p.outcomes[label] = outcome
 	completed, total := p.countsLocked()
 	running, queued := p.listsLocked(progressRunning, progressQueued)
-	passed, failed, errors, skipped := p.outcomeListsLocked()
+	passed, failed, errors, skipped, notQualified := p.outcomeListsLocked()
+	finished := time.Now().UTC()
+	durationS := 0.0
+	if start, ok := p.startedAt[label]; ok {
+		durationS = finished.Sub(start).Seconds()
+	}
 	p.loggerInfo("test progress",
 		"status", "completed",
 		"test", label,
 		"outcome", outcome,
+		"finished_at", finished.Format(time.RFC3339),
+		"duration_s", durationS,
 		"completed", completed,
 		"total", total,
 		"remaining", total-completed,
@@ -117,6 +137,7 @@ func (p *progressTracker) complete(tr core.TestRequirement, outcome core.Outcome
 			"failed", failed,
 			"errors", errors,
 			"skipped", skipped,
+			"not_qualified", notQualified,
 			"queued", queued,
 		)
 	}
@@ -194,7 +215,7 @@ func (p *progressTracker) listsLocked(wanted ...progressState) (running, queued 
 	return running, queued
 }
 
-func (p *progressTracker) outcomeListsLocked() (passed, failed, errors, skipped []string) {
+func (p *progressTracker) outcomeListsLocked() (passed, failed, errors, skipped, notQualified []string) {
 	for _, label := range p.order {
 		switch p.outcomes[label] {
 		case core.OutcomePass:
@@ -205,9 +226,11 @@ func (p *progressTracker) outcomeListsLocked() (passed, failed, errors, skipped 
 			errors = append(errors, label)
 		case core.OutcomeSkip:
 			skipped = append(skipped, label)
+		case core.OutcomeNotQualified:
+			notQualified = append(notQualified, label)
 		}
 	}
-	return passed, failed, errors, skipped
+	return passed, failed, errors, skipped, notQualified
 }
 
 func (p *progressTracker) loggerInfo(msg string, args ...any) {
@@ -246,8 +269,10 @@ func summarizeTR(verdicts []core.Verdict, tr core.TestRequirement) core.Outcome 
 func outcomeRank(outcome core.Outcome) int {
 	switch outcome {
 	case core.OutcomeError:
-		return 3
+		return 4
 	case core.OutcomeFail:
+		return 3
+	case core.OutcomeNotQualified:
 		return 2
 	case core.OutcomePass:
 		return 1
