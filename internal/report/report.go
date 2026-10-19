@@ -42,6 +42,8 @@ func Build(runID, schemaVersion string, prov core.Provenance, verdicts []core.Ve
 			r.Summary.Error++
 		case core.OutcomeSkip:
 			r.Summary.Skip++
+		case core.OutcomeNotQualified:
+			r.Summary.NotQualified++
 		}
 	}
 	r.Levels, r.Summary.CertifiedLevel = rollupLevels(verdicts)
@@ -428,8 +430,8 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 			p.OCPVersion, p.CNVVersion, p.CSIDriver.Name, r.Environment.Hardware.Nodes)
 	}
 	fmt.Fprintf(&b, "- Certified level: %d\n", r.Summary.CertifiedLevel)
-	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip (of %d)\n\n",
-		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.Total)
+	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip / %d not_qualified (of %d)\n\n",
+		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.NotQualified, r.Summary.Total)
 	if len(r.StorageSelections) > 0 {
 		b.WriteString("## Snapshot storage\n\n| TR | Scenario | Storage class | Snapshot class | Effective storage class |\n|----|----------|---------------|----------------|-------------------------|\n")
 		for _, s := range r.StorageSelections {

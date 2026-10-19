@@ -114,6 +114,9 @@ func writeJUnit(w io.Writer, r core.Report, hardwareAtRoot bool) error {
 			case core.OutcomeSkip:
 				tc.Skipped = &juMsg{Message: v.Reason}
 				ts.Skipped++
+			case core.OutcomeNotQualified:
+				tc.Skipped = &juMsg{Message: "not_qualified: " + v.Reason}
+				ts.Skipped++
 			}
 			ts.Tests++
 			ts.Cases = append(ts.Cases, tc)
