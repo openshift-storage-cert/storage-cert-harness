@@ -24,6 +24,9 @@ overrides:
     concurrency: 3
     profile: load-80
     fio_runtime: 30
+    fio_complete_timeout: 600
+    fio_collect_retries: 16
+    fio_collect_retry_delay: 30
   TR-STOR-006:
     workload: pvc-density
     iterations: 3

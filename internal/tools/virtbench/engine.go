@@ -601,6 +601,9 @@ func fioArgs(nsPrefix string) func(rc *core.RunCtx, _ *core.Bag, tr core.TestReq
 		if _, _, err := fioCollectionSettings(tr); err != nil {
 			return nil, fmt.Errorf("virtbench: %s: %w", tr.ID, err)
 		}
+		if _, err := fioCompleteTimeout(tr); err != nil {
+			return nil, fmt.Errorf("virtbench: %s: %w", tr.ID, err)
+		}
 		if _, err := fioProfile(tr); err != nil {
 			return nil, fmt.Errorf("virtbench: %s: %w", tr.ID, err)
 		}
@@ -674,7 +677,8 @@ func fioProfile(tr core.TestRequirement) (string, error) {
 }
 
 // runFIO avoids Virtbench's fixed five-minute VM boot wait. FIO starts during
-// guest boot; this runner waits for every VM to be Running, then gathers results.
+// guest boot; this runner waits for every VM to be Running, then for each guest
+// to report /tmp/fio_complete (bounded by fio_complete_timeout), then gathers results.
 func runFIO(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) (stages.RunHandle, error) {
 	if len(trs) == 0 {
 		return stages.RunHandle{}, fmt.Errorf("virtbench: no FIO test requirement")
@@ -717,6 +721,9 @@ func runFIO(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.Test
 		return stages.RunHandle{}, fmt.Errorf("virtbench fio: deploy: %w", err)
 	}
 	if err := waitForFIOVMs(ctx, rc, tr); err != nil {
+		return stages.RunHandle{}, err
+	}
+	if err := waitForFIOComplete(ctx, rc, tr); err != nil {
 		return stages.RunHandle{}, err
 	}
 	if err := runVirtbench(ctx, rc, root, gather); err != nil {
@@ -877,6 +884,10 @@ func fioValidate(tr core.TestRequirement) error {
 		return err
 	}
 	_, err := fioTemplate(tr)
+	if err != nil {
+		return err
+	}
+	_, err = fioCompleteTimeout(tr)
 	return err
 }
 

@@ -553,6 +553,49 @@ func TestFIOWaitAndCollectionSettings(t *testing.T) {
 	}
 }
 
+func TestFIOCompleteTimeout(t *testing.T) {
+	tr := core.TestRequirement{Params: map[string]any{"fio_runtime": 30}}
+	timeout, err := fioCompleteTimeout(tr)
+	if err != nil || timeout != 7*time.Minute {
+		t.Errorf("auto complete timeout = %s, %v; want 7m, nil", timeout, err)
+	}
+	tr.Params["fio_runtime"] = 600
+	timeout, err = fioCompleteTimeout(tr)
+	if err != nil || timeout != 16*time.Minute {
+		t.Errorf("auto complete timeout for long fio = %s, %v; want 16m, nil", timeout, err)
+	}
+	tr.Params["fio_complete_timeout"] = 900
+	timeout, err = fioCompleteTimeout(tr)
+	if err != nil || timeout != 15*time.Minute {
+		t.Errorf("explicit complete timeout = %s, %v; want 15m, nil", timeout, err)
+	}
+	tr.Params["fio_complete_timeout"] = 0
+	tr.Params["fio_runtime"] = 30
+	timeout, err = fioCompleteTimeout(tr)
+	if err != nil || timeout != 7*time.Minute {
+		t.Errorf("reset auto complete timeout = %s, %v; want 7m, nil", timeout, err)
+	}
+	tr.Params["fio_complete_timeout"] = -1
+	if _, err := fioCompleteTimeout(tr); err == nil {
+		t.Error("negative fio_complete_timeout: want error")
+	}
+}
+
+func TestFIOVMIIPs(t *testing.T) {
+	wanted := map[string]struct{}{
+		"fio-latency-1/fio-vm": {},
+		"fio-latency-2/fio-vm": {},
+	}
+	data := []byte(`{"items":[
+		{"metadata":{"namespace":"fio-latency-1","name":"fio-vm"},"status":{"phase":"Running","interfaces":[{"ipAddress":"10.0.0.1"}]}},
+		{"metadata":{"namespace":"fio-latency-2","name":"fio-vm"},"status":{"phase":"Running","interfaces":[{"ipAddress":"10.0.0.2"}]}}
+	]}`)
+	ips, err := fioVMIIPs(data, wanted)
+	if err != nil || len(ips) != 2 || ips["fio-latency-1"] != "10.0.0.1" {
+		t.Errorf("fioVMIIPs = %v, %v", ips, err)
+	}
+}
+
 func TestFIOVMStates(t *testing.T) {
 	wanted := map[string]struct{}{
 		"fio-1/fio-vm": {},
