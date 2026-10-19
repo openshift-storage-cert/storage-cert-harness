@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/config"
+	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/safefs"
 )
 
@@ -31,8 +32,9 @@ type Plan struct {
 	SchemaVersion string   `yaml:"schema_version"`
 	Name          string   `yaml:"name"`
 	Description   string   `yaml:"description,omitempty"`
-	Backend       string   `yaml:"backend,omitempty"`  // name of the active backend (optional)
-	Scenario      string   `yaml:"scenario,omitempty"` // run label stamped onto verdicts (e.g. "under-pressure")
+	Backend       string   `yaml:"backend,omitempty"`      // name of the active backend (optional)
+	Scenario      string   `yaml:"scenario,omitempty"`     // run label stamped onto verdicts (e.g. "under-pressure")
+	GradingMode   string   `yaml:"grading_mode,omitempty"` // cert (default) | smoke
 	Concurrency   int      `yaml:"concurrency,omitempty"`
 	Select        Selector `yaml:"select"`
 	// ReportMetrics adds informational metrics by TR id (name or name@percentile).
@@ -96,6 +98,12 @@ func (p *Plan) validate() error {
 	}
 	if p.Concurrency < 0 {
 		return fmt.Errorf("concurrency must be >= 0")
+	}
+	switch p.GradingMode {
+	case "", core.GradingModeCert:
+	case core.GradingModeSmoke:
+	default:
+		return fmt.Errorf("grading_mode must be %q or %q", core.GradingModeCert, core.GradingModeSmoke)
 	}
 	return nil
 }

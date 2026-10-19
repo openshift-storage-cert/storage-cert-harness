@@ -676,7 +676,10 @@ func configureExecution(cmd *cobra.Command, cfg *config.Config, planPath, backen
 		cfg.Variants = p.Variants
 		cfg.Scheduling = p.SchedulingOverrides()
 		cfg.ReportMetrics = p.ReportMetrics
-		logger.Info("loaded plan", "name", p.Name, "path", planPath)
+		if p.GradingMode != "" {
+			cfg.GradingMode = p.GradingMode
+		}
+		logger.Info("loaded plan", "name", p.Name, "path", planPath, "grading_mode", cfg.GradingMode)
 	}
 	if *backendName == "" {
 		return nil, nil

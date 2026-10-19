@@ -48,4 +48,8 @@ type Config struct {
 	// Scheduling overrides a tool's built-in parallel-safety/exclusivity for
 	// this run (tool name -> override). See decisions/0005 + 0006.
 	Scheduling map[string]ToolSchedule
+
+	// GradingMode from the plan (empty => cert). Smoke runs use thresholds-smoke.json
+	// and map SLA misses to not_qualified.
+	GradingMode string
 }

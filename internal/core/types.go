@@ -13,10 +13,17 @@ import (
 type Outcome string
 
 const (
-	OutcomePass  Outcome = "pass"
-	OutcomeFail  Outcome = "fail"
-	OutcomeError Outcome = "error"
-	OutcomeSkip  Outcome = "skip"
+	OutcomePass         Outcome = "pass"
+	OutcomeFail         Outcome = "fail"
+	OutcomeError        Outcome = "error"
+	OutcomeSkip         Outcome = "skip"
+	OutcomeNotQualified Outcome = "not_qualified" // smoke: certification bar not met at reduced scale
+)
+
+// GradingMode selects how SLA misses are scored for a run.
+const (
+	GradingModeCert  = "cert"
+	GradingModeSmoke = "smoke"
 )
 
 // RunStatus describes the lifecycle state of the complete harness run.
@@ -191,6 +198,10 @@ type TestRequirement struct {
 	// Params are the resolved per-TR tool params: catalog defaults overlaid with a
 	// plan's overrides — never serialized to the KB.
 	Params map[string]any `json:"-"`
+
+	// GradingMode is stamped from the plan (cert default). In smoke mode, SLA
+	// compare misses become not_qualified instead of fail.
+	GradingMode string `json:"-"`
 }
 
 // Metric is a single normalized measurement emitted by a ResultParser. It is
@@ -306,6 +317,7 @@ type Summary struct {
 	Fail           int `json:"fail"`
 	Error          int `json:"error"`
 	Skip           int `json:"skip"`
+	NotQualified   int `json:"not_qualified"`
 	CertifiedLevel int `json:"certified_level"` // highest cumulative all-pass partner level (0 = none)
 }
 

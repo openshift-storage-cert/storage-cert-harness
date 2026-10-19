@@ -775,7 +775,17 @@ func ResolveExecutions(trs []core.TestRequirement, cfg config.Config) ([]core.Te
 			out = append(out, copyTR)
 		}
 	}
-	return out, nil
+	return stampGradingMode(out, cfg.GradingMode), nil
+}
+
+func stampGradingMode(trs []core.TestRequirement, mode string) []core.TestRequirement {
+	if mode == "" || mode == core.GradingModeCert {
+		return trs
+	}
+	for i := range trs {
+		trs[i].GradingMode = mode
+	}
+	return trs
 }
 
 // Keep ordinary multi-TR batching; named variants get independent pipelines.
