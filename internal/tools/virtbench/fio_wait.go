@@ -38,20 +38,31 @@ func fioGuestCredentials(tr core.TestRequirement) (user, password string) {
 	return strParamOr(tr, "vm_user", "cloud-user"), strParamOr(tr, "vm_password", "changeme")
 }
 
-// fioGuestSSHRemoteScript builds a bash -c script run inside ssh-test-pod (virtbench-compatible SSH).
-func fioGuestSSHRemoteScript(user, password, vmIP, remoteCmd string) string {
+// bashSingleQuote returns a single-quoted Bash literal safe for embedding in bash -c.
+func bashSingleQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
+// fioGuestSSHRemoteScript builds a bash -c script for ssh-test-pod. The guest password
+// is read from stdin into a temp file for sshpass -f (not placed in argv).
+func fioGuestSSHRemoteScript(user, vmIP, remoteCmd string) string {
 	return fmt.Sprintf(
-		"sshpass -p %q ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "+
+		"set -euo pipefail; passfile=$(mktemp); chmod 600 \"$passfile\"; cat >\"$passfile\"; "+
+			"trap 'rm -f \"$passfile\"' EXIT; "+
+			"sshpass -f \"$passfile\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "+
 			"-o ConnectTimeout=10 -o PreferredAuthentications=password -o PubkeyAuthentication=no "+
-			"%q@%s %s",
-		password, user, vmIP, remoteCmd,
+			"%s@%s %s",
+		bashSingleQuote(user), bashSingleQuote(vmIP), bashSingleQuote(remoteCmd),
 	)
 }
 
 func fioGuestFIOComplete(ctx context.Context, kubeconfig, user, password, vmIP string) (bool, error) {
-	script := fioGuestSSHRemoteScript(user, password, vmIP, "test -f "+fioCompleteGuestPath)
-	_, ok, err := runKubectl(ctx, kubeconfig, "exec", "-n", sshPodNS, sshPodName, "--",
-		"/bin/bash", "-c", script)
+	script := fioGuestSSHRemoteScript(user, vmIP, "test -f "+fioCompleteGuestPath)
+	_, ok, err := runKubectlIO(ctx, kubeconfig, strings.NewReader(password), "exec", "-i",
+		"-n", sshPodNS, sshPodName, "--", "/bin/bash", "-c", script)
 	if err != nil {
 		return false, err
 	}
@@ -79,6 +90,11 @@ func fioVMIIPs(data []byte, wanted map[string]struct{}) (map[string]string, erro
 	return ips, nil
 }
 
+func fioCompleteTimeoutErr(complete, total int, pending []string, timeout time.Duration) error {
+	return fmt.Errorf("virtbench fio: %d of %d guests reported fio_complete after %s (pending: %s)",
+		complete, total, timeout, strings.Join(pending, ", "))
+}
+
 // waitForFIOComplete polls each FIO guest until /tmp/fio_complete exists or timeout.
 func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequirement) error {
 	timeout, err := fioCompleteTimeout(tr)
@@ -98,20 +114,26 @@ func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequir
 		wanted[fmt.Sprintf("%s/%s", ns, defaultFIOVMName)] = struct{}{}
 	}
 	kubeconfig := strParamOr(tr, "kubeconfig", "")
-	if !sshpassReady(ctx, kubeconfig) {
+	deadline := time.Now().Add(timeout)
+	boundCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	if !sshpassReady(boundCtx, kubeconfig) {
+		if err := boundCtx.Err(); err != nil {
+			return fmt.Errorf("virtbench fio: ssh helper pod %s/%s not ready before timeout: %w", sshPodNS, sshPodName, err)
+		}
 		return fmt.Errorf("virtbench fio: ssh helper pod %s/%s is not ready for guest SSH", sshPodNS, sshPodName)
 	}
 	user, password := fioGuestCredentials(tr)
-	deadline := time.Now().Add(timeout)
 
 	for {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("virtbench fio: timed out before listing VM instances after %s", timeout)
 		}
 		remaining := time.Until(deadline)
-		pollCtx, cancel := context.WithTimeout(ctx, remaining)
+		pollCtx, pollCancel := context.WithTimeout(boundCtx, remaining)
 		out, ok, runErr := runKubectl(pollCtx, kubeconfig, "get", "vmi", "--all-namespaces", "-o", "json")
-		cancel()
+		pollCancel()
 		if runErr != nil {
 			return fmt.Errorf("virtbench fio: list VM instances for fio_complete: %w", runErr)
 		}
@@ -131,7 +153,13 @@ func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequir
 				pending = append(pending, ns+"(no IP)")
 				continue
 			}
-			done, checkErr := fioGuestFIOComplete(ctx, kubeconfig, user, password, ip)
+			remaining = time.Until(deadline)
+			if remaining <= 0 {
+				return fioCompleteTimeoutErr(complete, len(namespaces), pending, timeout)
+			}
+			checkCtx, checkCancel := context.WithTimeout(boundCtx, remaining)
+			done, checkErr := fioGuestFIOComplete(checkCtx, kubeconfig, user, password, ip)
+			checkCancel()
 			if checkErr != nil {
 				return fmt.Errorf("virtbench fio: check fio_complete on %s: %w", ns, checkErr)
 			}
@@ -146,15 +174,21 @@ func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequir
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("virtbench fio: %d of %d guests reported fio_complete after %s (pending: %s)",
-				complete, len(namespaces), timeout, strings.Join(pending, ", "))
+			return fioCompleteTimeoutErr(complete, len(namespaces), pending, timeout)
 		}
 		rc.Logger.Info("virtbench fio: waiting for guest fio_complete",
 			"complete", complete, "total", len(namespaces), "timeout", timeout, "pending", strings.Join(pending, ", "))
+		wait := defaultFIOCompletePoll
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		if wait <= 0 {
+			return fioCompleteTimeoutErr(complete, len(namespaces), pending, timeout)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(defaultFIOCompletePoll):
+		case <-time.After(wait):
 		}
 	}
 }

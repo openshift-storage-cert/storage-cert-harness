@@ -268,9 +268,9 @@ func Merge(base, next core.Report) (core.Report, error) {
 	if len(merged.Attestations) == 0 {
 		merged.Attestations = next.Attestations
 	}
-	merged.GradingMode = base.GradingMode
+	merged.GradingMode = next.GradingMode
 	if merged.GradingMode == "" {
-		merged.GradingMode = next.GradingMode
+		merged.GradingMode = base.GradingMode
 	}
 	RefreshLifecycle(&merged)
 	return merged, nil

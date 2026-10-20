@@ -47,6 +47,17 @@
           "when": {
             "iterations": 1000
           }
+        },
+        {
+          "condition": "smoke: PVC bind p99 at reduced iteration count",
+          "metric": "pvc_bind_latency",
+          "operator": "<=",
+          "percentile": "p99",
+          "unit": "s",
+          "value": 60,
+          "when": {
+            "iterations": 3
+          }
         }
       ],
       "sla_status": "defined"
@@ -62,6 +73,16 @@
           "value": 10,
           "when": {
             "num_vms": 100
+          }
+        },
+        {
+          "condition": "smoke: boot storm at reduced VM count",
+          "metric": "vm_boot_time",
+          "operator": "<",
+          "unit": "min",
+          "value": 15,
+          "when": {
+            "num_vms": 3
           }
         }
       ],
@@ -88,6 +109,16 @@
           "value": 30,
           "when": {
             "concurrency": 50
+          }
+        },
+        {
+          "condition": "smoke: single live migration completes",
+          "metric": "total_migration_duration",
+          "operator": "<=",
+          "unit": "min",
+          "value": 15,
+          "when": {
+            "concurrency": 1
           }
         }
       ],
@@ -175,6 +206,17 @@
           "when": {
             "iteration_clones": 100
           }
+        },
+        {
+          "condition": "smoke: clone provisioning at reduced scale",
+          "metric": "clone_duration",
+          "operator": "<",
+          "percentile": "p99",
+          "unit": "s",
+          "value": 120,
+          "when": {
+            "iteration_clones": 3
+          }
         }
       ],
       "sla_status": "defined"
@@ -190,6 +232,16 @@
           "value": 30,
           "when": {
             "vms": 20
+          }
+        },
+        {
+          "condition": "smoke: parallel lifecycle at reduced VM count",
+          "metric": "lifecycle_completion_time",
+          "operator": "<=",
+          "unit": "min",
+          "value": 25,
+          "when": {
+            "vms": 2
           }
         }
       ],
