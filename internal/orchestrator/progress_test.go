@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -46,8 +47,9 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 	if len(m) != 2 {
 		t.Fatalf("TR-1 completion line with duration_s not found:\n%s", out)
 	}
-	if m[1] == "0" || m[1] == "0.0" {
-		t.Fatalf("TR-1 duration_s should be positive, got %q", m[1])
+	duration, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || duration <= 0 {
+		t.Fatalf("TR-1 duration_s should be positive, got %q (parse err=%v)", m[1], err)
 	}
 }
 

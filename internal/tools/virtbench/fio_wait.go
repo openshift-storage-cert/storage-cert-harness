@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,7 +17,10 @@ const (
 	defaultFIOCompleteMinSec   = 420
 	defaultFIOCompletePoll     = 5 * time.Second
 	fioCompleteGuestPath       = "/tmp/fio_complete"
+	guestSSHKeyscanTimeoutSec  = 10
 )
+
+var guestSSHUserRE = regexp.MustCompile(`^[a-z][-a-z0-9_]{0,31}$`)
 
 // fioCompleteTimeout bounds waitForFIOComplete. When fio_complete_timeout is unset
 // (0), uses max(defaultFIOCompleteMinSec, fio_runtime + defaultFIOCompleteSlackSec).
@@ -38,6 +43,27 @@ func fioGuestCredentials(tr core.TestRequirement) (user, password string) {
 	return strParamOr(tr, "vm_user", "cloud-user"), strParamOr(tr, "vm_password", "changeme")
 }
 
+func validateGuestSSHUser(user string) error {
+	if !guestSSHUserRE.MatchString(user) {
+		return fmt.Errorf("vm_user %q: must be a lowercase POSIX account name (^[a-z][-a-z0-9_]{0,31}$)", user)
+	}
+	return nil
+}
+
+func validateGuestSSHIP(ip string) error {
+	if net.ParseIP(strings.TrimSpace(ip)) == nil {
+		return fmt.Errorf("guest IP %q is not a valid IP address", ip)
+	}
+	return nil
+}
+
+func validateGuestSSHPassword(password string) error {
+	if strings.ContainsAny(password, "\n\x00") {
+		return fmt.Errorf("vm_password must not contain newline or NUL")
+	}
+	return nil
+}
+
 // bashSingleQuote returns a single-quoted Bash literal safe for embedding in bash -c.
 func bashSingleQuote(s string) string {
 	if s == "" {
@@ -46,20 +72,38 @@ func bashSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
-// fioGuestSSHRemoteScript builds a bash -c script for ssh-test-pod. The guest password
-// is read from stdin into a temp file for sshpass -f (not placed in argv).
+// fioGuestSSHRemoteScript builds a bash -c script for ssh-test-pod. Password is read
+// from stdin into a temp file for sshpass -f. User and host are validated in Go;
+// ssh uses -l and -- so the destination cannot be parsed as an option. Host keys
+// are collected with ssh-keyscan into a per-check known_hosts file.
 func fioGuestSSHRemoteScript(user, vmIP, remoteCmd string) string {
 	return fmt.Sprintf(
-		"set -euo pipefail; passfile=$(mktemp); chmod 600 \"$passfile\"; cat >\"$passfile\"; "+
-			"trap 'rm -f \"$passfile\"' EXIT; "+
-			"sshpass -f \"$passfile\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "+
+		"set -euo pipefail; passfile=$(mktemp); khfile=$(mktemp); chmod 600 \"$passfile\"; cat >\"$passfile\"; "+
+			"trap 'rm -f \"$passfile\" \"$khfile\"' EXIT; "+
+			"ssh-keyscan -H -T %d -p 22 %s >>\"$khfile\" 2>/dev/null; "+
+			"grep -q . \"$khfile\"; "+
+			"sshpass -f \"$passfile\" ssh "+
+			"-o StrictHostKeyChecking=yes -o UserKnownHostsFile=\"$khfile\" "+
 			"-o ConnectTimeout=10 -o PreferredAuthentications=password -o PubkeyAuthentication=no "+
-			"%s@%s %s",
-		bashSingleQuote(user), bashSingleQuote(vmIP), bashSingleQuote(remoteCmd),
+			"-l %s -- %s %s",
+		guestSSHKeyscanTimeoutSec,
+		bashSingleQuote(vmIP),
+		bashSingleQuote(user),
+		bashSingleQuote(vmIP),
+		bashSingleQuote(remoteCmd),
 	)
 }
 
 func fioGuestFIOComplete(ctx context.Context, kubeconfig, user, password, vmIP string) (bool, error) {
+	if err := validateGuestSSHUser(user); err != nil {
+		return false, err
+	}
+	if err := validateGuestSSHIP(vmIP); err != nil {
+		return false, err
+	}
+	if err := validateGuestSSHPassword(password); err != nil {
+		return false, err
+	}
 	script := fioGuestSSHRemoteScript(user, vmIP, "test -f "+fioCompleteGuestPath)
 	_, ok, err := runKubectlIO(ctx, kubeconfig, strings.NewReader(password), "exec", "-i",
 		"-n", sshPodNS, sshPodName, "--", "/bin/bash", "-c", script)
@@ -95,6 +139,24 @@ func fioCompleteTimeoutErr(complete, total int, pending []string, timeout time.D
 		complete, total, timeout, strings.Join(pending, ", "))
 }
 
+func waitSSHPHelperReady(ctx context.Context, kubeconfig string) error {
+	for {
+		if sshpassReady(ctx, kubeconfig) {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("ssh helper pod %s/%s not ready: %w", sshPodNS, sshPodName, err)
+		}
+		timer := time.NewTimer(defaultFIOCompletePoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("ssh helper pod %s/%s not ready: %w", sshPodNS, sshPodName, ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
 // waitForFIOComplete polls each FIO guest until /tmp/fio_complete exists or timeout.
 func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequirement) error {
 	timeout, err := fioCompleteTimeout(tr)
@@ -118,13 +180,16 @@ func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequir
 	boundCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	if !sshpassReady(boundCtx, kubeconfig) {
-		if err := boundCtx.Err(); err != nil {
-			return fmt.Errorf("virtbench fio: ssh helper pod %s/%s not ready before timeout: %w", sshPodNS, sshPodName, err)
-		}
-		return fmt.Errorf("virtbench fio: ssh helper pod %s/%s is not ready for guest SSH", sshPodNS, sshPodName)
-	}
 	user, password := fioGuestCredentials(tr)
+	if err := validateGuestSSHUser(user); err != nil {
+		return fmt.Errorf("virtbench fio: %s: %w", tr.ID, err)
+	}
+	if err := validateGuestSSHPassword(password); err != nil {
+		return fmt.Errorf("virtbench fio: %s: %w", tr.ID, err)
+	}
+	if err := waitSSHPHelperReady(boundCtx, kubeconfig); err != nil {
+		return fmt.Errorf("virtbench fio: %w", err)
+	}
 
 	for {
 		if time.Now().After(deadline) {
