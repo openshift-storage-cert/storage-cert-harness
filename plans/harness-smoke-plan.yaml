@@ -23,10 +23,10 @@ overrides:
     num_vms: 3
     concurrency: 3
     profile: load-80
-    fio_runtime: 30
-    fio_complete_timeout: 600
-    fio_collect_retries: 16
-    fio_collect_retry_delay: 30
+    fio_runtime: 50
+    # Max collect wait ≈ (retries-1)*delay; budget ~170s post-VMI-ready + fio_runtime + 90s (smoke).
+    fio_collect_retries: 26
+    fio_collect_retry_delay: 15
   TR-STOR-006:
     workload: pvc-density
     iterations: 3
