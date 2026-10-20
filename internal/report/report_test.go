@@ -12,6 +12,23 @@ func v(level int, tr string, o core.Outcome) core.Verdict {
 	return core.Verdict{TR: tr, Level: level, Item: "item", Outcome: o}
 }
 
+func TestNewRunningSetsGradingMode(t *testing.T) {
+	selected := []core.TestRequirement{{ID: "TR-A"}, {ID: "TR-B"}}
+	r := NewRunning("run-smoke", "2.0", core.Provenance{}, selected, "initial", "", core.GradingModeSmoke)
+	if r.GradingMode != core.GradingModeSmoke {
+		t.Fatalf("report grading_mode = %q, want smoke", r.GradingMode)
+	}
+	for i, ex := range r.Executions {
+		if ex.GradingMode != core.GradingModeSmoke {
+			t.Fatalf("execution[%d] grading_mode = %q, want smoke", i, ex.GradingMode)
+		}
+	}
+	rCert := NewRunning("run-cert", "2.0", core.Provenance{}, selected, "initial", "", "")
+	if rCert.GradingMode != core.GradingModeCert {
+		t.Fatalf("empty plan mode should normalize to cert, got %q", rCert.GradingMode)
+	}
+}
+
 func TestBuildCertifiedLevel(t *testing.T) {
 	cases := []struct {
 		name     string

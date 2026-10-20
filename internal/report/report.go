@@ -54,10 +54,11 @@ func Build(runID, schemaVersion string, prov core.Provenance, verdicts []core.Ve
 // NewRunning creates the durable report shell written before tool execution
 // begins. It is intentionally useful without any verdicts: if the process is
 // killed later, this file still identifies the selected work and run part.
-func NewRunning(runID, schemaVersion string, prov core.Provenance, selected []core.TestRequirement, kind, startedAt string) core.Report {
+func NewRunning(runID, schemaVersion string, prov core.Provenance, selected []core.TestRequirement, kind, startedAt, gradingMode string) core.Report {
 	if startedAt == "" {
 		startedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	mode := core.NormalizeGradingMode(gradingMode)
 	r := core.Report{
 		RunID:         runID,
 		Status:        core.RunStatusRunning,
@@ -65,13 +66,16 @@ func NewRunning(runID, schemaVersion string, prov core.Provenance, selected []co
 		Certifiable:   false,
 		SchemaVersion: schemaVersion,
 		Provenance:    prov,
+		GradingMode:   mode,
 		Composition: core.RunComposition{
 			PartsCount: 1,
 			Parts:      []core.RunPart{{PartID: runID, Kind: kind, StartedAt: startedAt, Status: core.RunStatusRunning}},
 		},
 	}
 	for _, tr := range selected {
-		run := core.RunExecution{TR: tr.ID, Variant: tr.Variant, State: core.ExecutionQueued}
+		run := core.RunExecution{
+			TR: tr.ID, Variant: tr.Variant, State: core.ExecutionQueued, GradingMode: mode,
+		}
 		r.Executions = append(r.Executions, run)
 	}
 	return r

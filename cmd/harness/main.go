@@ -410,7 +410,7 @@ func newRunCmd() *cobra.Command {
 				partKind = "resume"
 			}
 			startedAt := time.Now().UTC().Format(time.RFC3339)
-			initial := report.NewRunning(runID, cat.SchemaVersion, cat.Provenance, selected, partKind, startedAt)
+			initial := report.NewRunning(runID, cat.SchemaVersion, cat.Provenance, selected, partKind, startedAt, cfg.GradingMode)
 			for i := range initial.Executions {
 				initial.Executions[i].Scenario = cfg.Scenario
 			}
@@ -511,8 +511,9 @@ func newRunCmd() *cobra.Command {
 			if rep.Status != core.RunStatusComplete {
 				return fmt.Errorf("run did not complete: status=%s reason=%s", rep.Status, rep.CompletionReason)
 			}
-			if rep.Summary.Fail > 0 || rep.Summary.Error > 0 {
-				return fmt.Errorf("certification failed: %d fail, %d error", rep.Summary.Fail, rep.Summary.Error)
+			if rep.Summary.Fail > 0 || rep.Summary.Error > 0 || rep.Summary.NotQualified > 0 {
+				return fmt.Errorf("certification failed: %d fail, %d error, %d not_qualified",
+					rep.Summary.Fail, rep.Summary.Error, rep.Summary.NotQualified)
 			}
 			return nil
 		},

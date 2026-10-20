@@ -91,7 +91,7 @@ func simulatedPartialReport() core.Report {
 func simulatedRunningReport() core.Report {
 	r := report.NewRunning("sim-running", "2.0", core.Provenance{}, []core.TestRequirement{
 		{ID: "TR-VIRT-001"}, {ID: "TR-VIRT-004"}, {ID: "TR-STOR-006"},
-	}, "initial", "2026-09-12T12:00:00Z")
+	}, "initial", "2026-09-12T12:00:00Z", "")
 	r.Executions[0].State = core.ExecutionCompleted
 	r.Executions[0].Outcome = core.OutcomePass
 	r.Executions[0].EndedAt = "2026-09-12T12:10:00Z"
@@ -106,7 +106,7 @@ func simulatedRunningReport() core.Report {
 }
 
 func simulatedAbandonedReport() core.Report {
-	r := report.NewRunning("sim-abandoned", "2.0", core.Provenance{}, []core.TestRequirement{{ID: "TR-VIRT-001"}}, "initial", "2026-09-12T13:00:00Z")
+	r := report.NewRunning("sim-abandoned", "2.0", core.Provenance{}, []core.TestRequirement{{ID: "TR-VIRT-001"}}, "initial", "2026-09-12T13:00:00Z", "")
 	r.Executions[0].State = core.ExecutionRunning
 	r.Executions[0].Stage = "run"
 	r.Incidents = []core.Incident{{
