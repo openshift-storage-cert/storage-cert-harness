@@ -33,6 +33,9 @@ func TestBuildCertifiedLevel(t *testing.T) {
 		{"l2 pass despite a skip sibling", []core.Verdict{
 			v(2, "A", core.OutcomePass), v(2, "A", core.OutcomeSkip),
 		}, 2},
+		{"l3 not_qualified blocks certified level", []core.Verdict{
+			v(3, "A", core.OutcomePass), v(3, "B", core.OutcomeNotQualified),
+		}, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -41,6 +44,33 @@ func TestBuildCertifiedLevel(t *testing.T) {
 				t.Fatalf("certified level = %d, want %d (levels=%+v)", r.Summary.CertifiedLevel, c.want, r.Levels)
 			}
 		})
+	}
+}
+
+func TestBuildNotQualifiedBlocksCertifiable(t *testing.T) {
+	r := Build("run", "2.0", core.Provenance{}, []core.Verdict{
+		{TR: "TR-A", Level: 3, Item: "sla:lat", Outcome: core.OutcomePass},
+		{TR: "TR-B", Level: 3, Item: "sla:lat", Outcome: core.OutcomeNotQualified},
+	})
+	if r.Certifiable {
+		t.Fatal("certifiable should be false when not_qualified verdicts exist")
+	}
+}
+
+func TestJUnitNotQualifiedIsFailure(t *testing.T) {
+	r := Build("run", "2.0", core.Provenance{}, []core.Verdict{
+		{TR: "EX-001", Level: 3, Item: "sla:lat", Outcome: core.OutcomeNotQualified, Reason: "smoke bar"},
+	})
+	var buf bytes.Buffer
+	if err := (JUnitExporter{}).Export(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "<skipped") && strings.Contains(out, "not_qualified") {
+		t.Fatalf("not_qualified must not be exported as skipped:\n%s", out)
+	}
+	if !strings.Contains(out, `<failure message="not_qualified: smoke bar">`) {
+		t.Fatalf("not_qualified should be a JUnit failure:\n%s", out)
 	}
 }
 

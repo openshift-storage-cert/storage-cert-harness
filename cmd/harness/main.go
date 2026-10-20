@@ -377,7 +377,7 @@ func newRunCmd() *cobra.Command {
 			}
 			if prior != nil {
 				before := len(selected)
-				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, retryFailed)
+				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, cfg.GradingMode, retryFailed)
 				logger.Info("continue-from: selecting incomplete executions", "previously_selected", before, "resuming", len(selected), "skipped_completed", before-len(selected), "scenario", cfg.Scenario)
 			}
 			var attestations []core.Attestation

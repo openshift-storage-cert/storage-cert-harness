@@ -200,7 +200,7 @@ archive_run_image_tests_log() {
 		return 0
 	fi
 	local archived
-	archived="${LOG_DIR}/run-image-tests-$(date -u +%Y%m%dT%H%M%SZ).log"
+	archived="${LOG_DIR}/run-image-tests-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
 	echo "smoke hygiene: archiving previous log ${log} -> ${archived}"
 	mv -- "${log}" "${archived}"
 	echo "smoke hygiene: archived previous smoke log"

@@ -128,8 +128,12 @@ func writeJUnit(w io.Writer, r core.Report, hardwareAtRoot bool) error {
 				tc.Skipped = &juMsg{Message: v.Reason}
 				ts.Skipped++
 			case core.OutcomeNotQualified:
-				tc.Skipped = &juMsg{Message: "not_qualified: " + v.Reason}
-				ts.Skipped++
+				msg := v.Reason
+				if msg == "" {
+					msg = "certification bar not met"
+				}
+				tc.Failure = &juMsg{Message: "not_qualified: " + msg}
+				ts.Failures++
 			}
 			ts.Tests++
 			ts.Cases = append(ts.Cases, tc)

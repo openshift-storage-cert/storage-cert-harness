@@ -27,6 +27,14 @@ const (
 	GradingModeSmoke = "smoke"
 )
 
+// NormalizeGradingMode maps an empty plan/report value to cert.
+func NormalizeGradingMode(mode string) string {
+	if mode == "" || mode == GradingModeCert {
+		return GradingModeCert
+	}
+	return mode
+}
+
 // RunStatus describes the lifecycle state of the complete harness run.
 type RunStatus string
 
@@ -71,6 +79,8 @@ type RunExecution struct {
 	StartedAt string         `json:"started_at,omitempty"`
 	EndedAt   string         `json:"ended_at,omitempty"`
 	Reason    string         `json:"reason,omitempty"`
+	// GradingMode records how this execution was scored (cert default).
+	GradingMode string `json:"grading_mode,omitempty"`
 	// Artifacts are the result files this execution was graded from, relative
 	// to the run's working directory. They tie a verdict to the bytes behind
 	// it; absolute paths are never recorded (they leak the operator's home).
@@ -293,6 +303,7 @@ type Report struct {
 	Warnings          []string           `json:"warnings,omitempty"`     // informational; never affects grading
 	Levels            []LevelRollup      `json:"levels,omitempty"`       // verdicts grouped by partner level
 	Summary           Summary            `json:"summary"`
+	GradingMode       string             `json:"grading_mode,omitempty"` // cert (default) | smoke
 }
 
 // StorageSelection records the classes selected for one snapshot-backed execution.
@@ -334,7 +345,7 @@ type Summary struct {
 // LevelRollup is the aggregate outcome of one partner level (all its verdicts).
 type LevelRollup struct {
 	Level   int     `json:"level"`
-	Outcome Outcome `json:"outcome"` // fail if any member fail/error; else pass (skips ignored)
+	Outcome Outcome `json:"outcome"` // fail if any member fail/error/not_qualified; else pass (skips ignored)
 }
 
 // Environment is the run origin, auto-collected from the cluster (ADR-0014). It is

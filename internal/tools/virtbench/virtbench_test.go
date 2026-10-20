@@ -591,7 +591,7 @@ func TestFIOVMIIPs(t *testing.T) {
 		{"metadata":{"namespace":"fio-latency-2","name":"fio-vm"},"status":{"phase":"Running","interfaces":[{"ipAddress":"10.0.0.2"}]}}
 	]}`)
 	ips, err := fioVMIIPs(data, wanted)
-	if err != nil || len(ips) != 2 || ips["fio-latency-1"] != "10.0.0.1" {
+	if err != nil || len(ips) != 2 || ips["fio-latency-1"] != "10.0.0.1" || ips["fio-latency-2"] != "10.0.0.2" {
 		t.Errorf("fioVMIIPs = %v, %v", ips, err)
 	}
 }

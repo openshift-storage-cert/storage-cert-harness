@@ -6,9 +6,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
+acquire_local_image_lock
 archive_run_image_tests_log
 ci_log_init "run-image-tests"
-acquire_local_image_lock
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
@@ -55,8 +55,9 @@ fi
 	echo "error: thresholds bundle missing for grading_mode=${grading_mode}: ${thresholds_file}" >&2
 	exit 1
 }
-cp -f "${thresholds_file}" work/thresholds.json
-echo "validation passed: using ${thresholds_file} (grading_mode=${grading_mode})"
+harness_thresholds="work/harness-run-thresholds.json"
+cp -f "${thresholds_file}" "${harness_thresholds}"
+echo "validation passed: using ${thresholds_file} -> ${harness_thresholds} (grading_mode=${grading_mode})"
 
 backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {
@@ -169,7 +170,7 @@ podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
 	-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" \
 	"${image}" run \
 	--catalog /work/catalog.json \
-	--thresholds /work/thresholds.json \
+	--thresholds /work/harness-run-thresholds.json \
 	--plan /plans/harness-smoke-plan.yaml \
 	--backends /work/backends.local.yaml \
 	--backend "${backend}" \

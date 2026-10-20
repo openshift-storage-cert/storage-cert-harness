@@ -108,7 +108,7 @@ func RefreshLifecycle(r *core.Report) {
 				return
 			}
 		}
-		r.Certifiable = r.Summary.Fail == 0 && r.Summary.Error == 0
+		r.Certifiable = r.Summary.Fail == 0 && r.Summary.Error == 0 && r.Summary.NotQualified == 0
 		return
 	}
 	r.Health = core.RunHealthUnhealthy
@@ -145,7 +145,9 @@ func Finalize(r *core.Report, status core.RunStatus, reason, endedAt string) {
 // separate external suite (openshift-origin-csi), so a strict cumulative ladder
 // across all three levels is intentionally NOT enforced here — see ADR-0014.
 func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
-	type acc struct{ pass, failErr bool }
+	type acc struct {
+		pass, failErr, notQualified bool
+	}
 	per := map[int]*acc{}
 	for _, v := range verdicts {
 		lvl := v.Level
@@ -162,6 +164,8 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 			a.pass = true
 		case core.OutcomeFail, core.OutcomeError:
 			a.failErr = true
+		case core.OutcomeNotQualified:
+			a.notQualified = true
 		}
 	}
 	if len(per) == 0 {
@@ -177,6 +181,8 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 		switch {
 		case a.failErr:
 			return core.OutcomeFail
+		case a.notQualified:
+			return core.OutcomeNotQualified
 		case a.pass:
 			return core.OutcomePass
 		default:
@@ -194,7 +200,7 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 		switch outcome(per[l]) {
 		case core.OutcomePass:
 			certified = l
-		case core.OutcomeFail:
+		case core.OutcomeFail, core.OutcomeNotQualified:
 			return rollups, certified
 		}
 	}
@@ -261,6 +267,10 @@ func Merge(base, next core.Report) (core.Report, error) {
 	merged.Attestations = base.Attestations
 	if len(merged.Attestations) == 0 {
 		merged.Attestations = next.Attestations
+	}
+	merged.GradingMode = base.GradingMode
+	if merged.GradingMode == "" {
+		merged.GradingMode = next.GradingMode
 	}
 	RefreshLifecycle(&merged)
 	return merged, nil

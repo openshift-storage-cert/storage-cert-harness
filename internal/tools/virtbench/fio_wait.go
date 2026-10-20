@@ -105,7 +105,13 @@ func waitForFIOComplete(ctx context.Context, rc *core.RunCtx, tr core.TestRequir
 	deadline := time.Now().Add(timeout)
 
 	for {
-		out, ok, runErr := runKubectl(ctx, kubeconfig, "get", "vmi", "--all-namespaces", "-o", "json")
+		if time.Now().After(deadline) {
+			return fmt.Errorf("virtbench fio: timed out before listing VM instances after %s", timeout)
+		}
+		remaining := time.Until(deadline)
+		pollCtx, cancel := context.WithTimeout(ctx, remaining)
+		out, ok, runErr := runKubectl(pollCtx, kubeconfig, "get", "vmi", "--all-namespaces", "-o", "json")
+		cancel()
 		if runErr != nil {
 			return fmt.Errorf("virtbench fio: list VM instances for fio_complete: %w", runErr)
 		}

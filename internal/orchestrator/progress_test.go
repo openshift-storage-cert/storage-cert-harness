@@ -3,11 +3,14 @@ package orchestrator
 import (
 	"bytes"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
 )
+
+var tr1CompletedDurationRE = regexp.MustCompile(`status=completed test=TR-1 outcome=pass[^\n]*duration_s=([0-9.]+)`)
 
 func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 	var log bytes.Buffer
@@ -30,7 +33,6 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 		`status=completed test=TR-1 outcome=pass`,
 		`completed=1 total=3 remaining=2`,
 		`finished_at=`,
-		`duration_s=`,
 		`status=complete completed=3 total=3 remaining=0`,
 		`passed=[TR-1]`,
 		`failed="[TR-2 [small]]"`,
@@ -39,6 +41,13 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("log missing %q:\n%s", want, out)
 		}
+	}
+	m := tr1CompletedDurationRE.FindStringSubmatch(out)
+	if len(m) != 2 {
+		t.Fatalf("TR-1 completion line with duration_s not found:\n%s", out)
+	}
+	if m[1] == "0" || m[1] == "0.0" {
+		t.Fatalf("TR-1 duration_s should be positive, got %q", m[1])
 	}
 }
 
