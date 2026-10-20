@@ -67,26 +67,6 @@ func TestMergeRejectsDifferentKBCommit(t *testing.T) {
 	}
 }
 
-func TestMergePrefersNextGradingMode(t *testing.T) {
-	base := Build("cert", "2.0", core.Provenance{}, []core.Verdict{
-		{TR: "TR-A", Level: 3, Item: "sla:x", Outcome: core.OutcomePass},
-	})
-	base.GradingMode = core.GradingModeCert
-
-	next := Build("smoke", "2.0", core.Provenance{}, []core.Verdict{
-		{TR: "TR-A", Level: 3, Item: "sla:x", Outcome: core.OutcomeNotQualified},
-	})
-	next.GradingMode = core.GradingModeSmoke
-
-	m, err := Merge(base, next)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.GradingMode != core.GradingModeSmoke {
-		t.Fatalf("merged grading_mode = %q, want smoke (next report wins)", m.GradingMode)
-	}
-}
-
 func TestMergeReRunReplacesSameScenario(t *testing.T) {
 	base := Build("a", "2.0", core.Provenance{}, []core.Verdict{
 		{TR: "TR-1", Level: 2, Scenario: "idle", Item: "sla:lat", Outcome: core.OutcomeFail},

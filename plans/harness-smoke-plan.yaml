@@ -5,7 +5,6 @@ description: >-
   All non-disruptive catalog TRs at minimal scale; excludes TR-VIRT-007 (HA /
   node failure) and TR-VIRT-008 (node drain / cordon). Backend oc-edge-112.
 backend: oc-edge-112
-grading_mode: smoke
 concurrency: 1
 select:
   ids:

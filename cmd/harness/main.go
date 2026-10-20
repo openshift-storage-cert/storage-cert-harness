@@ -377,7 +377,7 @@ func newRunCmd() *cobra.Command {
 			}
 			if prior != nil {
 				before := len(selected)
-				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, cfg.GradingMode, retryFailed)
+				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, retryFailed)
 				logger.Info("continue-from: selecting incomplete executions", "previously_selected", before, "resuming", len(selected), "skipped_completed", before-len(selected), "scenario", cfg.Scenario)
 			}
 			var attestations []core.Attestation
@@ -410,7 +410,7 @@ func newRunCmd() *cobra.Command {
 				partKind = "resume"
 			}
 			startedAt := time.Now().UTC().Format(time.RFC3339)
-			initial := report.NewRunning(runID, cat.SchemaVersion, cat.Provenance, selected, partKind, startedAt, cfg.GradingMode)
+			initial := report.NewRunning(runID, cat.SchemaVersion, cat.Provenance, selected, partKind, startedAt)
 			for i := range initial.Executions {
 				initial.Executions[i].Scenario = cfg.Scenario
 			}
@@ -511,9 +511,8 @@ func newRunCmd() *cobra.Command {
 			if rep.Status != core.RunStatusComplete {
 				return fmt.Errorf("run did not complete: status=%s reason=%s", rep.Status, rep.CompletionReason)
 			}
-			if rep.Summary.Fail > 0 || rep.Summary.Error > 0 || rep.Summary.NotQualified > 0 {
-				return fmt.Errorf("certification failed: %d fail, %d error, %d not_qualified",
-					rep.Summary.Fail, rep.Summary.Error, rep.Summary.NotQualified)
+			if rep.Summary.Fail > 0 || rep.Summary.Error > 0 {
+				return fmt.Errorf("certification failed: %d fail, %d error", rep.Summary.Fail, rep.Summary.Error)
 			}
 			return nil
 		},
@@ -681,10 +680,7 @@ func configureExecution(cmd *cobra.Command, cfg *config.Config, planPath, backen
 		cfg.Variants = p.Variants
 		cfg.Scheduling = p.SchedulingOverrides()
 		cfg.ReportMetrics = p.ReportMetrics
-		if p.GradingMode != "" {
-			cfg.GradingMode = p.GradingMode
-		}
-		logger.Info("loaded plan", "name", p.Name, "path", planPath, "grading_mode", cfg.GradingMode)
+		logger.Info("loaded plan", "name", p.Name, "path", planPath)
 	}
 	if *backendName == "" {
 		return nil, nil

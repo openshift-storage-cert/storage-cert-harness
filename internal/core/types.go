@@ -14,26 +14,11 @@ import (
 type Outcome string
 
 const (
-	OutcomePass         Outcome = "pass"
-	OutcomeFail         Outcome = "fail"
-	OutcomeError        Outcome = "error"
-	OutcomeSkip         Outcome = "skip"
-	OutcomeNotQualified Outcome = "not_qualified" // smoke: certification bar not met at reduced scale
+	OutcomePass  Outcome = "pass"
+	OutcomeFail  Outcome = "fail"
+	OutcomeError Outcome = "error"
+	OutcomeSkip  Outcome = "skip"
 )
-
-// GradingMode selects how SLA misses are scored for a run.
-const (
-	GradingModeCert  = "cert"
-	GradingModeSmoke = "smoke"
-)
-
-// NormalizeGradingMode maps an empty plan/report value to cert.
-func NormalizeGradingMode(mode string) string {
-	if mode == "" || mode == GradingModeCert {
-		return GradingModeCert
-	}
-	return mode
-}
 
 // RunStatus describes the lifecycle state of the complete harness run.
 type RunStatus string
@@ -79,8 +64,6 @@ type RunExecution struct {
 	StartedAt string         `json:"started_at,omitempty"`
 	EndedAt   string         `json:"ended_at,omitempty"`
 	Reason    string         `json:"reason,omitempty"`
-	// GradingMode records how this execution was scored (cert default).
-	GradingMode string `json:"grading_mode,omitempty"`
 	// Artifacts are the result files this execution was graded from, relative
 	// to the run's working directory. They tie a verdict to the bytes behind
 	// it; absolute paths are never recorded (they leak the operator's home).
@@ -213,10 +196,6 @@ type TestRequirement struct {
 	// Params are the resolved per-TR tool params: catalog defaults overlaid with a
 	// plan's overrides — never serialized to the KB.
 	Params map[string]any `json:"-"`
-
-	// GradingMode is stamped from the plan (cert default). In smoke mode, SLA
-	// compare misses become not_qualified instead of fail.
-	GradingMode string `json:"-"`
 }
 
 // Metric is a single normalized measurement emitted by a ResultParser. It is
@@ -303,7 +282,6 @@ type Report struct {
 	Warnings          []string           `json:"warnings,omitempty"`     // informational; never affects grading
 	Levels            []LevelRollup      `json:"levels,omitempty"`       // verdicts grouped by partner level
 	Summary           Summary            `json:"summary"`
-	GradingMode       string             `json:"grading_mode,omitempty"` // cert (default) | smoke
 }
 
 // StorageSelection records the classes selected for one snapshot-backed execution.
@@ -338,14 +316,13 @@ type Summary struct {
 	Fail           int `json:"fail"`
 	Error          int `json:"error"`
 	Skip           int `json:"skip"`
-	NotQualified   int `json:"not_qualified"`
 	CertifiedLevel int `json:"certified_level"` // highest cumulative all-pass partner level (0 = none)
 }
 
 // LevelRollup is the aggregate outcome of one partner level (all its verdicts).
 type LevelRollup struct {
 	Level   int     `json:"level"`
-	Outcome Outcome `json:"outcome"` // fail if any member fail/error/not_qualified; else pass (skips ignored)
+	Outcome Outcome `json:"outcome"` // fail if any member fail/error; else pass (skips ignored)
 }
 
 // Environment is the run origin, auto-collected from the cluster (ADR-0014). It is

@@ -67,14 +67,10 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 	if partKind == "" {
 		partKind = "initial"
 	}
-	runGradingMode := core.NormalizeGradingMode(cfg.GradingMode)
 	executionStates := make(map[string]core.RunExecution, len(selected))
 	for _, tr := range selected {
 		label := core.ExecutionLabel(tr.ID, tr.Variant)
-		executionStates[label] = core.RunExecution{
-			TR: tr.ID, Variant: tr.Variant, Scenario: cfg.Scenario,
-			GradingMode: runGradingMode, State: core.ExecutionQueued,
-		}
+		executionStates[label] = core.RunExecution{TR: tr.ID, Variant: tr.Variant, Scenario: cfg.Scenario, State: core.ExecutionQueued}
 	}
 	incidents := []core.Incident{}
 
@@ -98,7 +94,6 @@ func Run(ctx context.Context, cfg config.Config, trs []core.TestRequirement, pro
 			ms[i].Scenario = cfg.Scenario
 		}
 		r := report.Build(rc.RunID, schemaVersion, prov, vs)
-		r.GradingMode = runGradingMode
 		r.StorageSelections = ss
 		sort.Slice(r.StorageSelections, func(i, j int) bool {
 			return core.ExecutionLabel(ss[i].TR, ss[i].Variant) < core.ExecutionLabel(ss[j].TR, ss[j].Variant)
@@ -388,19 +383,17 @@ func SelectTRs(all []core.TestRequirement, f config.Filter) []core.TestRequireme
 // state in a prior report. It is the true continuation mode: failed results are
 // preserved rather than silently rerun. Use ResumeExecutionsWithOptions with
 // retryFailed when a caller explicitly wants to retry fail/error results.
-func ResumeExecutions(selected []core.TestRequirement, prior core.Report, scenario string, currentGradingMode string) []core.TestRequirement {
-	return ResumeExecutionsWithOptions(selected, prior, scenario, currentGradingMode, false)
+func ResumeExecutions(selected []core.TestRequirement, prior core.Report, scenario string) []core.TestRequirement {
+	return ResumeExecutionsWithOptions(selected, prior, scenario, false)
 }
 
 // ResumeExecutionsWithOptions is ResumeExecutions with an explicit failed-test
 // retry policy. Scenario is part of the identity: a load80 execution must not
 // satisfy a non-load80 continuation.
-func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Report, scenario string, currentGradingMode string, retryFailed bool) []core.TestRequirement {
+func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Report, scenario string, retryFailed bool) []core.TestRequirement {
 	completed := map[string]bool{}
 	failed := map[string]bool{}
 	knownExecutions := map[string]bool{}
-	priorByKey := map[string]resumedPrior{}
-	priorReportMode := prior.GradingMode
 	for _, execution := range prior.Executions {
 		if execution.Scenario != scenario {
 			continue
@@ -409,7 +402,6 @@ func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Rep
 		knownExecutions[key] = true
 		if execution.State == core.ExecutionCompleted {
 			completed[key] = true
-			priorByKey[key] = resumedPrior{outcome: execution.Outcome, gradingMode: execution.GradingMode}
 			if execution.Outcome == core.OutcomeFail || execution.Outcome == core.OutcomeError {
 				failed[key] = true
 			}
@@ -432,7 +424,6 @@ func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Rep
 			continue
 		}
 		completed[key] = true
-		priorByKey[key] = mergeResumedPrior(priorByKey[key], verdict.Outcome, priorReportMode)
 		switch verdict.Outcome {
 		case core.OutcomeFail, core.OutcomeError:
 			failed[key] = true
@@ -442,67 +433,12 @@ func ResumeExecutionsWithOptions(selected []core.TestRequirement, prior core.Rep
 	out := make([]core.TestRequirement, 0, len(selected))
 	for _, tr := range selected {
 		key := executionKey(tr.ID, tr.Variant, scenario)
-		reusable := priorExecutionReusable(priorByKey[key], priorReportMode, currentGradingMode, retryFailed, failed[key])
-		skip := completed[key] && (!retryFailed || !failed[key]) && reusable
+		skip := completed[key] && (!retryFailed || !failed[key])
 		if !skip {
 			out = append(out, tr)
 		}
 	}
 	return out
-}
-
-type resumedPrior struct {
-	outcome     core.Outcome
-	gradingMode string
-}
-
-func mergeResumedPrior(cur resumedPrior, verdict core.Outcome, priorReportMode string) resumedPrior {
-	worse := summarizeVerdictOutcome(cur.outcome, verdict)
-	mode := cur.gradingMode
-	if mode == "" {
-		mode = priorReportMode
-	}
-	return resumedPrior{outcome: worse, gradingMode: mode}
-}
-
-func summarizeVerdictOutcome(a, b core.Outcome) core.Outcome {
-	rank := func(o core.Outcome) int {
-		switch o {
-		case core.OutcomeError:
-			return 5
-		case core.OutcomeFail:
-			return 4
-		case core.OutcomeNotQualified:
-			return 3
-		case core.OutcomePass:
-			return 2
-		case core.OutcomeSkip:
-			return 1
-		default:
-			return 0
-		}
-	}
-	if rank(b) > rank(a) {
-		return b
-	}
-	return a
-}
-
-func priorExecutionReusable(p resumedPrior, priorReportMode, currentGradingMode string, retryFailed, isFailed bool) bool {
-	if retryFailed && isFailed {
-		return false
-	}
-	priorMode := core.NormalizeGradingMode(p.gradingMode)
-	if p.gradingMode == "" {
-		priorMode = core.NormalizeGradingMode(priorReportMode)
-	}
-	if priorMode != core.NormalizeGradingMode(currentGradingMode) {
-		return false
-	}
-	if p.outcome == core.OutcomeNotQualified && core.NormalizeGradingMode(currentGradingMode) == core.GradingModeCert {
-		return false
-	}
-	return true
 }
 
 func executionKey(tr, variant, scenario string) string {
@@ -908,17 +844,7 @@ func ResolveExecutions(trs []core.TestRequirement, cfg config.Config) ([]core.Te
 			out = append(out, copyTR)
 		}
 	}
-	return stampGradingMode(out, cfg.GradingMode), nil
-}
-
-func stampGradingMode(trs []core.TestRequirement, mode string) []core.TestRequirement {
-	if mode == "" || mode == core.GradingModeCert {
-		return trs
-	}
-	for i := range trs {
-		trs[i].GradingMode = mode
-	}
-	return trs
+	return out, nil
 }
 
 // Keep ordinary multi-TR batching; named variants get independent pipelines.

@@ -67,27 +67,20 @@ func gradeSLAs(tr core.TestRequirement, res core.TestResult) []core.Verdict {
 			})
 			continue
 		}
-		outcome, reason := slaCompareOutcome(tr, pass, bar.Condition)
+		outcome := core.OutcomeFail
+		if pass {
+			outcome = core.OutcomePass
+		}
 		out = append(out, core.Verdict{
 			TR:       tr.ID,
 			Item:     item,
 			Outcome:  outcome,
 			Expected: fmt.Sprintf("%s %g %s", bar.Operator, *bar.Value, bar.Unit),
 			Actual:   fmt.Sprintf("%g %s", m.Value, unitOr(m.Unit, bar.Unit)),
-			Reason:   reason,
+			Reason:   bar.Condition,
 		})
 	}
 	return out
-}
-
-func slaCompareOutcome(tr core.TestRequirement, pass bool, condition string) (core.Outcome, string) {
-	if pass {
-		return core.OutcomePass, condition
-	}
-	if tr.GradingMode == core.GradingModeSmoke {
-		return core.OutcomeNotQualified, condition + " (certification bar not met at smoke scale)"
-	}
-	return core.OutcomeFail, condition
 }
 
 // gradeChecks scores each check in a TR by dispatching on kind. A

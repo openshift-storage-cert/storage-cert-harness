@@ -43,7 +43,7 @@ func TestLifecycleAndJUnitCompositionScenarios(t *testing.T) {
 		{
 			name: "stalled partial checkpoint",
 			report: func() core.Report {
-				r := NewRunning("cert-partial", "2.0", core.Provenance{}, []core.TestRequirement{{ID: "TR-VIRT-001"}, {ID: "TR-VIRT-004"}}, "initial", "2026-09-12T10:00:00Z", "")
+				r := NewRunning("cert-partial", "2.0", core.Provenance{}, []core.TestRequirement{{ID: "TR-VIRT-001"}, {ID: "TR-VIRT-004"}}, "initial", "2026-09-12T10:00:00Z")
 				r.Executions[0].State = core.ExecutionRunning
 				r.Executions[0].Stage = "provision"
 				r.Incidents = []core.Incident{{ID: "stall-002", Type: "stall", Severity: "error", TR: "TR-VIRT-001", Stage: "provision", Message: "heartbeat timed out", BlocksCertification: true}}

@@ -12,11 +12,6 @@
     "description": { "type": "string" },
     "backend": { "type": "string", "description": "name of the active backend (optional)" },
     "scenario": { "type": "string", "description": "run label stamped onto every verdict (e.g. under-pressure); distinguishes merged runs of the same TR" },
-    "grading_mode": {
-      "type": "string",
-      "enum": ["cert", "smoke"],
-      "description": "cert (default): SLA misses are fail; smoke: SLA misses are not_qualified"
-    },
     "concurrency": { "type": "integer", "minimum": 0 },
     "select": { "$ref": "#/$defs/selector" },
     "report_metrics": {

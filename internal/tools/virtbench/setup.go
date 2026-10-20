@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -561,19 +560,11 @@ func kubeconfigOf(trs []core.TestRequirement) string {
 // exec error. A non-zero exit is reported via ok=false, not err (err is reserved
 // for failing to launch kubectl at all).
 func runKubectl(ctx context.Context, kubeconfig string, args ...string) (out string, ok bool, err error) {
-	return runKubectlIO(ctx, kubeconfig, nil, args...)
-}
-
-// runKubectlIO runs kubectl with optional stdin (e.g. kubectl exec -i).
-func runKubectlIO(ctx context.Context, kubeconfig string, stdin io.Reader, args ...string) (out string, ok bool, err error) {
 	full := args
 	if kubeconfig != "" {
 		full = append([]string{"--kubeconfig", kubeconfig}, args...)
 	}
 	cmd := exec.CommandContext(ctx, "kubectl", full...) // #nosec G204 -- kubectl arguments are constructed by the harness.
-	if stdin != nil {
-		cmd.Stdin = stdin
-	}
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

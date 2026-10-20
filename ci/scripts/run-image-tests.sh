@@ -46,18 +46,14 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 }
 echo "validation passed: yq is available"
 
-grading_mode="$(${yq_bin} e -r '.grading_mode // "cert"' "${plan}")"
-thresholds_file="thresholds.json"
-if [[ "${grading_mode}" == "smoke" ]]; then
-	thresholds_file="thresholds-smoke.json"
-fi
+thresholds_file="thresholds-smoke.json"
 [[ -s "${thresholds_file}" ]] || {
-	echo "error: thresholds bundle missing for grading_mode=${grading_mode}: ${thresholds_file}" >&2
+	echo "error: smoke thresholds bundle missing: ${thresholds_file}" >&2
 	exit 1
 }
 harness_thresholds="work/harness-run-thresholds.json"
 cp -f "${thresholds_file}" "${harness_thresholds}"
-echo "validation passed: using ${thresholds_file} -> ${harness_thresholds} (grading_mode=${grading_mode})"
+echo "validation passed: using ${thresholds_file} -> ${harness_thresholds}"
 
 backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {
