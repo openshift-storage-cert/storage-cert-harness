@@ -10,6 +10,11 @@
     "status": { "enum": ["running", "complete", "partial", "failed", "abandoned"] },
     "health": { "enum": ["healthy", "degraded", "unhealthy"] },
     "certifiable": { "type": "boolean" },
+    "grading_mode": {
+      "type": "string",
+      "enum": ["cert", "smoke"],
+      "description": "cert (default): full certification grading; smoke: reduced-scale smoke grading"
+    },
     "completion_reason": { "type": "string" },
     "schema_version": { "type": "string", "description": "KB export schema the run consumed" },
     "provenance": {
@@ -81,7 +86,12 @@
           "variant": { "type": "string" },
           "scenario": { "type": "string" },
           "state": { "enum": ["queued", "running", "completed", "aborted"] },
-          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "outcome": { "enum": ["pass", "fail", "error", "skip", "not_qualified"] },
+          "grading_mode": {
+            "type": "string",
+            "enum": ["cert", "smoke"],
+            "description": "grading mode used for this execution"
+          },
           "stage": { "type": "string" },
           "started_at": { "type": "string" },
           "ended_at": { "type": "string" },
@@ -128,7 +138,7 @@
           "scenario": { "type": "string", "description": "run label (e.g. under-pressure); distinguishes merged runs of the same TR" },
           "variant": { "type": "string", "description": "Named plan execution, absent for default executions" },
           "item": { "type": "string", "description": "scorable item, e.g. sla:latency_ms@p99 or check:snapshot-restore" },
-          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "outcome": { "enum": ["pass", "fail", "error", "skip", "not_qualified"] },
           "reason": { "type": "string" },
           "expected": { "type": "string" },
           "actual": { "type": "string" }
@@ -160,7 +170,9 @@
         "pass": { "type": "integer" },
         "fail": { "type": "integer" },
         "error": { "type": "integer" },
-        "skip": { "type": "integer" }
+        "skip": { "type": "integer" },
+        "not_qualified": { "type": "integer", "description": "items that missed the certification bar at smoke scale" },
+        "certified_level": { "type": "integer", "description": "highest cumulative all-pass partner level (0 = none)" }
       }
     }
   }

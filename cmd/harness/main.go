@@ -377,7 +377,7 @@ func newRunCmd() *cobra.Command {
 			}
 			if prior != nil {
 				before := len(selected)
-				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, retryFailed)
+				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, cfg.GradingMode, retryFailed)
 				logger.Info("continue-from: selecting incomplete executions", "previously_selected", before, "resuming", len(selected), "skipped_completed", before-len(selected), "scenario", cfg.Scenario)
 			}
 			var attestations []core.Attestation
@@ -680,7 +680,10 @@ func configureExecution(cmd *cobra.Command, cfg *config.Config, planPath, backen
 		cfg.Variants = p.Variants
 		cfg.Scheduling = p.SchedulingOverrides()
 		cfg.ReportMetrics = p.ReportMetrics
-		logger.Info("loaded plan", "name", p.Name, "path", planPath)
+		if p.GradingMode != "" {
+			cfg.GradingMode = p.GradingMode
+		}
+		logger.Info("loaded plan", "name", p.Name, "path", planPath, "grading_mode", cfg.GradingMode)
 	}
 	if *backendName == "" {
 		return nil, nil

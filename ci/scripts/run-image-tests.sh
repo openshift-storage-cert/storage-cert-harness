@@ -6,8 +6,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
+acquire_smoke_run_lock
+archive_run_image_tests_log
 ci_log_init "run-image-tests"
-acquire_local_image_lock
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
@@ -44,6 +45,19 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 	exit 1
 }
 echo "validation passed: yq is available"
+
+grading_mode="$(${yq_bin} e -r '.grading_mode // "cert"' "${plan}")"
+thresholds_file="thresholds.json"
+if [[ "${grading_mode}" == "smoke" ]]; then
+	thresholds_file="thresholds-smoke.json"
+fi
+[[ -s "${thresholds_file}" ]] || {
+	echo "error: thresholds bundle missing for grading_mode=${grading_mode}: ${thresholds_file}" >&2
+	exit 1
+}
+harness_thresholds="work/harness-run-thresholds.json"
+cp -f "${thresholds_file}" "${harness_thresholds}"
+echo "validation passed: using ${thresholds_file} -> ${harness_thresholds} (grading_mode=${grading_mode})"
 
 backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {
@@ -123,7 +137,14 @@ while IFS= read -r plan_node; do
 done <<< "${plan_nodes}"
 echo "validation passed: all plan-specified nodes exist"
 
+if [[ "${HARNESS_SMOKE_KEEP_WORK:-false}" == "true" ]]; then
+	echo "smoke hygiene: skipping work cleanup (HARNESS_SMOKE_KEEP_WORK=true)"
+else
+	echo "smoke hygiene: preflight complete; cleaning artifacts from previous smoke runs"
+	clean_harness_smoke_artifacts
+fi
 mkdir -p work/harness-smoke-work work/harness-smoke-report
+echo "validation passed: harness smoke work directories ready"
 
 image="$(tr -d '[:space:]' < work/local-image-ref)"
 [[ -n "${image}" ]] || {
@@ -149,7 +170,7 @@ podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
 	-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" \
 	"${image}" run \
 	--catalog /work/catalog.json \
-	--thresholds /work/thresholds.json \
+	--thresholds /work/harness-run-thresholds.json \
 	--plan /plans/harness-smoke-plan.yaml \
 	--backends /work/backends.local.yaml \
 	--backend "${backend}" \

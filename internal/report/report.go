@@ -42,6 +42,8 @@ func Build(runID, schemaVersion string, prov core.Provenance, verdicts []core.Ve
 			r.Summary.Error++
 		case core.OutcomeSkip:
 			r.Summary.Skip++
+		case core.OutcomeNotQualified:
+			r.Summary.NotQualified++
 		}
 	}
 	r.Levels, r.Summary.CertifiedLevel = rollupLevels(verdicts)
@@ -106,7 +108,7 @@ func RefreshLifecycle(r *core.Report) {
 				return
 			}
 		}
-		r.Certifiable = r.Summary.Fail == 0 && r.Summary.Error == 0
+		r.Certifiable = r.Summary.Fail == 0 && r.Summary.Error == 0 && r.Summary.NotQualified == 0
 		return
 	}
 	r.Health = core.RunHealthUnhealthy
@@ -143,7 +145,9 @@ func Finalize(r *core.Report, status core.RunStatus, reason, endedAt string) {
 // separate external suite (openshift-origin-csi), so a strict cumulative ladder
 // across all three levels is intentionally NOT enforced here — see ADR-0014.
 func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
-	type acc struct{ pass, failErr bool }
+	type acc struct {
+		pass, failErr, notQualified bool
+	}
 	per := map[int]*acc{}
 	for _, v := range verdicts {
 		lvl := v.Level
@@ -160,6 +164,8 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 			a.pass = true
 		case core.OutcomeFail, core.OutcomeError:
 			a.failErr = true
+		case core.OutcomeNotQualified:
+			a.notQualified = true
 		}
 	}
 	if len(per) == 0 {
@@ -175,6 +181,8 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 		switch {
 		case a.failErr:
 			return core.OutcomeFail
+		case a.notQualified:
+			return core.OutcomeNotQualified
 		case a.pass:
 			return core.OutcomePass
 		default:
@@ -192,7 +200,7 @@ func rollupLevels(verdicts []core.Verdict) ([]core.LevelRollup, int) {
 		switch outcome(per[l]) {
 		case core.OutcomePass:
 			certified = l
-		case core.OutcomeFail:
+		case core.OutcomeFail, core.OutcomeNotQualified:
 			return rollups, certified
 		}
 	}
@@ -259,6 +267,10 @@ func Merge(base, next core.Report) (core.Report, error) {
 	merged.Attestations = base.Attestations
 	if len(merged.Attestations) == 0 {
 		merged.Attestations = next.Attestations
+	}
+	merged.GradingMode = next.GradingMode
+	if merged.GradingMode == "" {
+		merged.GradingMode = base.GradingMode
 	}
 	RefreshLifecycle(&merged)
 	return merged, nil
@@ -428,8 +440,8 @@ func WriteMarkdown(w io.Writer, r core.Report) error {
 			p.OCPVersion, p.CNVVersion, p.CSIDriver.Name, r.Environment.Hardware.Nodes)
 	}
 	fmt.Fprintf(&b, "- Certified level: %d\n", r.Summary.CertifiedLevel)
-	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip (of %d)\n\n",
-		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.Total)
+	fmt.Fprintf(&b, "- Totals: %d pass / %d fail / %d error / %d skip / %d not_qualified (of %d)\n\n",
+		r.Summary.Pass, r.Summary.Fail, r.Summary.Error, r.Summary.Skip, r.Summary.NotQualified, r.Summary.Total)
 	if len(r.StorageSelections) > 0 {
 		b.WriteString("## Snapshot storage\n\n| TR | Scenario | Storage class | Snapshot class | Effective storage class |\n|----|----------|---------------|----------------|-------------------------|\n")
 		for _, s := range r.StorageSelections {

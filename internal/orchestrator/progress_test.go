@@ -3,11 +3,15 @@ package orchestrator
 import (
 	"bytes"
 	"log/slog"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
 )
+
+var tr1CompletedDurationRE = regexp.MustCompile(`status=completed test=TR-1 outcome=pass[^\n]*duration_s=([0-9.]+)`)
 
 func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 	var log bytes.Buffer
@@ -26,7 +30,10 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 	out := log.String()
 	for _, want := range []string{
 		`status=started completed=0 total=3 remaining=3 queued="[TR-1 TR-2 [small] TR-3]"`,
-		`status=completed test=TR-1 outcome=pass completed=1 total=3 remaining=2`,
+		`status=started test=TR-1`,
+		`status=completed test=TR-1 outcome=pass`,
+		`completed=1 total=3 remaining=2`,
+		`finished_at=`,
 		`status=complete completed=3 total=3 remaining=0`,
 		`passed=[TR-1]`,
 		`failed="[TR-2 [small]]"`,
@@ -35,6 +42,14 @@ func TestProgressLogsQueuedAndFinalLists(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("log missing %q:\n%s", want, out)
 		}
+	}
+	m := tr1CompletedDurationRE.FindStringSubmatch(out)
+	if len(m) != 2 {
+		t.Fatalf("TR-1 completion line with duration_s not found:\n%s", out)
+	}
+	duration, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || duration <= 0 {
+		t.Fatalf("TR-1 duration_s should be positive, got %q (parse err=%v)", m[1], err)
 	}
 }
 
