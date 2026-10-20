@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${repo_root}"
 # shellcheck source=ci-utils.sh
 source "${repo_root}/ci/scripts/ci-utils.sh"
-acquire_local_image_lock
+acquire_smoke_run_lock
 archive_run_image_tests_log
 ci_log_init "run-image-tests"
 
