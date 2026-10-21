@@ -4,7 +4,7 @@
 #
 # PR trees are bundled on ubuntu-latest. Self-hosted jobs check out trusted
 # default-branch CI glue only, download the PR artifact to pr-src/, and invoke
-# ci/scripts/live-cluster-smoke.sh from main via bash (never execute PR scripts).
+# ci/scripts/run-harness/live-cluster-smoke.sh from main via bash (never execute PR scripts).
 
 name: CI Live Smoke
 
@@ -111,11 +111,11 @@ jobs:
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
-          if [[ ! -f ci/scripts/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/live-cluster-smoke.sh is not on main; skipping live smoke"
+          if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
+            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
             exit 0
           fi
-          bash ci/scripts/live-cluster-smoke.sh
+          bash ci/scripts/run-harness/live-cluster-smoke.sh
 
   resolve-comment:
     if: >-
@@ -202,11 +202,11 @@ jobs:
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
-          if [[ ! -f ci/scripts/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/live-cluster-smoke.sh is not on main; skipping live smoke"
+          if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
+            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
             exit 0
           fi
-          bash ci/scripts/live-cluster-smoke.sh
+          bash ci/scripts/run-harness/live-cluster-smoke.sh
 
   resolve-dispatch:
     if: >-
@@ -294,8 +294,8 @@ jobs:
       - name: Run live cluster smoke
         run: |
           set -euo pipefail
-          if [[ ! -f ci/scripts/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/live-cluster-smoke.sh is not on main; skipping live smoke"
+          if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
+            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
             exit 0
           fi
-          bash ci/scripts/live-cluster-smoke.sh
+          bash ci/scripts/run-harness/live-cluster-smoke.sh

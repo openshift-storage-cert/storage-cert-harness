@@ -5,8 +5,8 @@ set -euo pipefail
 usage() {
 	cat <<'EOF'
 Usage:
-  ./ci/scripts/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
-	BACKEND=<name> ./ci/scripts/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
+  ./ci/scripts/run-harness/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
+	BACKEND=<name> ./ci/scripts/run-harness/run-quay-image-tests.sh [VERSION] [KUBECONFIG]
 	BACKEND=<name> make run-quay-image-tests [VERSION=<version>] [KUBECONFIG=<path>]
 
 Pull and run quay.io/virtarraycert/storage-cert-harness:<version>.
@@ -27,10 +27,10 @@ if [[ "$#" -gt 2 ]]; then
 	exit 2
 fi
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${repo_root}"
-# shellcheck source=ci-utils.sh
-source "${repo_root}/ci/scripts/ci-utils.sh"
+_run_harness_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../ci-utils.sh
+source "${_run_harness_dir}/../ci-utils.sh"
+repo_root="${REPO_ROOT}"
 ci_log_init "run-quay-image-tests"
 
 command -v podman >/dev/null 2>&1 || {

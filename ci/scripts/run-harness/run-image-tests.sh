@@ -2,10 +2,12 @@
 # Run the harness smoke plan after validating the local cluster and backend.
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${repo_root}"
-# shellcheck source=ci-utils.sh
-source "${repo_root}/ci/scripts/ci-utils.sh"
+_run_harness_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../ci-utils.sh
+source "${_run_harness_dir}/../ci-utils.sh"
+# shellcheck source=smoke-cluster-lease.sh
+source "${_run_harness_dir}/smoke-cluster-lease.sh"
+repo_root="${REPO_ROOT}"
 acquire_smoke_run_lock
 archive_run_image_tests_log
 ci_log_init "run-image-tests"
@@ -95,6 +97,11 @@ oc "${oc_args[@]}" whoami --show-server >/dev/null || {
 	exit 1
 }
 echo "validation passed: cluster is reachable"
+
+export SMOKE_CLUSTER_LEASE_KUBECONFIG="$(realpath "${KUBECONFIG}")"
+smoke_cluster_lease_acquire "harness-smoke" "${plan}"
+smoke_cluster_lease_install_traps "_ci_log_flush"
+smoke_cluster_lease_start_renewal_loop
 
 if ! nodes="$(oc "${oc_args[@]}" get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}')"; then
 	echo "error: unable to read cluster nodes" >&2
