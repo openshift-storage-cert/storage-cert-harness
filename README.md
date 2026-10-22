@@ -12,23 +12,28 @@ functional checks, and emits a certification report.
 
 - GNU Make
 - Go 1.26.9 or newer
+- Podman (for the local container image)
 
 Verify the required tools:
 
 ```sh
 make --version
 go version
+podman --version
 ```
 
 ## Quickstart
 
 ```sh
-make build
+make image-build-local
 ./bin/harness list --catalog examples/catalog.example.json
 ./bin/harness run  --catalog examples/catalog.example.json \
                    --thresholds thresholds.example.json \
                    --partner-level 3 --output ./out
 ```
+
+`make image-build-local` builds the local container image and also rebuilds
+`bin/harness`, used by the commands above.
 
 `thresholds.example.json` contains example values. The certification
 `thresholds.json` is supplied with the repository inputs and is passed at run
