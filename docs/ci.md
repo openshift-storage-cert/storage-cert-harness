@@ -370,10 +370,15 @@ named image is not present in Podman.
 
 ### Smoke run lock
 
-`run-harness/run-image-tests.sh` acquires a separate exclusive `flock` on
-`work/smoke-run.lock` so two local smoke runs cannot overlap (log archive,
-`work/harness-smoke-work`, and `work/harness-smoke-report`). Smoke does not
-hold the image lock; `make build` and a long smoke run may proceed in parallel.
+`run-harness/run-image-tests.sh` acquires a separate non-blocking `flock` on
+`work/smoke-run.lock` so two local smoke runs cannot overlap (`work/harness-smoke-work`
+and `work/harness-smoke-report`). If the lock is held, the script exits immediately
+with code **3** and a message that local smoke is already running (it does not wait).
+Preflight output (including failed lock or cluster lease acquisition) goes to
+`logs/run-image-tests-temp.log`; the prior `logs/run-image-tests.log` is archived
+and a new run log is opened only after both the local lock and cluster lease are
+acquired. Smoke does not hold the image lock; `make build` and a long smoke run may
+proceed in parallel.
 
 Both locks are released automatically when the owning process exits, including
 when a command fails. The image lock is not a transaction: a failed build can

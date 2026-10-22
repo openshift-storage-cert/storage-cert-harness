@@ -22,7 +22,7 @@ for f in ci-utils.sh build.sh ci.sh image-build.sh image-push.sh \
 done
 
 echo "==> layout-check: ci/scripts/run-harness/"
-for f in run-image-tests.sh run-quay-image-tests.sh live-cluster-smoke.sh \
+for f in Makefile run-image-tests.sh run-quay-image-tests.sh live-cluster-smoke.sh \
 	smoke-cluster-lease.sh replay-smoke.sh; do
 	[[ -f "${REPO_ROOT}/ci/scripts/run-harness/${f}" ]] || fail "missing ci/scripts/run-harness/${f}"
 done

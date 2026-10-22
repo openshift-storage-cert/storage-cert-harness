@@ -334,9 +334,11 @@ smoke_cluster_lease_release() {
 	fi
 
 	echo "smoke lease: releasing ${SMOKE_CLUSTER_LEASE_NAME}"
-	oc "${oc_args[@]}" delete lease "${SMOKE_CLUSTER_LEASE_NAME}" \
+	if ! oc "${oc_args[@]}" delete lease "${SMOKE_CLUSTER_LEASE_NAME}" \
 		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
-		--ignore-not-found >/dev/null || true
+		--ignore-not-found; then
+		echo "smoke lease: warning: failed to delete lease (may expire via TTL)" >&2
+	fi
 	export SMOKE_CLUSTER_LEASE_HELD=0
 }
 
@@ -391,9 +393,9 @@ smoke_cluster_lease_install_traps() {
 		# shellcheck disable=SC2064
 		trap "smoke_cluster_lease_on_exit; ${after}" EXIT
 		# shellcheck disable=SC2064
-		trap "smoke_cluster_lease_on_exit; exit 130" INT
+		trap "smoke_cluster_lease_on_exit; ${after}; exit 130" INT
 		# shellcheck disable=SC2064
-		trap "smoke_cluster_lease_on_exit; exit 143" TERM
+		trap "smoke_cluster_lease_on_exit; ${after}; exit 143" TERM
 	else
 		trap 'smoke_cluster_lease_on_exit' EXIT
 		trap 'smoke_cluster_lease_on_exit; exit 130' INT

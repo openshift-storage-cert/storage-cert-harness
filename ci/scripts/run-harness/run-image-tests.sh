@@ -8,9 +8,8 @@ source "${_run_harness_dir}/../ci-utils.sh"
 # shellcheck source=smoke-cluster-lease.sh
 source "${_run_harness_dir}/smoke-cluster-lease.sh"
 repo_root="${REPO_ROOT}"
+ci_log_init_temp "run-image-tests"
 acquire_smoke_run_lock
-archive_run_image_tests_log
-ci_log_init "run-image-tests"
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2
@@ -100,7 +99,10 @@ echo "validation passed: cluster is reachable"
 
 export SMOKE_CLUSTER_LEASE_KUBECONFIG="$(realpath "${KUBECONFIG}")"
 smoke_cluster_lease_acquire "harness-smoke" "${plan}"
+# Trap before log commit so lease is released on any later failure (commit, preflight, harness).
 smoke_cluster_lease_install_traps "_ci_log_flush"
+
+commit_harness_smoke_run_log "run-image-tests"
 smoke_cluster_lease_start_renewal_loop
 
 if ! nodes="$(oc "${oc_args[@]}" get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}')"; then
