@@ -320,6 +320,31 @@ archive_run_image_tests_log() {
 	echo "smoke hygiene: archived previous smoke log"
 }
 
+# Remove run-image-tests log files under logs/ (not other CI job logs).
+clean_smoke_run_logs() {
+	echo "smoke hygiene: removing smoke run logs under ${LOG_DIR}/"
+	local removed=0
+	for pattern in run-image-tests.log run-image-tests-temp.log; do
+		local path="${LOG_DIR}/${pattern}"
+		if [[ -f "${path}" ]]; then
+			rm -f -- "${path}"
+			removed=1
+		fi
+	done
+	shopt -s nullglob
+	local archived=( "${LOG_DIR}"/run-image-tests-*.log )
+	shopt -u nullglob
+	if [[ "${#archived[@]}" -gt 0 ]]; then
+		rm -f -- "${archived[@]}"
+		removed=1
+	fi
+	if [[ "${removed}" -eq 1 ]]; then
+		echo "smoke hygiene: smoke run logs removed"
+	else
+		echo "smoke hygiene: no smoke run logs to remove"
+	fi
+}
+
 # Drop harness smoke work/report trees under work/ (kubeconfig, backends, catalog, image ref kept).
 clean_harness_smoke_artifacts() {
 	local work="${REPO_ROOT}/work"

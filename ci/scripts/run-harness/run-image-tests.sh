@@ -28,7 +28,7 @@ echo "validation passed: kubeconfig is readable (${KUBECONFIG})"
 }
 echo "validation passed: local image reference is available"
 [[ -s work/backends.local.yaml ]] || {
-	echo "error: backend configuration is missing or empty: work/backends.local.yaml" >&2
+	echo "error: backend configuration is missing: work/backends.local.yaml (run: make prepare-smoke-env)" >&2
 	exit 1
 }
 echo "validation passed: backend configuration is available"
@@ -47,14 +47,17 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 }
 echo "validation passed: yq is available"
 
-thresholds_file="thresholds-smoke.json"
-[[ -s "${thresholds_file}" ]] || {
-	echo "error: smoke thresholds bundle missing: ${thresholds_file}" >&2
+harness_thresholds="work/harness-run-thresholds.json"
+[[ -s "${harness_thresholds}" ]] || {
+	echo "error: smoke thresholds missing: ${harness_thresholds} (run: make prepare-smoke-env)" >&2
 	exit 1
 }
-harness_thresholds="work/harness-run-thresholds.json"
-cp -f "${thresholds_file}" "${harness_thresholds}"
-echo "validation passed: using ${thresholds_file} -> ${harness_thresholds}"
+echo "validation passed: using staged smoke thresholds (${harness_thresholds})"
+[[ -s work/catalog.json ]] || {
+	echo "error: work/catalog.json is missing (run: make prepare-smoke-env)" >&2
+	exit 1
+}
+echo "validation passed: catalog is available (work/catalog.json)"
 
 backend="${BACKEND:-$(${yq_bin} e -r '.backend // ""' "${plan}")}"
 [[ -n "${backend}" ]] || {

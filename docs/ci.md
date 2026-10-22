@@ -404,6 +404,23 @@ acquire time). Verify behavior with
 `./ci/scripts/run-harness/test-smoke-cluster-lease.sh` (uses a dedicated
 `*-selftest` lease name; requires lease RBAC in `storage-cert-ci`).
 
+### Smoke configuration staging (`work/`)
+
+Tracked smoke inputs live under **`ci/config/smoke/`** (do not edit without
+maintainer review). Before a run, stage them into gitignored `work/`:
+
+| Make target | Purpose |
+| --- | --- |
+| `prepare-smoke-env` | Copy bundle + repo `catalog.json` into `work/` |
+| `clean-smoke-env` | Remove harness smoke artifacts, smoke logs, staged copies |
+| `smoke-env` | `clean-smoke-env` then `prepare-smoke-env` |
+| `smoke-ci` | `smoke-env` then `run-harness-smoke` (CI / first-time flow) |
+
+You must supply **`work/kubeconfig`** (or `KUBECONFIG=`) with access to the lab
+cluster. `run-image-tests.sh` expects staged `work/backends.local.yaml`,
+`work/harness-run-thresholds.json`, and `work/catalog.json`. See
+[`ci/scripts/run-harness/README.md`](../ci/scripts/run-harness/README.md).
+
 ## Job images (no Docker Hub)
 
 Pins live in **`ci/config/images.env`**. Shell scripts source
@@ -614,8 +631,9 @@ output.
 
 Workflow [ci-live-smoke.yml](../.github/workflows/ci-live-smoke.yml) is **off**
 until repository variable `CI_LIVE_SMOKE_ENABLED` is set to `true` and the
-`live-smoke` environment has cluster secrets. Until then, use local
-`make run-harness-smoke`.
+`live-smoke` environment has cluster secrets. Until then, use local `make smoke-ci` (or `make prepare-smoke-env` then
+`make run-harness-smoke` after `make image-build-local` and placing
+`work/kubeconfig`).
 
 Today's other jobs use hosted GitHub runners (no cluster). The **live-smoke** job
 (planned; see design doc below) runs against a real OpenShift cluster using the
