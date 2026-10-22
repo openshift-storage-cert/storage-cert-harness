@@ -12,7 +12,7 @@ provider. GitLab CI is no longer supported.
 **`unittest.sh`** (`make unittest`) runs unit tests only (`go test ./...`:
 package tests and golden-file parser tests). It does not need a cluster.
 `make lint` / `make test` provide the corresponding local checks.
-Offline CLI smoke is `replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
+Offline CLI smoke is `run-harness/replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
 (see Open items).
 
 The GitHub Actions `supply-chain` job is gating: a failure fails the workflow.
@@ -365,20 +365,61 @@ rebuilds the binary under the same image lock for the full rebuild.
 starting a rebuild (remove `work/local-image-ref`, the prior Podman image,
 `dist/harness-image.tar`, and `dist/*-version.txt`). Local image validation
 always runs the local image with Podman and preserves its native platform;
-`image-contents-check.sh` and `run-image-tests.sh` refuse a stale ref when the
+`image-contents-check.sh` and `run-harness/run-image-tests.sh` refuse a stale ref when the
 named image is not present in Podman.
 
 ### Smoke run lock
 
-`run-image-tests.sh` acquires a separate exclusive `flock` on
-`work/smoke-run.lock` so two local smoke runs cannot overlap (log archive,
-`work/harness-smoke-work`, and `work/harness-smoke-report`). Smoke does not
-hold the image lock; `make build` and a long smoke run may proceed in parallel.
+`run-harness/run-image-tests.sh` acquires a separate non-blocking `flock` on
+`work/smoke-run.lock` so two local smoke runs cannot overlap (`work/harness-smoke-work`
+and `work/harness-smoke-report`). If the lock is held, the script exits immediately
+with code **3** and a message that local smoke is already running (it does not wait).
+Preflight output (including failed lock or cluster lease acquisition) goes to
+`logs/run-image-tests-temp.log`; the prior `logs/run-image-tests.log` is archived
+and a new run log is opened only after both the local lock and cluster lease are
+acquired. Smoke holds `local-image.lock` only briefly immediately before `podman run`:
+resolve `work/local-image-ref`, confirm the image exists, start the container, then
+release the lock while the harness runs inside Podman (avoids a TOCTOU race with
+`make image-build-local` during long preflight).
 
 Both locks are released automatically when the owning process exits, including
 when a command fails. The image lock is not a transaction: a failed build can
 leave partial engine layers, so rerun the relevant build before validation after
 an error. Lock files may remain on disk and are reused by subsequent runs.
+
+### Cluster smoke lease (shared lab / edge-112)
+
+`run-harness/run-image-tests.sh` and `run-harness/live-cluster-smoke.sh` acquire a Kubernetes
+**Coordination Lease** (`storage-cert-ci/storage-cert-harness-smoke`) via
+`ci/scripts/run-harness/smoke-cluster-lease.sh`: holder identity is the CI run id or
+`local-<user>-<epoch>` for developer runs; annotations record run id, host,
+plan, git SHA, and related metadata (see design doc §2). A background loop renews
+the lease every 5 minutes; `trap` on `EXIT` / `INT` / `TERM` stops renewal and
+deletes the lease when this run holds it. If another run holds the lease, the
+script exits with code **2** (cluster busy). Set
+`HARNESS_SMOKE_SKIP_CLUSTER_LEASE=true` to skip when the namespace is unavailable.
+Lease objects are rendered from
+`ci/config/smoke/cluster-smoke-lease.yaml.template` (placeholders replaced at
+acquire time). Verify behavior with
+`./ci/scripts/run-harness/test-smoke-cluster-lease.sh` (uses a dedicated
+`*-selftest` lease name; requires lease RBAC in `storage-cert-ci`).
+
+### Smoke configuration staging (`work/`)
+
+Tracked smoke inputs live under **`ci/config/smoke/`** (do not edit without
+maintainer review). Before a run, stage them into gitignored `work/`:
+
+| Make target | Purpose |
+| --- | --- |
+| `prepare-smoke-env` | Copy bundle + repo `catalog.json` into `work/` |
+| `clean-smoke-env` | Remove harness smoke artifacts, smoke logs, staged copies |
+| `smoke-env` | `clean-smoke-env` then `prepare-smoke-env` |
+| `smoke-ci` | `smoke-env` then `run-harness-smoke` (CI / first-time flow) |
+
+You must supply **`work/kubeconfig`** (or `KUBECONFIG=`) with access to the lab
+cluster. `run-image-tests.sh` expects staged `work/backends.local.yaml`,
+`work/harness-run-thresholds.json`, and `work/catalog.json`. See
+[`ci/scripts/run-harness/README.md`](../ci/scripts/run-harness/README.md).
 
 ## Job images (no Docker Hub)
 
@@ -498,7 +539,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `build.sh` | `bin/harness` with `binary_version()` ldflags |
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
-| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
+| `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (copies tools from digest-pinned `BUILD_IMAGE`). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
@@ -574,7 +615,7 @@ GitHub Actions fails the workflow when `supply-chain` fails.
 ### Replay-smoke job
 
 GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_SMOKE=true`; image build
-and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh` locally
+and publish do not depend on it. Run `./ci/scripts/run-harness/replay-smoke.sh` locally
 when needed.
 
 ### Image lint and scan jobs (non-blocking)
@@ -590,8 +631,9 @@ output.
 
 Workflow [ci-live-smoke.yml](../.github/workflows/ci-live-smoke.yml) is **off**
 until repository variable `CI_LIVE_SMOKE_ENABLED` is set to `true` and the
-`live-smoke` environment has cluster secrets. Until then, use local
-`make run-harness-smoke`.
+`live-smoke` environment has cluster secrets. Until then, use local `make smoke-ci` (or `make prepare-smoke-env` then
+`make run-harness-smoke` after `make image-build-local` and placing
+`work/kubeconfig`).
 
 Today's other jobs use hosted GitHub runners (no cluster). The **live-smoke** job
 (planned; see design doc below) runs against a real OpenShift cluster using the

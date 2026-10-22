@@ -11,8 +11,8 @@ endif
 
 .PHONY: all build test unittest vet lint lint-yaml lint-actions lint-md lint-go tidy cover \
 	run-example run-tr-stor-006 clean clean-image-cache ci ci-image replay-smoke image-build \
-	image-build-fresh image-build-local run-harness-smoke \
-	run-quay-image-tests \
+	image-build-fresh image-build-local prepare-smoke-env clean-smoke-env smoke-env smoke-ci \
+	run-harness-smoke run-quay-image-tests \
 	image-contents-check image-scan-trivy image-scan-dive image-scan image-push \
 	secret-scan supply-chain install-tools mirror-ci-tools sync-images set-next-version
 
@@ -65,12 +65,13 @@ ci-image:
 install-tools:
 	./ci/scripts/install-tools.sh
 
-# Intentionally a no-op: plans/example-smoke.yaml is not shipped in this repo.
-# Offline replay smoke runs via ./ci/scripts/ci.sh (which calls replay-smoke.sh
-# directly) or GitHub Actions when vars.CI_RUN_REPLAY_SMOKE=true.
-# the hosted runner and secrets to access the test cluster are not available.
+# Harness run scripts live under ci/scripts/run-harness/ (see Makefile there).
+RUN_HARNESS_MK := ci/scripts/run-harness/Makefile
+
+# Intentionally a no-op at root: plans/example-smoke.yaml is not shipped in this repo.
+# Offline replay: make ci, or make -f $(RUN_HARNESS_MK) replay-smoke.
 replay-smoke:
-	@echo "replay-smoke skipped by design (use ./ci/scripts/replay-smoke.sh or make ci)"
+	@echo "replay-smoke skipped by design (use make ci or: make -f $(RUN_HARNESS_MK) replay-smoke)"
 
 secret-scan:
 	./ci/scripts/secret-scan.sh
@@ -95,14 +96,19 @@ image-build-local: export GOARCH = $(LOCAL_GOARCH)
 image-build-local:
 	./ci/scripts/image-build-local.sh
 
+prepare-smoke-env clean-smoke-env smoke-env smoke-ci:
+	$(MAKE) --no-print-directory -f $(RUN_HARNESS_MK) $@
+
 # Run the live harness smoke plan; override KUBECONFIG to use another kubeconfig.
 run-harness-smoke:
-	./ci/scripts/run-image-tests.sh "$(or $(KUBECONFIG),work/kubeconfig)"
+	$(MAKE) --no-print-directory -f $(RUN_HARNESS_MK) run-harness-smoke \
+		KUBECONFIG="$(or $(KUBECONFIG),work/kubeconfig)"
 
 # Pull and run the published Quay image; override VERSION and KUBECONFIG as needed.
 # Example: make run-quay-image-tests VERSION=1.0.0
 run-quay-image-tests:
-	./ci/scripts/run-quay-image-tests.sh "$(or $(VERSION),latest)" "$(or $(KUBECONFIG),work/kubeconfig)"
+	$(MAKE) --no-print-directory -f $(RUN_HARNESS_MK) run-quay-image-tests \
+		VERSION="$(or $(VERSION),latest)" KUBECONFIG="$(or $(KUBECONFIG),work/kubeconfig)"
 
 image-contents-check:
 	./ci/scripts/image-contents-check.sh
