@@ -418,7 +418,7 @@ logs under `logs/`):
 
 ```bash
 make partner-package-results
-# creates certification-results-full.tar.gz in the repository root
+# creates certification-results-level3.tar.gz (load-80 + no-load-80 work/report + partner logs)
 ```
 
 ### If a run fails or exits non-zero
@@ -430,8 +430,8 @@ make partner-package-results
    **`logs/run-partner-cert-no-load-80.log`** (host Podman wrapper and
    validation output).
 3. When asked for a complete bundle, run `make partner-package-results` and
-   send **`certification-results-full.tar.gz`** (includes all `work/` and
-   `report/` files for both profiles when present).
+   send **`certification-results-level3.tar.gz`** (both profiles' `work/` and
+   `report/` trees plus helper logs).
 
 A non-zero exit can mean failed certification criteria; reports and logs are
 still written under `report/` and should be included in what you send to Red
@@ -489,7 +489,7 @@ make partner-package-results
 ```
 
 Submit the archive your Red Hat certification contact requests
-(`certification-results-junit.tar.gz`, `certification-results-full.tar.gz`, or
+(`certification-results-junit.tar.gz`, `certification-results-level3.tar.gz`, or
 both).
 
 ---
@@ -509,7 +509,7 @@ certification; Red Hat reviews the submission against applicable requirements.
 | `make partner-preflight` | Host + harness preflight |
 | `make partner-cert-load-80` | Load-80 certification run |
 | `make partner-cert-no-load-80` | No-load run with `--continue-from` |
-| `make partner-package-results` | Tar all `work/` + `report/` trees and helper logs |
+| `make partner-package-results` | Level 3 bundle → `certification-results-level3.tar.gz` |
 
 Common environment variables: `KUBECONFIG`, `BACKEND`, `HARNESS_IMAGE`,
 `CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).

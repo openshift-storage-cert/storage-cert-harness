@@ -391,7 +391,8 @@ Partners run Level 3 certification against the **published** Quay image (no loca
 | `make partner-preflight` | `run-partner-preflight.sh` | Host `oc` checks + `harness preflight` in the container |
 | `make partner-cert-load-80` | `run-partner-cert.sh load-80` | `plans/level3-customer-load-80.yaml`, root `thresholds.json` |
 | `make partner-cert-no-load-80` | `run-partner-cert.sh no-load-80` | `plans/level3-customer-no-load-80.yaml`, `--continue-from` load-80 report |
-| `make partner-package-results` | `run-partner-package-results.sh` | Tar all `certification-results/*/work` and `*/report` plus helper logs |
+| `make partner-package-results` | `run-partner-package-results.sh` | Level 3 → `certification-results-level3.tar.gz` (`load-80` + `no-load-80`) |
+| `make partner-smoke-package` | `run-partner-package-results.sh` | Lab smoke → `certification-results-smoke.tar.gz` (branch `test/partner-scripts-smoke`) |
 
 Required environment: `KUBECONFIG`, `BACKEND` (name in `backends.yaml`). Optional:
 `HARNESS_IMAGE` (default `quay.io/virtarraycert/storage-cert-harness:main`),
@@ -547,7 +548,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `partner-harness-common.sh` | Shared partner helpers (sourced): image default, backends/cluster validation, log and result archiving |
 | `run-partner-preflight.sh` | Partner preflight via published image (`make partner-preflight`) |
 | `run-partner-cert.sh` | Partner Level 3 load-80 or no-load-80 run (`make partner-cert-*`) |
-| `run-partner-package-results.sh` | Tar certification `work/` + `report/` trees and `logs/run-partner-*.log` |
+| `run-partner-package-results.sh` | `PARTNER_PACKAGE_MODE=level3\|smoke\|all`; default tarballs `certification-results-level3.tar.gz` or `-smoke.tar.gz` |
 | `run-image-tests.sh` | Live smoke with **local** image ref (`make run-harness-smoke`); holds `work/smoke-run.lock` |
 | `run-quay-image-tests.sh` | Pull and smoke **published** image against `work/` (`make run-quay-image-tests`) |
 

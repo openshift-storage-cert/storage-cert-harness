@@ -20,7 +20,7 @@ export BACKEND=partner-storage KUBECONFIG=/path/to/kubeconfig
 make partner-preflight
 make partner-cert-load-80
 make partner-cert-no-load-80
-make partner-package-results   # all work/ + report/ files for both runs
+make partner-package-results   # Level 3 bundle after load-80 + no-load-80 runs
 ```
 
 Level 3 uses `plans/level3-customer-load-80.yaml`,

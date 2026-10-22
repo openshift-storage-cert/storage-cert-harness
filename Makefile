@@ -121,7 +121,7 @@ partner-cert-no-load-80:
 	./ci/scripts/run-partner-cert.sh no-load-80 "$(or $(KUBECONFIG),kubeconfig)"
 
 partner-package-results:
-	./ci/scripts/run-partner-package-results.sh
+	PARTNER_PACKAGE_MODE=level3 ./ci/scripts/run-partner-package-results.sh
 
 image-contents-check:
 	./ci/scripts/image-contents-check.sh
