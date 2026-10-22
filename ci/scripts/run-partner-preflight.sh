@@ -61,6 +61,9 @@ fi
 validate_partner_cert_inputs "${repo_root}/catalog.json" "${thresholds_file}" "${plan_path}"
 validate_partner_backend_entry "${backends_file}" "${backend}"
 validate_partner_cluster_connectivity "${kubeconfig}" "${plan_path}"
+if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
+	validate_partner_level3_no_load_plan "${plan_path}"
+fi
 partner_pull_image "${image}"
 
 echo "==> harness preflight (container)"

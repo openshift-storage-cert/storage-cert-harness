@@ -82,6 +82,9 @@ validate_partner_backend_entry "${backends_file}" "${backend}"
 if [[ "${SKIP_HOST_VALIDATE:-false}" != "true" ]]; then
 	validate_partner_cluster_connectivity "${kubeconfig}" "${plan_path}"
 fi
+if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
+	validate_partner_level3_no_load_plan "${plan_path}"
+fi
 partner_pull_image "${image}"
 
 partner_prepare_result_dir "${out_dir}"

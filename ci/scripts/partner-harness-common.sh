@@ -210,6 +210,41 @@ validate_partner_cluster_connectivity() {
 	fi
 }
 
+# Fail fast when the Level-3 no-load plan still has template placeholders or missing TR-VIRT-010 params.
+validate_partner_level3_no_load_plan() {
+	local plan_path="$1"
+	local yq_bin="${YQ:-$(command -v yq)}"
+	[[ -n "${yq_bin}" && -x "${yq_bin}" ]] || return 0
+
+	local placeholders
+	placeholders="$("${yq_bin}" e -r '
+		.overrides
+		| .. | select(tag == "!!str")
+		| select(test("<") and test(">"))
+	' "${plan_path}")"
+	if [[ -n "${placeholders}" ]]; then
+		echo "error: plan still has placeholders; edit ${plan_path} before preflight (section 3 of PARTNER-CERTIFICATION-GUIDE.md):" >&2
+		while IFS= read -r line; do
+			[[ -z "${line}" ]] && continue
+			echo "  - ${line}" >&2
+		done <<< "${placeholders}"
+		exit 1
+	fi
+
+	local replicas snapshot_count
+	replicas="$("${yq_bin}" e -r '.overrides."TR-VIRT-010".replicas // 0' "${plan_path}")"
+	snapshot_count="$("${yq_bin}" e -r '.overrides."TR-VIRT-010".snapshot_count // 0' "${plan_path}")"
+	if [[ ! "${replicas}" =~ ^[0-9]+$ || "${replicas}" -lt 1 ]]; then
+		echo "error: set overrides.TR-VIRT-010.replicas (>= 1) in ${plan_path}" >&2
+		exit 1
+	fi
+	if [[ ! "${snapshot_count}" =~ ^[0-9]+$ || "${snapshot_count}" -lt 1 ]]; then
+		echo "error: set overrides.TR-VIRT-010.snapshot_count (>= 1) in ${plan_path}" >&2
+		exit 1
+	fi
+	echo "validation passed: Level-3 no-load plan overrides are customized (no placeholders; TR-VIRT-010 params set)"
+}
+
 partner_pull_image() {
 	local image="$1"
 	echo "==> pulling ${image}"

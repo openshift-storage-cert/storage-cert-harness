@@ -296,6 +296,25 @@ presence lines.
 Preflight does **not** evaluate SLA numeric values in `thresholds.json`. Resolve
 every `[FAIL]` preflight line before starting certification runs.
 
+### Backend vs plan customization in preflight
+
+Storage comes from **`BACKEND` and `backends.yaml`**, not from a `backend:` field
+in the plan. A successful host check plus a harness log line like
+`using backend name=… storage_class=…` means the backend is configured; you do
+**not** need to copy storage class names into the plan.
+
+If preflight fails after backend checks pass, the cause is usually an
+**unchanged plan template** in `plans/level3-customer-no-load-80.yaml`, for example:
+
+| Symptom in `logs/run-partner-preflight.log` | Fix in the plan |
+| --- | --- |
+| `TR-VIRT-010 parameters: param "replicas" must be >= 1` | Set `overrides.TR-VIRT-010.replicas` and `snapshot_count` (not `{}`). |
+| `node_name "<TARGET_NODE_…>" is not a schedulable worker` | Replace `<TARGET_NODE_…>` and other `<…>` placeholders with real worker names. |
+| `target_node=<TARGET_NODE_TO_DRAIN>` still in the log | Set `overrides.TR-VIRT-008.target_node` and `overrides.TR-VIRT-007.node`. |
+
+Partner scripts validate the no-load plan on the host before `podman pull` when
+placeholders or missing TR-VIRT-010 parameters remain.
+
 To use a different plan for preflight tool selection:
 
 ```bash
