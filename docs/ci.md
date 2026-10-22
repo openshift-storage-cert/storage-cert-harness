@@ -377,8 +377,10 @@ with code **3** and a message that local smoke is already running (it does not w
 Preflight output (including failed lock or cluster lease acquisition) goes to
 `logs/run-image-tests-temp.log`; the prior `logs/run-image-tests.log` is archived
 and a new run log is opened only after both the local lock and cluster lease are
-acquired. Smoke does not hold the image lock; `make build` and a long smoke run may
-proceed in parallel.
+acquired. Smoke holds `local-image.lock` only briefly immediately before `podman run`:
+resolve `work/local-image-ref`, confirm the image exists, start the container, then
+release the lock while the harness runs inside Podman (avoids a TOCTOU race with
+`make image-build-local` during long preflight).
 
 Both locks are released automatically when the owning process exits, including
 when a command fails. The image lock is not a transaction: a failed build can

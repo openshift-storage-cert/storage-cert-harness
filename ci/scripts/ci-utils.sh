@@ -191,6 +191,58 @@ acquire_local_image_lock() {
 	export LOCAL_IMAGE_LOCK_HELD=1
 }
 
+# Resolve work/local-image-ref and confirm the image exists in Podman (stdout = image ref).
+harness_smoke_resolve_local_image() {
+	local ref="${REPO_ROOT}/work/local-image-ref"
+	local image
+	[[ -s "${ref}" ]] || die "work/local-image-ref is missing; run 'make image-build-local' first"
+	image="$(tr -d '[:space:]' < "${ref}")"
+	[[ -n "${image}" ]] || die "work/local-image-ref is empty; run 'make image-build-local' first"
+	command -v podman >/dev/null 2>&1 || die "podman is required"
+	podman image exists "${image}" >/dev/null 2>&1 ||
+		die "local image ${image} is missing (stale work/local-image-ref); run 'make image-build-local' first"
+	echo "${image}"
+}
+
+# Hold local-image.lock from image check through podman start; release once the container is running.
+# Args: podman run flags, then "--", then harness "run" subcommand flags (image ref is resolved here).
+harness_smoke_run_podman() {
+	require_cmd flock
+	mkdir -p "${REPO_ROOT}/work"
+	local lock="${REPO_ROOT}/work/local-image.lock"
+	local -a podman_opts=()
+	local -a harness_args=()
+	local arg saw_sep=0
+	for arg in "$@"; do
+		if [[ "${arg}" == "--" ]]; then
+			saw_sep=1
+			continue
+		fi
+		if [[ "${saw_sep}" -eq 0 ]]; then
+			podman_opts+=("${arg}")
+		else
+			harness_args+=("${arg}")
+		fi
+	done
+	[[ "${saw_sep}" -eq 1 ]] || die "harness_smoke_run_podman: expected '--' before harness run arguments"
+	local exit_code=0
+	(
+		exec 200>"${lock}"
+		flock -x 200
+		local image
+		image="$(harness_smoke_resolve_local_image)"
+		echo "validation passed: local harness image '${image}' present (image lock held for podman start)"
+		podman run "${podman_opts[@]}" "${image}" run "${harness_args[@]}" &
+		local podman_pid=$!
+		flock -u 200
+		wait "${podman_pid}"
+		exit_code=$?
+		exit "${exit_code}"
+	)
+	exit_code=$?
+	return "${exit_code}"
+}
+
 # Exit when another local smoke holds work/smoke-run.lock (distinct from lease busy).
 SMOKE_RUN_LOCK_EXIT_BUSY="${SMOKE_RUN_LOCK_EXIT_BUSY:-3}"
 
