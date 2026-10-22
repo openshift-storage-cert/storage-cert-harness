@@ -77,7 +77,7 @@ validate_partner_kubeconfig "${kubeconfig}"
 validate_partner_backends_file "${backends_file}"
 plan_path="${repo_root}/${plan}"
 validate_partner_cert_inputs "${repo_root}/catalog.json" "${thresholds_file}" "${plan_path}"
-partner_print_run_inputs "${repo_root}" "${plan}"
+partner_print_run_inputs "${repo_root}" "${plan}" "${profile}"
 validate_partner_backend_entry "${backends_file}" "${backend}"
 if [[ "${SKIP_HOST_VALIDATE:-false}" != "true" ]]; then
 	validate_partner_cluster_connectivity "${kubeconfig}" "${plan_path}"
@@ -88,7 +88,8 @@ fi
 partner_pull_image "${image}"
 
 partner_prepare_result_dir "${out_dir}"
-mkdir -p "${work_dir}" "${report_dir}"
+work_dir="$(partner_abs_dir "${work_dir}")"
+report_dir="$(partner_abs_dir "${report_dir}")"
 
 continue_args=()
 prior_mount=""

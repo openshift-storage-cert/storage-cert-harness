@@ -7,12 +7,11 @@ usage() {
 Usage:
   ./ci/scripts/run-partner-package-results.sh [OUTPUT_TAR]
 
-Creates a gzip tarball with every file under:
-  certification-results/load-80/work/
-  certification-results/load-80/report/
-  certification-results/no-load-80/work/
-  certification-results/no-load-80/report/
-  logs/run-partner-*.log (most recent helper logs, if present)
+Creates a gzip tarball with every file under each present profile tree:
+  certification-results/load-80/{work,report}/
+  certification-results/no-load-80/{work,report}/
+  certification-results/smoke/{work,report}/   (partner smoke test runs)
+  logs/run-partner-*.log (helper logs, if present)
 
 Default OUTPUT_TAR: certification-results-full.tar.gz in the repository root.
 
@@ -39,7 +38,7 @@ out_tar="${1:-certification-results-full.tar.gz}"
 [[ "${out_tar}" = /* ]] || out_tar="${repo_root}/${out_tar}"
 
 paths=()
-for profile in load-80 no-load-80; do
+for profile in load-80 no-load-80 smoke; do
 	for sub in work report; do
 		dir="${results_root}/${profile}/${sub}"
 		if [[ -d "${dir}" ]]; then

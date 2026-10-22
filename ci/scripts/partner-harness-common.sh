@@ -30,11 +30,21 @@ partner_plan_for_profile() {
 }
 
 partner_print_run_inputs() {
-	local repo_root="$1" plan_rel="$2"
-	echo "==> Level 3 certification inputs (repository root: ${repo_root})"
-	echo "    plan:       ${repo_root}/${plan_rel}"
-	echo "    thresholds: ${repo_root}/${PARTNER_THRESHOLDS_FILE} (same file for load-80 and no-load-80)"
+	local repo_root="$1" plan_rel="$2" profile="${3:-}"
+	local plan_display="${plan_rel}"
+	[[ "${plan_display}" = /* ]] || plan_display="${repo_root}/${plan_display}"
+	echo "==> harness run inputs (repository root: ${repo_root})"
+	echo "    profile:    ${profile:-certification}"
+	echo "    plan:       ${plan_display}"
+	echo "    thresholds: ${repo_root}/${PARTNER_THRESHOLDS_FILE}"
 	echo "    catalog:    ${repo_root}/catalog.json"
+}
+
+# Podman treats non-absolute -v sources as named volumes; bind mounts need absolute paths.
+partner_abs_dir() {
+	local dir="$1"
+	mkdir -p "${dir}"
+	realpath "${dir}"
 }
 
 # If path exists (file or directory), rename it with a UTC timestamp suffix.
