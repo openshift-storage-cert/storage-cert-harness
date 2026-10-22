@@ -54,6 +54,40 @@ send both the host log in `logs/` and that profile’s `report/run.log`.
 > against the same cluster are not supported. **This is currently your
 > responsibility** to enforce.
 
+### Certification flow (Level 3)
+
+Use this sequence after the cluster and CSI driver are ready. Details for each
+step are in the numbered sections below.
+
+```mermaid
+flowchart TD
+  A[Clone repo on Podman host] --> B[Create backends.yaml + export BACKEND]
+  B --> C[Edit level3 plan placeholders section 3]
+  C --> D[export KUBECONFIG]
+  D --> E[make partner-preflight]
+  E -->|pass| F[External ~80% load on cluster]
+  F --> G[make partner-cert-load-80]
+  G --> H[Remove external load]
+  H --> I[make partner-cert-no-load-80]
+  I --> J[make partner-package-results]
+  J --> K[Submit certification-results-level3.tar.gz + attestations]
+  E -->|fail| T[Fix host/plan/backend see troubleshooting]
+  G -->|fail| T
+  I -->|fail| T
+```
+
+| Step | Command | Success signal |
+| --- | --- | --- |
+| 1 | Prepare cluster (section 1) | CSI `StorageClass` / `VolumeSnapshotClass` healthy |
+| 2 | `backends.yaml` + `export BACKEND=…` (sections 2–3) | Name matches plan usage via `BACKEND` only |
+| 3 | Edit `plans/level3-customer-no-load-80.yaml` (section 3) | No `<…>` placeholders; TR-VIRT-010 `replicas` / `snapshot_count` set |
+| 4 | `export KUBECONFIG=…` (sections 4–5) | `oc whoami` and `get nodes` succeed |
+| 5 | `make partner-preflight` (section 7) | Exit 0; no `[FAIL]` lines in host log or container output |
+| 6 | `make partner-cert-load-80` (section 8) | `certification-results/load-80/report/report.json` present |
+| 7 | `make partner-cert-no-load-80` (section 8) | Merged report under `no-load-80/report/` |
+| 8 | `make partner-package-results` (sections 9–11) | `certification-results-level3.tar.gz` created |
+| 9 | Attestations if required (section 10) | Claims merged into final report when applicable |
+
 ---
 
 ## 1. Prepare an OpenShift cluster with a storage backend
@@ -313,7 +347,8 @@ If preflight fails after backend checks pass, the cause is usually an
 | `target_node=<TARGET_NODE_TO_DRAIN>` still in the log | Set `overrides.TR-VIRT-008.target_node` and `overrides.TR-VIRT-007.node`. |
 
 Partner scripts validate the no-load plan on the host before `podman pull` when
-placeholders or missing TR-VIRT-010 parameters remain.
+placeholders or missing TR-VIRT-010 parameters remain. For a full list of host
+and preflight failure patterns, see **section 13**.
 
 To use a different plan for preflight tool selection:
 
@@ -418,20 +453,35 @@ logs under `logs/`):
 
 ```bash
 make partner-package-results
-# creates certification-results-level3.tar.gz (load-80 + no-load-80 work/report + partner logs)
+# PARTNER_PACKAGE_MODE=level3 (default) → certification-results-level3.tar.gz
 ```
+
+| Packaging mode | How to invoke | Archive | Contents |
+| --- | --- | --- | --- |
+| **level3** (certification) | `make partner-package-results` | `certification-results-level3.tar.gz` | `load-80` and `no-load-80` each `work/` + `report/`; `logs/run-partner-*.log` |
+| **all** (optional) | `PARTNER_PACKAGE_MODE=all ./ci/scripts/run-partner-package-results.sh` | `certification-results-full.tar.gz` | Every present profile under `certification-results/` (skips missing trees) |
+
+Set `PARTNER_PACKAGE_LOGS=false` to omit host helper logs from the tarball.
+Set `CERT_RESULTS_ROOT` if results are not under `./certification-results`.
+
+The packaging script fails fast in **level3** mode when either profile is
+missing a `work/` or `report/` directory (see **Packaging errors** in
+troubleshooting).
 
 ### If a run fails or exits non-zero
 
-1. Send **`certification-results/<profile>/report/run.log`** — full harness and
-   tool output for that profile.
-2. Send the matching helper log, for example
-   **`logs/run-partner-cert-load-80.log`** or
-   **`logs/run-partner-cert-no-load-80.log`** (host Podman wrapper and
-   validation output).
-3. When asked for a complete bundle, run `make partner-package-results` and
-   send **`certification-results-level3.tar.gz`** (both profiles' `work/` and
-   `report/` trees plus helper logs).
+Collect evidence in this order (full detail in **Error tracking and
+troubleshooting**):
+
+1. **`certification-results/<profile>/report/run.log`** — harness and tool output
+   for that profile.
+2. Matching host log: **`logs/run-partner-preflight.log`**,
+   **`logs/run-partner-cert-load-80.log`**, or
+   **`logs/run-partner-cert-no-load-80.log`**.
+3. **`report.json`**, **`report.junit.xml`**, and **`report.md`** under the same
+   `report/` directory when they exist.
+4. For a complete bundle after both runs (or partial when Red Hat asks):
+   **`certification-results-level3.tar.gz`** from `make partner-package-results`.
 
 A non-zero exit can mean failed certification criteria; reports and logs are
 still written under `report/` and should be included in what you send to Red
@@ -502,6 +552,110 @@ certification; Red Hat reviews the submission against applicable requirements.
 
 ---
 
+## 13. Error tracking and troubleshooting
+
+Partner runs produce **three layers** of evidence. Use them together to find
+whether a failure happened before the container started, during harness
+preflight, or during a certification `run`.
+
+| Layer | Where to look | What it captures |
+| --- | --- | --- |
+| **Host validation** | `logs/run-partner-*.log` (start of file) | `podman` / `oc` / `yq` checks; `BACKEND`; cluster API; nodes `Ready`; storage and snapshot classes; plan placeholders (no-load plan) |
+| **Harness in container** | Same log (after `==> harness preflight` or `==> harness run`) | Tool preflight `[FAIL]` / `[PASS]`; backend resolution; CRDs; per-TR execution |
+| **Profile artifacts** | `certification-results/<profile>/report/` | `run.log` (duplicate of in-container stream for `run`), `report.json`, JUnit, graded criteria |
+
+Archived logs and result trees: before each partner command, an existing
+`logs/run-partner-<name>.log` or `certification-results/<profile>/` directory
+is renamed with a UTC timestamp so the latest attempt keeps the short name.
+Search older `*-20261022T…` siblings when comparing retries.
+
+### Quick triage by stage
+
+| Stage | Symptom | First file to open |
+| --- | --- | --- |
+| Before `podman pull` | Immediate `error:` on stderr; make exits in seconds | `logs/run-partner-preflight.log` or `logs/run-partner-cert-*.log` |
+| After pull, preflight | `[FAIL]` lines; exit non-zero | Same host log + search for first `[FAIL]` |
+| Certification `run` | Long run then non-zero | `certification-results/<profile>/report/run.log` then host log tail |
+| Packaging | `error: incomplete level3 results` | Run missing profile (`make partner-cert-load-80` / `no-load-80`) |
+
+### Host script errors (before the container)
+
+These appear as `error:` lines in the host log. The wrapper exits before
+`podman pull` unless noted.
+
+| Message (pattern) | Cause | Fix |
+| --- | --- | --- |
+| `set BACKEND to the name of your entry` | `BACKEND` unset or wrong | `export BACKEND=<name>` matching `backends.yaml` |
+| `podman is required` | Podman not installed or not on `PATH` | Install Podman; use the host recommended in this guide |
+| `oc is required for cluster connectivity` | OpenShift CLI missing | Install `oc`; same host as `KUBECONFIG` |
+| `kubeconfig is missing or unreadable` | Bad `KUBECONFIG` path | `export KUBECONFIG=/absolute/path`; file mode readable |
+| `cluster is not reachable` | API down, wrong context, or TLS | `oc --kubeconfig "$KUBECONFIG" whoami`; fix VPN/firewall/certs |
+| `node '…' is not Ready` | Worker not ready | `oc get nodes`; fix machine / CNI before cert runs |
+| `storage class '…' from backends does not exist` | Wrong `storage_class` in `backends.yaml` | `oc get storageclass`; fix spelling and driver |
+| `volume snapshot class '…' … does not exist` | Wrong `snapshot_class` | `oc get volumesnapshotclass` |
+| `backend '…' is not defined` / `has no storage_class` | Invalid `backends.yaml` | Section 2; install `yq` if validation asks for it |
+| `plan still has placeholders` | Angle-bracket strings in no-load plan | Section 3; host lists each placeholder line |
+| `set overrides.TR-VIRT-010.replicas` / `snapshot_count` | TR-VIRT-010 still `{}` or zero | Set both fields `>= 1` in the no-load plan |
+| `plan node '…' does not exist` | Typo in `node` / `target_node` / `node_name` | `oc get nodes`; use exact worker names |
+| `no-load-80 requires a prior load-80 report` | Run 2 before Run 1 or archived results | Complete `make partner-cert-load-80` first, or set `CONTINUE_FROM` to `report.json` path |
+| `catalog missing` / `thresholds missing` / `plan missing` | Repo incomplete or wrong cwd | Run from repository root; do not delete shipped `catalog.json` / `thresholds.json` / `plans/` |
+
+### Harness preflight `[FAIL]` (inside the container)
+
+Host checks can pass while harness preflight still fails. Scroll the host log
+to the container section or grep for `[FAIL]`.
+
+| Typical `[FAIL]` theme | Usually means | Fix |
+| --- | --- | --- |
+| `TR-VIRT-010 parameters` / `replicas` | Plan overrides not applied | Section 3; re-run after editing no-load plan |
+| `node_name` / `target_node` / schedulable worker | Placeholder or control-plane node | Real worker names from `oc get nodes` |
+| Storage class / snapshot class (harness wording) | Class not visible inside container | Same as host class checks; driver must be cluster-scoped |
+| Missing CRD (KubeVirt, CDI, snapshot) | Feature not installed | `docs/cluster-requirements.md` |
+| Tool binary / parameter errors | Plan `overrides` incompatible with cluster | Read the full `[FAIL]` line; adjust overrides per TR docs |
+
+Preflight does **not** read SLA numbers from `thresholds.json`. A preflight
+pass does not guarantee certification pass.
+
+### Certification run failures
+
+| Symptom | Check |
+| --- | --- |
+| Exit non-zero but `report.json` exists | Open `report.json` / JUnit for failed criteria; send `run.log` + host log |
+| Run killed or disk full mid-run | Host log tail; free space under `certification-results/…/work/` |
+| Load-80 passed; no-load fails immediately on host | `CONTINUE_FROM` path; ensure `load-80/report/report.json` not archived away |
+| Podman volume / mount errors | Scripts use **absolute** paths for `work/` and `report/`; run from repo root; do not substitute relative `-v` paths manually |
+
+For load-80, maintain external ~80% load for the **entire** `partner-cert-load-80`
+window. Removing load early can fail storage criteria even when the harness exits cleanly.
+
+### Packaging errors
+
+| Message | Cause | Fix |
+| --- | --- | --- |
+| `incomplete level3 results; missing:` | One profile never run or only `report/` without `work/` | Run both `make partner-cert-load-80` and `make partner-cert-no-load-80` |
+| `hint: run make partner-cert-load-80 and … no-load-80` | Same as above | Complete section 8 before `partner-package-results` |
+| `nothing to package for mode=level3` | Empty `certification-results/` | Run certification profiles first |
+| `invalid PARTNER_PACKAGE_MODE` | Typo in env | Use `level3` or `all` for partner certification |
+
+### What to send Red Hat (failure or evidence)
+
+Minimum for a **single failed profile**:
+
+- `certification-results/<profile>/report/run.log`
+- `logs/run-partner-cert-<profile>.log` (or preflight log if failure was there)
+- `report.junit.xml` and `report.json` when present
+
+Preferred **full Level 3 submission**:
+
+- `certification-results-level3.tar.gz` from `make partner-package-results`
+- Attestations when your program requires them (section 10)
+
+Include the **image tag** you used (`HARNESS_IMAGE` or default
+`quay.io/virtarraycert/storage-cert-harness:main`) and the git commit or tag of
+this repository clone if you customized plans.
+
+---
+
 ## Makefile reference (partner)
 
 | Target | Purpose |
@@ -511,7 +665,19 @@ certification; Red Hat reviews the submission against applicable requirements.
 | `make partner-cert-no-load-80` | No-load run with `--continue-from` |
 | `make partner-package-results` | Level 3 bundle → `certification-results-level3.tar.gz` |
 
-Common environment variables: `KUBECONFIG`, `BACKEND`, `HARNESS_IMAGE`,
-`CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).
+| Variable | Used by | Purpose |
+| --- | --- | --- |
+| `KUBECONFIG` | All partner targets | Cluster credentials (mounted read-only) |
+| `BACKEND` | All | Name of entry in `backends.yaml` (required) |
+| `BACKENDS` | Scripts | Path to backends file (default `backends.yaml`) |
+| `HARNESS_IMAGE` | Scripts | Override Quay image (default `:main` on virtarraycert repo) |
+| `PLAN` | Preflight (and host validation for that plan) | Default `plans/level3-customer-no-load-80.yaml` |
+| `CERT_RESULTS_ROOT` | Cert + package | Results base dir (default `certification-results`) |
+| `CONTINUE_FROM` | `no-load-80` only | Prior `report.json` (default load-80 report path) |
+| `PARTNER_KEEP_WORK` | Cert + preflight logs | When `true`, skip archiving prior results/logs |
+| `SKIP_HOST_VALIDATE` | Cert only | When `true`, skip host `oc` checks (not for production cert) |
+| `PARTNER_PACKAGE_MODE` | Package script | `level3` (default via make), or `all` |
+| `PARTNER_PACKAGE_LOGS` | Package script | Include `logs/run-partner-*.log` (default `true`) |
 
 Host execution logs: see **Host logs (`logs/`)** at the top of this guide.
+Troubleshooting: section **13**.
