@@ -15,7 +15,112 @@ The harness runs the Test Requirements selected by a test plan, collects tool
 results, evaluates them against `thresholds.json`, and writes a certification
 report.
 
+## Workflow overview
+
+High-level steps, then how `make partner-*` maps to host scripts, the published
+image on Quay, and result directories. Install host tools from the cloned repo
+before any `make partner-*` run (see [Prerequisites](#prerequisites)).
+
+```mermaid
+flowchart TD
+  A[Clone repo on Podman host] --> B[Install host tools]
+  B --> B2[./ci/scripts/install-partner-tools.sh + oc on PATH]
+  B2 --> C[Create backends.yaml + export BACKEND]
+  C --> D[Edit level3 plan placeholders section 3]
+  D --> E[export KUBECONFIG]
+  E --> F[make partner-preflight]
+  F -->|pass| G[External ~80% load on cluster]
+  G --> H[make partner-cert-load-80]
+  H --> I[Remove external load]
+  I --> J[make partner-cert-no-load-80]
+  J --> K[make partner-package-results]
+  K --> L[Submit certification-results-level3.tar.gz + attestations]
+  F -->|fail| T[Fix host/plan/backend see troubleshooting]
+  H -->|fail| T
+  J -->|fail| T
+```
+
+### Sequence: Make targets, wrappers, and published image
+
+Each `make partner-*` target runs a script under `ci/scripts/`. Host checks run
+on the workstation; harness work runs inside
+`quay.io/virtarraycert/storage-cert-harness:main` via Podman.
+
+```mermaid
+sequenceDiagram
+    actor Partner
+    participant Make
+    participant Wrapper as Partner scripts
+    participant Host as Host validation
+    participant Cluster as OpenShift cluster
+    participant Quay
+    participant Harness as Published harness image
+    participant Results as certification-results
+    participant Logs as logs/
+
+    Partner->>Partner: ./ci/scripts/install-partner-tools.sh
+    Note over Partner: Install oc from Red Hat; source partner-host-env.sh
+    Partner->>Partner: install-partner-tools.sh --check and podman pull
+
+    Partner->>Make: make partner-preflight
+    Make->>Wrapper: run-partner-preflight.sh
+    Wrapper->>Host: podman, oc, yq, backends, plan
+    Host->>Cluster: API, nodes Ready, storage/snapshot classes
+    Wrapper->>Quay: podman pull
+    Wrapper->>Harness: harness preflight
+    Harness-->>Wrapper: PASS / FAIL per tool
+    Wrapper->>Logs: run-partner-preflight.log
+
+    Partner->>Make: make partner-cert-load-80
+    Make->>Wrapper: run-partner-cert.sh load-80
+    Wrapper->>Host: validate inputs and cluster
+    Wrapper->>Quay: podman pull
+    Wrapper->>Harness: harness run (load-80 plan)
+    Harness->>Cluster: Test Requirements under external load
+    Harness->>Results: load-80/work and load-80/report
+    Wrapper->>Logs: run-partner-cert-load-80.log
+
+    Partner->>Make: make partner-cert-no-load-80
+    Make->>Wrapper: run-partner-cert.sh no-load-80
+    Wrapper->>Results: read load-80/report/report.json
+    Wrapper->>Harness: harness run (--continue-from)
+    Harness->>Cluster: remaining Level 3 criteria
+    Harness->>Results: no-load-80/work and merged report
+    Wrapper->>Logs: run-partner-cert-no-load-80.log
+
+    Partner->>Make: make partner-package-results
+    Make->>Wrapper: run-partner-package-results.sh
+    Wrapper->>Results: load-80 and no-load-80 work/ and report/
+    Wrapper->>Logs: run-partner-*.log
+    Wrapper-->>Partner: certification-results-level3.tar.gz
+```
+
+### Flow: packaging Level 3 results
+
+`make partner-package-results` archives both certification profiles and partner
+helper logs into one tarball (requires completed load-80 and no-load-80 runs).
+
+```mermaid
+flowchart LR
+    subgraph profiles [Certification profiles]
+        L[load-80/work + report]
+        N[no-load-80/work + report]
+    end
+    subgraph host [Host transcripts]
+        H[logs/run-partner-preflight.log]
+        HL[logs/run-partner-cert-load-80.log]
+        HN[logs/run-partner-cert-no-load-80.log]
+    end
+    L --> PKG[run-partner-package-results.sh]
+    N --> PKG
+    H --> PKG
+    HL --> PKG
+    HN --> PKG
+    PKG --> TAR[certification-results-level3.tar.gz]
+```
+
 ---
+
 
 ## Prerequisites
 
@@ -238,38 +343,23 @@ send both the host log in `logs/` and that profile’s `report/run.log`.
 
 ### Certification flow (Level 3)
 
-Use this sequence after the cluster and CSI driver are ready. Details for each
-step are in the numbered sections below.
-
-```mermaid
-flowchart TD
-  A[Clone repo on Podman host] --> B[Create backends.yaml + export BACKEND]
-  B --> C[Edit level3 plan placeholders section 3]
-  C --> D[export KUBECONFIG]
-  D --> E[make partner-preflight]
-  E -->|pass| F[External ~80% load on cluster]
-  F --> G[make partner-cert-load-80]
-  G --> H[Remove external load]
-  H --> I[make partner-cert-no-load-80]
-  I --> J[make partner-package-results]
-  J --> K[Submit certification-results-level3.tar.gz + attestations]
-  E -->|fail| T[Fix host/plan/backend see troubleshooting]
-  G -->|fail| T
-  I -->|fail| T
-```
+Use this sequence after the cluster and CSI driver are ready. Mermaid diagrams
+for the full workflow are in **[Workflow overview](#workflow-overview)** at the
+top of this guide. Details for each step are in the numbered sections below.
 
 | Step | Command | Success signal |
 | --- | --- | --- |
-| 0 | Prerequisites: `./ci/scripts/install-partner-tools.sh --check` | Required tools + `podman pull` succeed |
-| 1 | Prepare cluster (section 1) | CSI `StorageClass` / `VolumeSnapshotClass` healthy |
-| 2 | `backends.yaml` + `export BACKEND=…` (sections 2–3) | Name matches plan usage via `BACKEND` only |
-| 3 | Edit `plans/level3-customer-no-load-80.yaml` (section 3) | No `<…>` placeholders; TR-VIRT-010 `replicas` / `snapshot_count` set |
-| 4 | `export KUBECONFIG=…` (sections 4–5) | `oc whoami` and `get nodes` succeed |
-| 5 | `make partner-preflight` (section 7) | Exit 0; no `[FAIL]` lines in host log or container output |
-| 6 | `make partner-cert-load-80` (section 8) | `certification-results/load-80/report/report.json` present |
-| 7 | `make partner-cert-no-load-80` (section 8) | Merged report under `no-load-80/report/` |
-| 8 | `make partner-package-results` (sections 9–11) | `certification-results-level3.tar.gz` created |
-| 9 | Attestations if required (section 10) | Claims merged into final report when applicable |
+| 0 | Clone repo; `git checkout main` (Prerequisites) | Repository root with plans and `thresholds.json` |
+| 1 | `./ci/scripts/install-partner-tools.sh`; install `oc`; `--check`; `podman pull` | `verify ok all required partner tools` |
+| 2 | Prepare cluster (section 1) | CSI `StorageClass` / `VolumeSnapshotClass` healthy |
+| 3 | `backends.yaml` + `export BACKEND=…` (sections 2–3) | Name matches plan usage via `BACKEND` only |
+| 4 | Edit `plans/level3-customer-no-load-80.yaml` (section 3) | No `<…>` placeholders; TR-VIRT-010 `replicas` / `snapshot_count` set |
+| 5 | `export KUBECONFIG=…` (sections 4–5) | `oc whoami` and `get nodes` succeed |
+| 6 | `make partner-preflight` (section 7) | Exit 0; no `[FAIL]` lines in host log or container output |
+| 7 | `make partner-cert-load-80` (section 8) | `certification-results/load-80/report/report.json` present |
+| 8 | `make partner-cert-no-load-80` (section 8) | Merged report under `no-load-80/report/` |
+| 9 | `make partner-package-results` (sections 9–11) | `certification-results-level3.tar.gz` created |
+| 10 | Attestations if required (section 10) | Claims merged into final report when applicable |
 
 ---
 
@@ -636,20 +726,18 @@ logs under `logs/`):
 
 ```bash
 make partner-package-results
-# PARTNER_PACKAGE_MODE=level3 (default) → certification-results-level3.tar.gz
+# creates certification-results-level3.tar.gz
 ```
 
-| Packaging mode | How to invoke | Archive | Contents |
-| --- | --- | --- | --- |
-| **level3** (certification) | `make partner-package-results` | `certification-results-level3.tar.gz` | `load-80` and `no-load-80` each `work/` + `report/`; `logs/run-partner-*.log` |
-| **all** (optional) | `PARTNER_PACKAGE_MODE=all ./ci/scripts/run-partner-package-results.sh` | `certification-results-full.tar.gz` | Every present profile under `certification-results/` (skips missing trees) |
+| Output | Contents |
+| --- | --- |
+| `certification-results-level3.tar.gz` | `load-80` and `no-load-80` each `work/` + `report/`; `logs/run-partner-*.log` |
 
 Set `PARTNER_PACKAGE_LOGS=false` to omit host helper logs from the tarball.
 Set `CERT_RESULTS_ROOT` if results are not under `./certification-results`.
 
-The packaging script fails fast in **level3** mode when either profile is
-missing a `work/` or `report/` directory (see **Packaging errors** in
-troubleshooting).
+Packaging fails if either profile is missing a `work/` or `report/` directory
+(see **Packaging errors** in troubleshooting).
 
 ### If a run fails or exits non-zero
 
@@ -822,7 +910,6 @@ window. Removing load early can fail storage criteria even when the harness exit
 | `incomplete level3 results; missing:` | One profile never run or only `report/` without `work/` | Run both `make partner-cert-load-80` and `make partner-cert-no-load-80` |
 | `hint: run make partner-cert-load-80 and … no-load-80` | Same as above | Complete section 8 before `partner-package-results` |
 | `nothing to package for mode=level3` | Empty `certification-results/` | Run certification profiles first |
-| `invalid PARTNER_PACKAGE_MODE` | Typo in env | Use `level3` or `all` for partner certification |
 
 ### What to send Red Hat (failure or evidence)
 
@@ -863,7 +950,6 @@ this repository clone if you customized plans.
 | `CONTINUE_FROM` | `no-load-80` only | Prior `report.json` (default load-80 report path) |
 | `PARTNER_KEEP_WORK` | Cert + preflight logs | When `true`, skip archiving prior results/logs |
 | `SKIP_HOST_VALIDATE` | Cert only | When `true`, skip host `oc` checks (not for production cert) |
-| `PARTNER_PACKAGE_MODE` | Package script | `level3` (default via make), or `all` |
 | `PARTNER_PACKAGE_LOGS` | Package script | Include `logs/run-partner-*.log` (default `true`) |
 
 Host execution logs: see **Host logs (`logs/`)** at the top of this guide.
