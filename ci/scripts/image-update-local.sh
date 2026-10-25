@@ -14,10 +14,14 @@ case "${target_arch}" in
 esac
 
 echo "building local harness image for linux/${target_arch}"
-TARGETARCH="${target_arch}" "${CI_SCRIPTS_DIR}/build.sh"
+GOOS=linux TARGETARCH="${target_arch}" "${CI_SCRIPTS_DIR}/build.sh"
 TARGETARCH="${target_arch}" "${CI_SCRIPTS_DIR}/image-build.sh"
 
 ref="${QUAY_IMAGE}:local"
 echo "pushing ${ref} to Quay using the existing ${eng} login"
-"${eng}" push "${ref}"
+if [[ "${eng}" == "buildah" ]]; then
+	buildah push "${ref}" "docker://${ref}"
+else
+	"${eng}" push "${ref}"
+fi
 echo "pushed ${ref}"
