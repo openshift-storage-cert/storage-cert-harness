@@ -321,7 +321,7 @@ verify_partner_tools() {
 	verify_one tar tar --version || true
 
 	if ! partner_local_yq_ok; then
-		echo "verify FAIL  yq  (need mikefarah yq at ${USER_BIN}/yq; run ./ci/install-partner-tools.sh)" >&2
+		echo "verify FAIL  yq  (need mikefarah yq at ${USER_BIN}/yq; run ./ci/scripts/install-partner-tools.sh)" >&2
 		failed=1
 	else
 		yq_bin="${USER_BIN}/yq"

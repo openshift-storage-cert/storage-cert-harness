@@ -33,8 +33,8 @@ reporting errors.
 Host tools for `make partner-*` (install once, then `make` as usual):
 
 ```sh
-./ci/install-partner-tools.sh          # installs missing tools, then verifies each binary
-./ci/install-partner-tools.sh --check  # same verification without installing
+./ci/scripts/install-partner-tools.sh          # installs missing tools, then verifies each binary
+./ci/scripts/install-partner-tools.sh --check  # same verification without installing
 ```
 
 See **Verify prerequisites** in [PARTNER-CERTIFICATION-GUIDE.md](PARTNER-CERTIFICATION-GUIDE.md) for manual copy-paste checks.
@@ -45,7 +45,7 @@ installed under **`~/.local/bin`** for your user (curl from GitHub), not
 `/usr/bin`. New terminals do not pick that up until you run
 `source ./ci/scripts/partner-host-env.sh` (or put `~/.local/bin` on `PATH`).
 **git**, **make**, and **oc** use the system or your existing install (`oc` from
-Red Hat). Re-run `./ci/install-partner-tools.sh` if you removed `~/.local/bin/yq`
+Red Hat). Re-run `./ci/scripts/install-partner-tools.sh` if you removed `~/.local/bin/yq`
 or `~/.local/bin/jq` while testing. See
 [PARTNER-CERTIFICATION-GUIDE.md](PARTNER-CERTIFICATION-GUIDE.md) Prerequisites.
 

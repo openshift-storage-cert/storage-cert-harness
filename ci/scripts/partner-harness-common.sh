@@ -133,7 +133,7 @@ validate_partner_backend_entry() {
 	local yq_bin
 	yq_bin="$(partner_resolve_yq || true)"
 	[[ -n "${yq_bin}" && -x "${yq_bin}" ]] || {
-		echo "error: yq is required to validate the backends file (install: ./ci/install-partner-tools.sh; then: source ./ci/scripts/partner-host-env.sh)" >&2
+		echo "error: yq is required to validate the backends file (install: ./ci/scripts/install-partner-tools.sh; then: source ./ci/scripts/partner-host-env.sh)" >&2
 		exit 1
 	}
 	echo "validation passed: yq is available"

@@ -77,12 +77,11 @@ is for harness developers and requires Go):
 
 ```bash
 cd storage-cert-harness
-./ci/install-partner-tools.sh
-# or: ./ci/scripts/install-partner-tools.sh
+./ci/scripts/install-partner-tools.sh
 
 # After installing oc manually:
 export PATH="${HOME}/.local/bin:${PATH}"
-./ci/install-partner-tools.sh --check
+./ci/scripts/install-partner-tools.sh --check
 ```
 
 The script can install or verify **git**, **make**, **podman**, **yq**, and
@@ -98,14 +97,14 @@ missing, even if `/usr/bin/jq` or an old `yq` exists. Other users or shells do
 not see them until you `export PATH` or run
 `source ./ci/scripts/partner-host-env.sh` in that shell. To remove only the
 partner copies, delete `~/.local/bin/yq` and `~/.local/bin/jq`, then run
-`./ci/install-partner-tools.sh` again to restore them.
+`./ci/scripts/install-partner-tools.sh` again to restore them.
 
-If **`./ci/install-partner-tools.sh` fails** (unsupported OS package manager,
+If **`./ci/scripts/install-partner-tools.sh` fails** (unsupported OS package manager,
 no `sudo`, air-gapped host, or download errors), install each missing tool with
 your platform’s packages or vendor binaries, then run `--check` again.
 
 Red Hat engineers building the harness image may use
-**`./ci/install-tools.sh`** (or `./ci/scripts/install-tools.sh`, `make install-tools`).
+**`./ci/scripts/install-tools.sh`** (`make install-tools`).
 That script installs CI scanners, linters, and related tooling and **requires
 Go 1.26+**. If it fails, install the reported tools for your platform manually.
 It is not the default path for storage partners running certification.
@@ -142,7 +141,7 @@ oc get nodes
 
 | Symptom | What to check |
 | --- | --- |
-| `oc: command not found` | Install `oc`; re-run `./ci/install-partner-tools.sh --check` |
+| `oc: command not found` | Install `oc`; re-run `./ci/scripts/install-partner-tools.sh --check` |
 | `error: cluster is not reachable` | VPN, firewall, wrong `KUBECONFIG`, expired token |
 | `Unable to connect to the server` | API URL in kubeconfig; TLS trust (`oc login` or corporate proxy) |
 | `storage class … does not exist` | Fix `backends.yaml`; `oc get storageclass` |
@@ -151,8 +150,8 @@ oc get nodes
 
 ### Verify prerequisites
 
-The installer runs the same checks at the end of `./ci/install-partner-tools.sh`
-and `./ci/install-partner-tools.sh --check` (version commands plus a short **yq**
+The installer runs the same checks at the end of `./ci/scripts/install-partner-tools.sh`
+and `./ci/scripts/install-partner-tools.sh --check` (version commands plus a short **yq**
 /**jq** smoke test). You can repeat them manually:
 
 ```bash
@@ -160,7 +159,7 @@ and `./ci/install-partner-tools.sh --check` (version commands plus a short **yq*
 source ./ci/scripts/partner-host-env.sh
 
 # Automated check + per-binary verification (exit 0 = ready)
-./ci/install-partner-tools.sh --check
+./ci/scripts/install-partner-tools.sh --check
 
 # Manual copy-paste verification (optional; mirrors the installer)
 set -e
@@ -261,7 +260,7 @@ flowchart TD
 
 | Step | Command | Success signal |
 | --- | --- | --- |
-| 0 | Prerequisites: `./ci/install-partner-tools.sh --check` | Required tools + `podman pull` succeed |
+| 0 | Prerequisites: `./ci/scripts/install-partner-tools.sh --check` | Required tools + `podman pull` succeed |
 | 1 | Prepare cluster (section 1) | CSI `StorageClass` / `VolumeSnapshotClass` healthy |
 | 2 | `backends.yaml` + `export BACKEND=…` (sections 2–3) | Name matches plan usage via `BACKEND` only |
 | 3 | Edit `plans/level3-customer-no-load-80.yaml` (section 3) | No `<…>` placeholders; TR-VIRT-010 `replicas` / `snapshot_count` set |
@@ -740,7 +739,7 @@ certification; Red Hat reviews the submission against applicable requirements.
 
 Missing host tools (`podman`, `oc`, `yq`, `make`) usually fail before any
 container starts; see **Prerequisites** and re-run
-`./ci/install-partner-tools.sh --check`.
+`./ci/scripts/install-partner-tools.sh --check`.
 
 Partner runs produce **three layers** of evidence. Use them together to find
 whether a failure happened before the container started, during harness

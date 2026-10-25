@@ -48,6 +48,5 @@ report.md
 work1/kubeconfig-ecosys2
 certification-results*
 
-# Local-only partner install test helpers (not shipped)
+# Local-only partner install test helper (not shipped)
 ci/scripts/uninstall-partner-tools.sh
-ci/uninstall-partner-tools.sh
