@@ -121,7 +121,6 @@ flowchart LR
 
 ---
 
-
 ## Prerequisites
 
 Run partner certification from a **Linux** or **macOS** workstation that can
