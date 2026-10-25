@@ -15,6 +15,189 @@ The harness runs the Test Requirements selected by a test plan, collects tool
 results, evaluates them against `thresholds.json`, and writes a certification
 report.
 
+---
+
+## Prerequisites
+
+Run partner certification from a **Linux** or **macOS** workstation that can
+reach your OpenShift API and pull images from Quay. Install host tools before
+you clone the repository or run `make partner-*`.
+
+### Supported platforms
+
+| Platform | Support | Notes |
+| --- | --- | --- |
+| **Linux** (Fedora, RHEL, CentOS Stream, Rocky, Alma, Ubuntu, Debian) | **Supported** | Primary target for certification; use `dnf`/`apt` packages where noted below. |
+| **macOS** (Apple Silicon or Intel) | **Partial** | `oc`, `yq`, and `jq` work; Podman typically needs [Podman Machine](https://podman.io/docs/installation#macos). Not validated for every certification workload. |
+| **Windows** (native, CMD, PowerShell) | **Not supported** | Use a supported Linux VM or bare-metal host instead. WSL2 is not validated for partner runs. |
+
+### Tools required by partner Makefile targets
+
+The wrappers `./ci/scripts/run-partner-*.sh` (invoked by `make`) check host
+tools before starting Podman. **`make partner-cert-no-load-80`** uses the same
+host requirements as **`make partner-cert-load-80`**.
+
+| Tool | `make partner-preflight` | `make partner-cert-load-80` | `make partner-package-results` | Role |
+| --- | --- | --- | --- | --- |
+| **git** | Clone repo (one-time) | — | — | Download this repository |
+| **make** | yes | yes | yes | Invokes partner scripts |
+| **bash** | yes | yes | yes | Scripts (`#!/usr/bin/env bash`) |
+| **podman** | yes | yes | — | Pull and run the published harness image |
+| **oc** | yes | yes* | — | API reachability, nodes `Ready`, storage/snapshot classes, plan nodes |
+| **yq** | yes | yes | — | Parse `backends.yaml` and Level-3 plan overrides on the host |
+| **tar** | — | — | yes | Build `certification-results-level3.tar.gz` |
+| **curl** | — | — | — | Used only by the install script when downloading `yq` / `jq` binaries |
+
+\* Set `SKIP_HOST_VALIDATE=true` only for exceptional debugging; normal
+certification runs must keep host `oc` checks enabled.
+
+**Recommended (not invoked by the scripts):**
+
+| Tool | Purpose |
+| --- | --- |
+| **jq** | Inspect `oc … -o json` output and `report.json` on the host |
+| **python3** | Optional local automation; partner `make` targets do not call Python |
+
+### Obtain the repository
+
+```bash
+git clone <your-certification-git-url>/storage-cert-harness.git
+cd storage-cert-harness
+git checkout main   # default branch for Level 3 certification
+```
+
+Run certification on the **`main`** branch unless your Red Hat certification
+contact directs you to a different branch or tag. All `make partner-*` commands
+run from the **repository root**.
+
+### Install host tools (automated script)
+
+Partners should use the **partner** installer (not `make install-tools`, which
+is for harness developers and requires Go):
+
+```bash
+cd storage-cert-harness
+./ci/install-partner-tools.sh
+# or: ./ci/scripts/install-partner-tools.sh
+
+# After installing oc manually:
+export PATH="${HOME}/.local/bin:${PATH}"
+./ci/install-partner-tools.sh --check
+```
+
+The script can install or verify **git**, **make**, **podman**, **yq**, and
+**jq** (into `~/.local/bin` when needed). It prints guidance for **oc**, which
+you must install from Red Hat (see below). It may use **python3** only to
+report status; partner runs do not require Python.
+
+Package management inside the installer: **podman** via **dnf** (Fedora/RHEL),
+**apt** (Debian/Ubuntu), or **brew** (macOS); **yq** and **jq** via **curl**
+into **`~/.local/bin` only** (per Linux/macOS user, not system-wide). The
+installer **always** (re)downloads **yq** and **jq** there when those files are
+missing, even if `/usr/bin/jq` or an old `yq` exists. Other users or shells do
+not see them until you `export PATH` or run
+`source ./ci/scripts/partner-host-env.sh` in that shell. To remove only the
+partner copies, delete `~/.local/bin/yq` and `~/.local/bin/jq`, then run
+`./ci/install-partner-tools.sh` again to restore them.
+
+If **`./ci/install-partner-tools.sh` fails** (unsupported OS package manager,
+no `sudo`, air-gapped host, or download errors), install each missing tool with
+your platform’s packages or vendor binaries, then run `--check` again.
+
+Red Hat engineers building the harness image may use
+**`./ci/install-tools.sh`** (or `./ci/scripts/install-tools.sh`, `make install-tools`).
+That script installs CI scanners, linters, and related tooling and **requires
+Go 1.26+**. If it fails, install the reported tools for your platform manually.
+It is not the default path for storage partners running certification.
+
+### Manual installation by platform
+
+| Tool | Fedora / RHEL (`dnf`) | Ubuntu / Debian (`apt`) | macOS (`brew`) |
+| --- | --- | --- | --- |
+| git | `sudo dnf install -y git` | `sudo apt install -y git` | `brew install git` |
+| make | `sudo dnf install -y make` | `sudo apt install -y make` | Xcode CLT or `brew install make` |
+| podman | `sudo dnf install -y podman` | `sudo apt install -y podman` | `brew install podman` (+ `podman machine init`) |
+| yq | `sudo dnf install -y yq` or partner script | `sudo snap install yq` or partner script | `brew install yq` or partner script |
+| jq | `sudo dnf install -y jq` | `sudo apt install -y jq` | `brew install jq` |
+| python3 | `sudo dnf install -y python3` | `sudo apt install -y python3` | `brew install python` |
+
+### OpenShift CLI (`oc`)
+
+`oc` is **required** for `make partner-preflight` and `make partner-cert-*`
+unless you explicitly skip host validation (not for production certification).
+
+1. Download the client that matches your cluster version from
+   [OpenShift downloads](https://console.redhat.com/openshift/downloads) (or
+   your cluster’s shipped `oc` binary).
+2. Install it on your `PATH` and ensure it is executable.
+3. Point certification at your cluster:
+
+```bash
+export KUBECONFIG=/absolute/path/to/kubeconfig
+oc whoami --show-server
+oc get nodes
+```
+
+**Troubleshooting `oc`:**
+
+| Symptom | What to check |
+| --- | --- |
+| `oc: command not found` | Install `oc`; re-run `./ci/install-partner-tools.sh --check` |
+| `error: cluster is not reachable` | VPN, firewall, wrong `KUBECONFIG`, expired token |
+| `Unable to connect to the server` | API URL in kubeconfig; TLS trust (`oc login` or corporate proxy) |
+| `storage class … does not exist` | Fix `backends.yaml`; `oc get storageclass` |
+| `node … is not Ready` | Fix cluster health before certification |
+| Permission errors on create | Kubeconfig user must manage namespaces, VMs, PVCs per plan |
+
+### Verify prerequisites
+
+The installer runs the same checks at the end of `./ci/install-partner-tools.sh`
+and `./ci/install-partner-tools.sh --check` (version commands plus a short **yq**
+/**jq** smoke test). You can repeat them manually:
+
+```bash
+# Prefer partner-host-env (PATH + clears stale bash hash to deleted /usr/bin/yq)
+source ./ci/scripts/partner-host-env.sh
+
+# Automated check + per-binary verification (exit 0 = ready)
+./ci/install-partner-tools.sh --check
+
+# Manual copy-paste verification (optional; mirrors the installer)
+set -e
+git --version
+make --version
+bash --version
+podman --version
+tar --version
+test -x "${HOME}/.local/bin/yq"
+"${HOME}/.local/bin/yq" --version
+printf 'probe: partner-yq\n' | yq e -r '.probe' -
+test -x "${HOME}/.local/bin/jq" && "${HOME}/.local/bin/jq" --version && echo '{}' | "${HOME}/.local/bin/jq" . >/dev/null
+python3 --version   # optional
+oc version --client
+
+# Harness image
+podman pull quay.io/virtarraycert/storage-cert-harness:main
+```
+
+Expected highlights:
+
+| Check | Example success output |
+| --- | --- |
+| `yq e -r '.probe' -` | `partner-yq` (confirms [mikefarah/yq](https://github.com/mikefarah/yq), not distro `python-yq`) |
+| `install-partner-tools.sh --check` | `verify ok all required partner tools` then `all required partner tools present` |
+| `podman pull …` | Image layers download without auth errors |
+
+If interactive `yq` fails with `/usr/bin/yq: No such file or directory` after you
+removed a system package, bash is still using a **hashed** old path. Run
+`source ./ci/scripts/partner-host-env.sh` (or `hash -r`) in that shell, then
+`yq --version` again. `make partner-*` scripts source the same helper automatically.
+
+When verification and `podman pull` succeed, continue with cluster preparation
+(section 1) and the certification flow below.
+
+---
+
 ### Pull and verify the harness image
 
 On the host that will run certification, confirm you can pull the `main` image
@@ -78,6 +261,7 @@ flowchart TD
 
 | Step | Command | Success signal |
 | --- | --- | --- |
+| 0 | Prerequisites: `./ci/install-partner-tools.sh --check` | Required tools + `podman pull` succeed |
 | 1 | Prepare cluster (section 1) | CSI `StorageClass` / `VolumeSnapshotClass` healthy |
 | 2 | `backends.yaml` + `export BACKEND=…` (sections 2–3) | Name matches plan usage via `BACKEND` only |
 | 3 | Edit `plans/level3-customer-no-load-80.yaml` (section 3) | No `<…>` placeholders; TR-VIRT-010 `replicas` / `snapshot_count` set |
@@ -553,6 +737,10 @@ certification; Red Hat reviews the submission against applicable requirements.
 ---
 
 ## 13. Error tracking and troubleshooting
+
+Missing host tools (`podman`, `oc`, `yq`, `make`) usually fail before any
+container starts; see **Prerequisites** and re-run
+`./ci/install-partner-tools.sh --check`.
 
 Partner runs produce **three layers** of evidence. Use them together to find
 whether a failure happened before the container started, during harness

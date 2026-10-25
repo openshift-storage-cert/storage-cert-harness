@@ -3,6 +3,9 @@
 # Source from run-partner-*.sh; do not execute directly.
 set -euo pipefail
 
+# shellcheck source=partner-host-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/partner-host-env.sh"
+
 # Level-3 customer certification inputs (paths relative to repository root).
 PARTNER_THRESHOLDS_FILE="${PARTNER_THRESHOLDS_FILE:-thresholds.json}"
 PARTNER_PLAN_LOAD_80="${PARTNER_PLAN_LOAD_80:-plans/level3-customer-load-80.yaml}"
@@ -127,9 +130,10 @@ validate_partner_cert_inputs() {
 
 validate_partner_backend_entry() {
 	local backends_file="$1" backend="$2"
-	local yq_bin="${YQ:-$(command -v yq || true)}"
+	local yq_bin
+	yq_bin="$(partner_resolve_yq || true)"
 	[[ -n "${yq_bin}" && -x "${yq_bin}" ]] || {
-		echo "error: yq is required to validate the backends file" >&2
+		echo "error: yq is required to validate the backends file (install: ./ci/install-partner-tools.sh; then: source ./ci/scripts/partner-host-env.sh)" >&2
 		exit 1
 	}
 	echo "validation passed: yq is available"
@@ -205,7 +209,8 @@ validate_partner_cluster_connectivity() {
 	echo "validation passed: volume snapshot class '${PARTNER_SNAPSHOT_CLASS}' exists in the cluster"
 
 	if [[ -n "${plan}" && -s "${plan}" ]]; then
-		local yq_bin="${YQ:-$(command -v yq)}"
+		local yq_bin
+		yq_bin="$(partner_resolve_yq)"
 		local plan_nodes
 		plan_nodes="$("${yq_bin}" e -r '.. | select(tag == "!!map") | select(has("node_name") or has("target_node")) | (.node_name // .target_node) | select(. != null and . != "")' "${plan}")"
 		while IFS= read -r plan_node; do
@@ -223,7 +228,8 @@ validate_partner_cluster_connectivity() {
 # Fail fast when the Level-3 no-load plan still has template placeholders or missing TR-VIRT-010 params.
 validate_partner_level3_no_load_plan() {
 	local plan_path="$1"
-	local yq_bin="${YQ:-$(command -v yq)}"
+	local yq_bin
+	yq_bin="$(partner_resolve_yq || true)"
 	[[ -n "${yq_bin}" && -x "${yq_bin}" ]] || return 0
 
 	local placeholders
