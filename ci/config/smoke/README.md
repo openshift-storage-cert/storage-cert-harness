@@ -3,6 +3,9 @@
 Files in this directory are the **canonical** harness smoke bundle staged into
 `work/` by `make prepare-smoke-env` (see
 [`ci/scripts/run-harness/README.md`](../../scripts/run-harness/README.md)).
+The tracked `backends.local.yaml` contains the shared smoke-lab backend
+definitions and no credentials. Do not add secrets to it; use local secret
+files or Kubernetes Secrets as documented in `backends.example.yaml`.
 
 ## Change control
 

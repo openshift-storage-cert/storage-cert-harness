@@ -1,0 +1,27 @@
+# SMOKE LAB CONFIG (ci/config/smoke/backends.local.yaml)
+# Tracked smoke bundle — do not change without maintainer review (see README.md).
+# Staged to work/backends.local.yaml by prepare-smoke-env.
+schema_version: "1"
+
+# Shared smoke-lab storage-array configurations. This tracked file contains no
+# credentials. Real backends with inline credentials or local secret paths must
+# live in a separate gitignored config — see .gitignore and ADR-0005.
+#
+# Each secret is a reference, never a committed plaintext value. Exactly one of
+# `file`, `k8s_secret`, or `inline` per secret:
+#   file:       path to a file whose contents are the secret (trailing newline trimmed)
+#   k8s_secret: {namespace, name, key} — read from a cluster Secret (resolution
+#               is deferred until internal/kube exists)
+#   inline:     literal value — LOCAL DEV ONLY; keep out of committed files
+backends:
+  - name: tlvbm
+    storage_class: rhos-san-iscsi
+    snapshot_class: csi-trident-volumesnapshotclass
+  - name: oc-edge-112
+    vendor: trident
+    storage_class: rhos-san-iscsi
+    snapshot_class: csi-trident-volumesnapshotclass
+  - name: ecosys2
+    vendor: infinidat
+    storage_class: infinidat-block-rwx-v3
+    snapshot_class: infinidat-snapshot-class
