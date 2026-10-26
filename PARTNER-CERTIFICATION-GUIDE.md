@@ -59,7 +59,7 @@ sequenceDiagram
     participant Logs as logs/
 
     Partner->>Partner: ./ci/scripts/install-partner-tools.sh
-    Note over Partner: Install oc from Red Hat; source partner-host-env.sh
+    Note over Partner: Install oc from Red Hat and source partner-host-env.sh
     Partner->>Partner: install-partner-tools.sh --check and podman pull
 
     Partner->>Make: make partner-preflight
