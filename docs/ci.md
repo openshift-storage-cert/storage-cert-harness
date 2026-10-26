@@ -351,13 +351,12 @@ CI writes `dist/harness-image.tar` for scan jobs.
 
 ### Local image build lock
 
-`clean.sh`, `image-build.sh`, `image-build-local.sh`, `clean-image-cache.sh`,
+`build.sh`, `clean.sh`, `image-build.sh`, `image-build-local.sh`, `clean-image-cache.sh`,
 `image-contents-check.sh`, `image-scan-trivy.sh`, `image-scan-dive.sh`, and
 `image-push.sh` acquire an exclusive `flock` on `work/local-image.lock`. The
-lock serializes access to `work/local-image-ref`, image tarballs/tags, and the
+lock serializes access to `bin/harness`, `work/local-image-ref`, image tarballs/tags, and the
 shared `dist/*-version.txt` metadata so `make clean`, scan, push, or validation
-cannot overlap an image build or cache prune. `make build` (`build.sh`) does
-**not** take this lock; only image-related scripts do. `make image-build-local`
+cannot overlap an image build or cache prune. `make image-build-local`
 rebuilds the binary under the same image lock for the full rebuild.
 `make image-build-fresh` prunes cache and rebuilds in the same locked
 `image-build.sh` process (`IMAGE_BUILD_FRESH=1`). `image-build.sh` and
@@ -421,6 +420,44 @@ cluster. `run-image-tests.sh` expects staged `work/backends.local.yaml`,
 `work/harness-run-thresholds.json`, and `work/catalog.json`. See
 [`ci/scripts/run-harness/README.md`](../ci/scripts/run-harness/README.md).
 
+### Partner certification runs (published image)
+
+Partners run Level 3 certification against the **published** Quay image (no local
+`make image-build-local`). Workflow and cluster prep:
+[PARTNER-CERTIFICATION-GUIDE.md](../PARTNER-CERTIFICATION-GUIDE.md).
+
+| Make target | Script | Role |
+| --- | --- | --- |
+| `make partner-preflight` | `run-partner-preflight.sh` | Host `oc` checks + `harness preflight` in the container |
+| `make partner-cert-load-80` | `run-partner-cert.sh load-80` | `plans/level3-customer-load-80.yaml`, root `thresholds.json` |
+| `make partner-cert-no-load-80` | `run-partner-cert.sh no-load-80` | `plans/level3-customer-no-load-80.yaml`, `--continue-from` load-80 report |
+| `make partner-package-results` | `run-partner-package-results.sh` | Level 3 → `certification-results-level3.tar.gz` (`load-80` + `no-load-80`) |
+| `make partner-smoke-package` | `run-partner-package-results.sh` | Lab smoke → `certification-results-smoke.tar.gz` (branch `test/partner-scripts-smoke`) |
+
+Required environment: `KUBECONFIG`, `BACKEND` (name in `backends.yaml`). Optional:
+`HARNESS_IMAGE` (default `quay.io/virtarraycert/storage-cert-harness:main`),
+`CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).
+
+Outputs:
+
+- **Host logs:** each partner script archives the previous file, then tees to
+  `logs/run-partner-preflight.log`, `logs/run-partner-cert-load-80.log`, or
+  `logs/run-partner-cert-no-load-80.log` (see `ci_log_init` in `ci-utils.sh`).
+- **Harness artifacts:** `certification-results/<profile>/report/` (reports,
+  `run.log`) and `certification-results/<profile>/work/` (tool workdirs).
+  Re-running a profile archives the prior `certification-results/<profile>/`
+  tree with a UTC timestamp unless `PARTNER_KEEP_WORK=true`.
+
+`partner-harness-common.sh` is sourced only (validation, `podman pull`, log/
+result hygiene). Partner runs do **not** take `work/smoke-run.lock`; only one
+harness execution per cluster is documented as partner responsibility.
+
+Contributor smoke against a **local** image uses `make smoke-ci` or
+`make prepare-smoke-env` then `make run-harness-smoke` (`run-image-tests.sh`,
+`work/local-image-ref`). Pulling the registry image for lab checks uses
+`make run-quay-image-tests` (`ci/scripts/run-harness/run-quay-image-tests.sh`),
+which archives `logs/run-quay-image-tests.log` before each run.
+
 ## Job images (no Docker Hub)
 
 Pins live in **`ci/config/images.env`**. Shell scripts source
@@ -437,7 +474,7 @@ generated projection is retained for repository compatibility.
 | image-scan-trivy | Trivy release binary (`TRIVY_VERSION`) + `dist/harness-image.tar` |
 | image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar` |
 
-`GO_IMAGE` (`docker.io/library/golang:1.26.9`, Go **1.26.9+**) is not used by the harness
+`GO_IMAGE` (UBI Go toolset **1.26.10** in `ci/config/images.env`, Go **1.26.10+**) is not used by the harness
 `Containerfile`. `BUILD_IMAGE` is **not** the UBI python builder base; it names
 the published **harness-builder** image that already contains the cert tools.
 `YAML_LINT_IMAGE` and `MD_LINT_IMAGE` use the UBI **minor stream** (`:9.8` /
@@ -461,7 +498,7 @@ Tags come from `TRIVY_VERSION` / `DIVE_VERSION` in `ci/config/images.env`
 
 ## Local tools
 
-Install once (idempotent). Requires Go 1.26.9+, git, python3, pip, and npm
+Install once (idempotent). Requires Go 1.26.10+, git, python3, pip, and npm
 already on `PATH`. Tool versions are pinned in `ci/config/images.env`.
 
 ```sh
@@ -473,7 +510,7 @@ make install-tools
 Put `$(go env GOPATH)/bin` **before** `/usr/local/bin` on `PATH`. Pins match
 `ci/config/images.env`: golangci-lint is a GitHub release binary installed
 into `~/.local/bin` (local) or `$(go env GOPATH)/bin` (CI). That build needs
-Go 1.26.9+ because `go.mod` is 1.26.9.
+Go 1.26.10+ because `go.mod` is 1.26.10.
 
 | Tool | Scripts | Installed by |
 | ------ | --------- | -------------- |
@@ -549,10 +586,16 @@ uploads `logs/*.log` when a job fails (not the README).
 | `mirror-ci-tools.sh` | Retag Trivy/Dive/Hadolint into `quay.io/virtarraycert/ci_tools`; run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
 | `advance-version.sh` | Auto-advance both tracks on main push (CI only) |
+| `partner-harness-common.sh` | Shared partner helpers (sourced): image default, backends/cluster validation, log and result archiving |
+| `run-partner-preflight.sh` | Partner preflight via published image (`make partner-preflight`) |
+| `run-partner-cert.sh` | Partner Level 3 load-80 or no-load-80 run (`make partner-cert-*`) |
+| `run-partner-package-results.sh` | `PARTNER_PACKAGE_MODE=level3\|smoke\|all`; default tarballs `certification-results-level3.tar.gz` or `-smoke.tar.gz` |
+| `run-image-tests.sh` | Live smoke with **local** image ref (`make run-harness-smoke`); holds `work/smoke-run.lock` |
+| `run-quay-image-tests.sh` | Pull and smoke **published** image against `work/` (`make run-quay-image-tests`) |
 
 The **release artifact** is that image ([ADR-0011](../decisions/0011-harness-ships-as-container-image.md)),
 not the `bin/harness` binary. Registry:
-`quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
+`quay.io/virtarraycert/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
 On **GitHub**, `image-lint` runs before `image-build` with
@@ -588,6 +631,8 @@ make ci-image      # image-build (linux/amd64 + contents-check) + trivy + dive
 ```
 
 Scratch/logs stay gitignored (`/bin/`, `/dist/`, `/logs/**`, `/ci-local/`).
+Partner and smoke wrappers write transcripts under `logs/` (see
+[logs/README.md](../logs/README.md)); only `logs/README.md` is tracked.
 Self-tests use `mktemp`.
 
 On GitHub, `image-lint`, `image-scan-trivy`, and `image-scan-dive` run with

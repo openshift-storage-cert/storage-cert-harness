@@ -31,6 +31,10 @@ _run_harness_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../ci-utils.sh
 source "${_run_harness_dir}/../ci-utils.sh"
 repo_root="${REPO_ROOT}"
+cd "${repo_root}"
+# shellcheck source=../partner-harness-common.sh
+source "${_run_harness_dir}/../partner-harness-common.sh"
+archive_partner_log "run-quay-image-tests"
 ci_log_init "run-quay-image-tests"
 
 command -v podman >/dev/null 2>&1 || {
@@ -68,7 +72,7 @@ backend_name="$(yq e -r '.backends[] | select(.name == strenv(YQ_BACKEND)) | .na
 	exit 1
 }
 
-image="${QUAY_IMAGE}:${version}"
+image="${HARNESS_IMAGE:-${QUAY_IMAGE}:${version}}"
 # Assumption: Podman can read valid quay.io credentials from its configured
 # authentication sources, which may include Docker-compatible settings.
 podman pull "${image}"
