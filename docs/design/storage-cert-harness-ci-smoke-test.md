@@ -20,14 +20,20 @@ there is **no queue** — a second run fails fast if the lease is held.
 
 **Team trigger model (decided):**
 
-- Smoke runs on **pull request opened** to `main` (same-repo branches only) **once
-  per PR** when path filters match — **not** on every commit, **not** on push to
-  `main` by default.
-- Further runs are **on demand** (PR comment, GitHub Actions UI, or
-  `gh pr comment` — §1.4).
+- **No automatic smoke** on PR open, push to `main`, or the default `CI` workflow.
+- Smoke runs only when explicitly requested:
+  - **On demand:** PR comment `/run-live-smoke` (trusted association), or
+    `workflow_dispatch` with PR number (Actions UI / allowed environment actors).
+  - **Scheduled:** once daily (`05:00 UTC`); runs only if at least one **open**
+    same-repo PR to `main` was **updated** in the **last 24 hours** and does not
+    contain `[skip live-smoke]`.
+- When a run is scheduled, the **same guards** apply as on-demand: canonical repo,
+  same-repo head, skip token, fork rejection, cluster lease, environment secrets
+  (path-filter rules in §1 remain policy for when smoke is *required* before merge,
+  not a separate automatic trigger).
 - Contributors **must** run the smoke plan at least once on a **personal /
-  dedicated non-CI lab** before opening a PR when their diff triggers CI smoke
-  (documented in `README.md` and `docs/contributing.md`).
+  dedicated non-CI lab** before opening a PR when their diff would require smoke
+  at merge time (documented in `README.md` and `docs/contributing.md`).
 - **Failed PR smoke is a merge gate:** the live-smoke check must **pass** before
   the PR can merge. Investigate failures (logs, `report.json`, artifacts), fix or
   re-run on demand (§1.4) — do not merge with a failed smoke run. `[skip
@@ -44,11 +50,11 @@ overrides. Image build/publish on `main` stays on the existing `ci-images` /
 ```mermaid
 flowchart LR
   subgraph trigger [Trigger]
-    PR[PR opened to main]
-    PF[Path filter]
     OD[On demand comment or UI]
-    PR --> PF
+    SCH[Daily schedule if PR activity 24h]
+    PF[Same guards when run starts]
     OD --> PF
+    SCH --> PF
   end
   subgraph ci [CI executor]
     IB[Image from PR build artifact]
@@ -62,7 +68,7 @@ flowchart LR
     CLN[Cleanup and release lease]
     LE --> PRE --> RUN --> CLN
   end
-  PF -->|once per PR| LS
+  PF -->|explicit or scheduled| LS
   OD -->|re-run| LS
   LS --> LE
 ```
@@ -79,7 +85,7 @@ substitute for live smoke).
 | Goals                                                                                        | Non-goals                                                      |
 | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Catch regressions across **all** catalog automations (smoke scale) on a real OCP+CNV cluster | Full Level-3 certification scale or HA/fencing (`TR-VIRT-007`) |
-| Run on PR open (once) and contributor on-demand when harness/image paths change              | Running on every PR commit or on `vendor`/`go.mod`-only diffs  |
+| Run on contributor on-demand and optional daily schedule when open PRs had activity in 24h | Running on every PR commit, on PR open, or on push to `main` |
 | Exclusive, safe use of a shared or dedicated CI cluster                                      | Storing real threshold bars or kubeconfig in git               |
 | Deterministic preflight, minimal plan params, cleanup on all exit paths                      | Publishing graded reports with partner SLA secrets             |
 
@@ -113,7 +119,7 @@ maintainer — fork pushes to `main` are already impossible on protected branche
 #### Acceptance criteria
 
 - PR title/body containing `[skip live-smoke]` does not start cluster work.
-- PR opened without the token still runs live smoke once when path filters match.
+- On-demand and scheduled workflows respect the skip token; no workflow runs smoke on PR open.
 - Token is case-sensitive and documented in `docs/ci.md` and PR template.
 - Skipped runs do not hold the cluster lease.
 - Audit: workflow run records `live_smoke_skipped=true` in the summary for later
@@ -158,8 +164,8 @@ the ops runbook instead.
 | ECOPROJECT-5462 AC                         | This design                                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | Hosted runner used only for cluster smoke  | Satisfied by dedicating a runner label / GitLab tag to the live-smoke job only                            |
-| PR targeting `main` runs smoke             | **Adopted** — once on `opened`, path filters; **required** merge gate on failure                           |
-| Push to `main` does not run smoke          | **Adopted** — automatic smoke is PR-based, not post-merge push                                            |
+| PR targeting `main` can run smoke on demand / schedule | **Adopted** — no PR-open auto-run; **required** merge gate on failure when check runs |
+| Push to `main` does not run smoke          | **Adopted** — no push trigger; optional daily schedule only with 24h PR activity       |
 | PR to non-`main` branch does not run smoke | Satisfied                                                                                                 |
 | Fork PRs cannot read cluster secrets       | Satisfied via protected environments / `main`-only workflows / no `pull_request` trigger for live smoke   |
 | Named owners, rotation, escalation         | Section 3 and **Operations**                                                                              |
@@ -172,9 +178,10 @@ the ops runbook instead.
 
 | Event | Run live smoke automatically? | Notes |
 | --- | --- | --- |
-| `pull_request` → `main`, type **`opened`** | **Yes, once per PR** if path filter matches and same-repo | Does **not** re-run on `synchronize` (new commits) |
-| `pull_request` → `main`, contributor **on demand** | Yes | Comment or UI action — [§1.4](#14-contributor-on-demand-smoke-on-a-pr) |
-| Push to `main` | **No** (default) | Lint/build/publish only; optional nightly smoke is [§11](#11-remaining-open-items) |
+| `pull_request` → `main` (any type) | **No** | No automatic smoke on open or new commits |
+| Contributor **on demand** (`/run-live-smoke`, `workflow_dispatch`) | Yes when allowed | [§1.4](#14-contributor-on-demand-smoke-on-a-pr) |
+| **`schedule`** (daily) | **Conditional** | Only if an open same-repo PR to `main` was updated in the last 24h and not skipped |
+| Push to `main` | **No** | Lint/build/publish only |
 | `workflow_dispatch` | On demand | `pr_number` only (SHA resolved on `ubuntu-latest` before self-hosted checkout) |
 | Fork PR → upstream | **No** | No upstream kubeconfig |
 
@@ -199,25 +206,27 @@ fork workflows. Required behavior:
 | PR from a **fork** into upstream `main` | **Not triggered** (no `pull_request` trigger on live-smoke workflow) | **Not available** — GitHub does not pass upstream secrets to `pull_request` workflows for fork PRs |
 | Push to **fork** `main` (copy of the repo) | **Not triggered** — job `if` requires canonical repository (below) | **Not available** — only secrets defined on the fork exist; upstream kubeconfig is never injected |
 | Push to **upstream** `main` | No automatic smoke | N/A for default pipeline |
-| Same-repo PR `opened` / on-demand | Yes when allowed | `environment: live-smoke` on upstream |
+| Same-repo PR on demand | Yes when allowed | `environment: live-smoke` on upstream |
+| Daily schedule | Yes only if open same-repo PR updated in last 24h (and not skipped) | Environment-gated |
 | `workflow_dispatch` on upstream | Contributors with env access | Environment-gated |
 
 **Implementation guards (GitHub):**
 
 1. **Separate workflow** `ci-live-smoke.yml` with:
-   - `pull_request`: `types: [opened]` and `branches: [main]` for the **one-time**
-     automatic run;
-   - `issue_comment` (and/or `workflow_dispatch`) for **on-demand** re-runs — [§1.4](#14-contributor-on-demand-smoke-on-a-pr);
-   - **no** `push` to `main` for smoke (unless nightly is added later).
+   - **`workflow_dispatch`** (PR number input) and **`issue_comment`** `/run-live-smoke`
+     for on-demand runs — [§1.4](#14-contributor-on-demand-smoke-on-a-pr);
+   - **`schedule`** (daily): smoke only when an open same-repo PR to `main` was
+     updated in the last 24 hours and is not `[skip live-smoke]`;
+   - **no** `pull_request`, **no** `push` to `main` for smoke.
    **Never** `pull_request_target` with secrets to execute fork-supplied code.
 2. **Repository and same-repo guard:**
 
    ```yaml
    if: >-
      github.repository == 'openshift-storage-cert/storage-cert-harness' &&
-     github.event.pull_request.head.repo.full_name == github.repository &&
-     !contains(github.event.pull_request.title, '[skip live-smoke]') &&
-     !contains(github.event.pull_request.body, '[skip live-smoke]')
+     # same-repo PR resolved via Pulls API in resolve-* jobs; reject fork heads
+     !contains(pr.title, '[skip live-smoke]') &&
+     !contains(pr.body, '[skip live-smoke]')
    ```
 
    Adjust the string if the canonical GitHub org/repo name changes; document the
@@ -302,15 +311,15 @@ Skipped runs **never** acquire the cluster lease.
 
 ### 1.4 Contributor on-demand smoke on a PR
 
-After the **one-time** `opened` run, any **same-repo** contributor with permission
-to run workflows (or comment on the PR) may request another smoke:
+There is **no** automatic smoke when a PR is opened. Contributors (or maintainers)
+request smoke explicitly:
 
 | Mechanism | Suggested implementation | Who |
 | --- | --- | --- |
 | **PR comment** | `/run-live-smoke` on `issue_comment` where `issue.pull_request` is set; bot/workflow validates same-repo + not `[skip live-smoke]` + lease free | Contributors with `write` or `maintain` on repo (tune in workflow) |
 | **GitHub CLI** | `gh pr comment <PR> --repo openshift-storage-cert/storage-cert-harness --body '/run-live-smoke'` | Same as PR comment (triggers `issue_comment` workflow) |
 | **GitHub UI** | `workflow_dispatch` with input `pr_number` (no free-form `git_ref`) | Same; link run in PR summary |
-| **Actions button** | Re-run the **PR-open** workflow from Checks | Resolver re-fetches the PR head via API so reruns use the **current** head SHA |
+| **Daily schedule** | `05:00 UTC` cron when an open same-repo PR had activity in the last 24h | Same guards; `max-parallel: 1` on cluster |
 
 **Guards (all on-demand paths):**
 
@@ -332,7 +341,7 @@ not sensitive).
 
 | | CI shared lab (edge-112) | Contributor lab |
 | --- | --- | --- |
-| Purpose | Once-on-PR-open + on-demand re-runs | Pre-PR validation required by policy |
+| Purpose | On-demand + optional daily schedule (24h PR activity) | Pre-PR validation required by policy |
 | Access | `live-smoke` environment secrets | Contributor `KUBECONFIG` + `work/backends.local.yaml` |
 | Entry point | GHA / GitLab | `make build` + `make image-build-local` + `make run-harness-smoke` |
 
@@ -417,7 +426,7 @@ overrides:
 | 4 | Confirm node drain / migration TRs do not violate lab policy (non-destructive only — no `TR-VIRT-007`) |
 | 5 | Sign off in this doc (date, owner) under **edge-112 sign-off** below |
 
-**edge-112 sign-off:** _Pending — fill after successful full-plan run._
+**edge-112 sign-off:** *Pending — fill after successful full-plan run.*
 
 ### Dedicated vs shared
 
@@ -752,9 +761,9 @@ from `select.ids` (document in table below).
 | TR          | Status   | edge-112 duration (s) | Notes                              |
 | ----------- | -------- | --------------------- | ---------------------------------- |
 | TR-VIRT-007 | Excluded | —                     | HA / node failure — never in smoke |
-| _(others)_  | TBD      | TBD                   | Fill after edge-112 benchmark      |
+| *(others)*  | TBD      | TBD                   | Fill after edge-112 benchmark      |
 
-**Full suite (edge-112):** _TBD_ seconds — update after sign-off §2.
+**Full suite (edge-112):** *TBD* seconds — update after sign-off §2.
 
 ### 6.5 Local smoke configuration bundle (`ci/config/smoke/`)
 
@@ -932,14 +941,16 @@ environment) to validate same-repo PR metadata, check out the PR head SHA, and
 upload a short-lived workflow artifact. **Self-hosted** jobs check out **`main`**
 only (trusted [`ci/scripts/run-harness/live-cluster-smoke.sh`](../../ci/scripts/run-harness/live-cluster-smoke.sh)),
 download the PR tree to `pr-src/`, and run the script with **`bash`** (not PR
-executables). The PR-open resolver loads the current head via the **Pulls API**
-so Actions UI reruns do not stick on the original `opened` event SHA.
-`workflow_dispatch` accepts **`pr_number` only** (not arbitrary `git_ref`).
+executables). Resolvers load the current PR head via the **Pulls API** (on-demand
+and scheduled paths). `workflow_dispatch` accepts **`pr_number` only** (not
+arbitrary `git_ref`).
 
-Wire smoke as a **separate** workflow with a **required** PR status check. PR
-`opened` runs **once**; `issue_comment` `/run-live-smoke` handles re-runs after
-fixes. Failed runs block merge. No `push` to `main` trigger for smoke in the
-default design.
+Wire smoke as a **separate** workflow with a **required** PR status check when
+operators enable it. Triggers: **`workflow_dispatch`**, **`issue_comment`**
+`/run-live-smoke`, and **daily schedule** (only if open same-repo PRs were updated
+in the last 24 hours). **No** `pull_request` or `push` triggers. Failed runs
+block merge when branch protection requires the check. Resolvers load the current
+PR head via the Pulls API.
 
 ### GitLab
 
@@ -977,21 +988,21 @@ Log retention: keep smoke logs 14–30 days; no full cluster dumps.
 | 9 | **Branch protection** — required `live-smoke` check on PRs to `main` | Pending |
 | 10 | **Contributor runbook** — backend/plan/thresholds, personal lab vs edge-112 | Partial (`README.md`); extend per §6.6 |
 | 11 | **Update ECOPROJECT-5406** — PR smoke model | Pending |
-| 12 | **Nightly smoke** on `main` | Optional |
+| 12 | **Daily scheduled smoke** (24h open-PR activity gate) | Implemented in `ci-live-smoke.yml` schedule |
 
-**Closed team decisions (for reference):** PR `opened` once (not per commit);
-not on push to `main`; **failed PR smoke blocks merge**; no lease queue; exclude
-`vendor`/`go.mod` from path triggers; contributor on-demand via §1.4; `[skip
-live-smoke]` only when lab unavailable.
+**Closed team decisions (for reference):** **no** automatic smoke on PR open or
+push to `main`; on-demand + daily schedule (24h PR activity) only; **failed PR
+smoke blocks merge** when the check ran; no lease queue; `[skip live-smoke]` only
+when lab unavailable.
 
 ---
 
 ## 12. Verification checklist (for story closure)
 
 - [ ] edge-112: full non-HA smoke plan passes with §6 overrides; timings recorded in §6.3/6.4.
-- [ ] PR **opened** to `main` (same-repo, path match) runs smoke **once**; second commit on PR does **not** auto-run.
-- [ ] `/run-live-smoke` comment or `workflow_dispatch` re-runs smoke on same-repo PR.
-- [ ] PR with **only** `vendor`/`go.mod` change does **not** auto-run smoke.
+- [ ] No smoke on PR **open** or **push** to `main`; `/run-live-smoke`, `workflow_dispatch`, or daily schedule (24h PR activity) start runs.
+- [ ] `/run-live-smoke` comment or `workflow_dispatch` runs smoke on same-repo PR at current head.
+- [ ] Daily schedule skips when no open same-repo PR was updated in the last 24 hours.
 - [ ] Failed PR smoke blocks merge; passing on-demand re-run unblocks.
 - [ ] `[skip live-smoke]` in PR title/body skips smoke scheduling only (lab down); not used to bypass failures.
 - [ ] Second concurrent smoke **fails fast** (no queue); Lease shows holder annotations (plan, SHA, PR, API host).
