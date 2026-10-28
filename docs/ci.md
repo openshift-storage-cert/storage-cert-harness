@@ -12,7 +12,7 @@ provider. GitLab CI is no longer supported.
 **`unittest.sh`** (`make unittest`) runs unit tests only (`go test ./...`:
 package tests and golden-file parser tests). It does not need a cluster.
 `make lint` / `make test` provide the corresponding local checks.
-Offline CLI smoke is `replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
+Offline CLI smoke is `run-harness/replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
 (see Open items).
 
 The GitHub Actions `supply-chain` job is gating: a failure fails the workflow.
@@ -365,12 +365,12 @@ rebuilds the binary under the same image lock for the full rebuild.
 starting a rebuild (remove `work/local-image-ref`, the prior Podman image,
 `dist/harness-image.tar`, and `dist/*-version.txt`). Local image validation
 always runs the local image with Podman and preserves its native platform;
-`image-contents-check.sh` and `run-image-tests.sh` refuse a stale ref when the
+`image-contents-check.sh` and `run-harness/run-image-tests.sh` refuse a stale ref when the
 named image is not present in Podman.
 
 ### Smoke run lock
 
-`run-image-tests.sh` acquires a separate exclusive `flock` on
+`run-harness/run-image-tests.sh` acquires a separate exclusive `flock` on
 `work/smoke-run.lock` so two local smoke runs cannot overlap (log archive,
 `work/harness-smoke-work`, and `work/harness-smoke-report`). Smoke does not
 hold the image lock; `make build` and a long smoke run may proceed in parallel.
@@ -380,42 +380,22 @@ when a command fails. The image lock is not a transaction: a failed build can
 leave partial engine layers, so rerun the relevant build before validation after
 an error. Lock files may remain on disk and are reused by subsequent runs.
 
-### Partner certification runs (published image)
+### Cluster smoke lease (shared lab / edge-112)
 
-Partners run Level 3 certification against the **published** Quay image (no local
-`make image-build-local`). Workflow and cluster prep:
-[PARTNER-CERTIFICATION-GUIDE.md](../PARTNER-CERTIFICATION-GUIDE.md).
-
-| Make target | Script | Role |
-| --- | --- | --- |
-| `make partner-preflight` | `run-partner-preflight.sh` | Host `oc` checks + `harness preflight` in the container |
-| `make partner-cert-load-80` | `run-partner-cert.sh load-80` | `plans/level3-customer-load-80.yaml`, root `thresholds.json` |
-| `make partner-cert-no-load-80` | `run-partner-cert.sh no-load-80` | `plans/level3-customer-no-load-80.yaml`, `--continue-from` load-80 report |
-| `make partner-package-results` | `run-partner-package-results.sh` | Level 3 → `certification-results-level3.tar.gz` (`load-80` + `no-load-80`) |
-| `make partner-smoke-package` | `run-partner-package-results.sh` | Lab smoke → `certification-results-smoke.tar.gz` (branch `test/partner-scripts-smoke`) |
-
-Required environment: `KUBECONFIG`, `BACKEND` (name in `backends.yaml`). Optional:
-`HARNESS_IMAGE` (default `quay.io/virtarraycert/storage-cert-harness:main`),
-`CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).
-
-Outputs:
-
-- **Host logs:** each partner script archives the previous file, then tees to
-  `logs/run-partner-preflight.log`, `logs/run-partner-cert-load-80.log`, or
-  `logs/run-partner-cert-no-load-80.log` (see `ci_log_init` in `ci-utils.sh`).
-- **Harness artifacts:** `certification-results/<profile>/report/` (reports,
-  `run.log`) and `certification-results/<profile>/work/` (tool workdirs).
-  Re-running a profile archives the prior `certification-results/<profile>/`
-  tree with a UTC timestamp unless `PARTNER_KEEP_WORK=true`.
-
-`partner-harness-common.sh` is sourced only (validation, `podman pull`, log/
-result hygiene). Partner runs do **not** take `work/smoke-run.lock`; only one
-harness execution per cluster is documented as partner responsibility.
-
-Contributor smoke against a **local** image still uses `make run-harness-smoke`
-(`run-image-tests.sh`, `work/local-image-ref`). Pulling the registry image for
-lab checks uses `make run-quay-image-tests` (`run-quay-image-tests.sh`), which
-also archives `logs/run-quay-image-tests.log` before each run.
+`run-harness/run-image-tests.sh` and `run-harness/live-cluster-smoke.sh` acquire a Kubernetes
+**Coordination Lease** (`storage-cert-ci/storage-cert-harness-smoke`) via
+`ci/scripts/run-harness/smoke-cluster-lease.sh`: holder identity is the CI run id or
+`local-<user>-<epoch>` for developer runs; annotations record run id, host,
+plan, git SHA, and related metadata (see design doc §2). A background loop renews
+the lease every 5 minutes; `trap` on `EXIT` / `INT` / `TERM` stops renewal and
+deletes the lease when this run holds it. If another run holds the lease, the
+script exits with code **2** (cluster busy). Set
+`HARNESS_SMOKE_SKIP_CLUSTER_LEASE=true` to skip when the namespace is unavailable.
+Lease objects are rendered from
+`ci/config/smoke/cluster-smoke-lease.yaml.template` (placeholders replaced at
+acquire time). Verify behavior with
+`./ci/scripts/run-harness/test-smoke-cluster-lease.sh` (uses a dedicated
+`*-selftest` lease name; requires lease RBAC in `storage-cert-ci`).
 
 ## Job images (no Docker Hub)
 
@@ -535,7 +515,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `build.sh` | `bin/harness` with `binary_version()` ldflags |
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
-| `replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
+| `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (copies tools from digest-pinned `BUILD_IMAGE`). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
@@ -545,16 +525,10 @@ uploads `logs/*.log` when a job fails (not the README).
 | `mirror-ci-tools.sh` | Retag Trivy/Dive/Hadolint into `quay.io/virtarraycert/ci_tools`; run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
 | `advance-version.sh` | Auto-advance both tracks on main push (CI only) |
-| `partner-harness-common.sh` | Shared partner helpers (sourced): image default, backends/cluster validation, log and result archiving |
-| `run-partner-preflight.sh` | Partner preflight via published image (`make partner-preflight`) |
-| `run-partner-cert.sh` | Partner Level 3 load-80 or no-load-80 run (`make partner-cert-*`) |
-| `run-partner-package-results.sh` | `PARTNER_PACKAGE_MODE=level3\|smoke\|all`; default tarballs `certification-results-level3.tar.gz` or `-smoke.tar.gz` |
-| `run-image-tests.sh` | Live smoke with **local** image ref (`make run-harness-smoke`); holds `work/smoke-run.lock` |
-| `run-quay-image-tests.sh` | Pull and smoke **published** image against `work/` (`make run-quay-image-tests`) |
 
 The **release artifact** is that image ([ADR-0011](../decisions/0011-harness-ships-as-container-image.md)),
 not the `bin/harness` binary. Registry:
-`quay.io/virtarraycert/storage-cert-harness:<image_version>` and `:main` on the
+`quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
 On **GitHub**, `image-lint` runs before `image-build` with
@@ -590,8 +564,6 @@ make ci-image      # image-build (linux/amd64 + contents-check) + trivy + dive
 ```
 
 Scratch/logs stay gitignored (`/bin/`, `/dist/`, `/logs/**`, `/ci-local/`).
-Partner and smoke wrappers write transcripts under `logs/` (see
-[logs/README.md](../logs/README.md)); only `logs/README.md` is tracked.
 Self-tests use `mktemp`.
 
 On GitHub, `image-lint`, `image-scan-trivy`, and `image-scan-dive` run with
@@ -619,7 +591,7 @@ GitHub Actions fails the workflow when `supply-chain` fails.
 ### Replay-smoke job
 
 GitHub skips the `smoke` job unless `vars.CI_RUN_REPLAY_SMOKE=true`; image build
-and publish do not depend on it. Run `./ci/scripts/replay-smoke.sh` locally
+and publish do not depend on it. Run `./ci/scripts/run-harness/replay-smoke.sh` locally
 when needed.
 
 ### Image lint and scan jobs (non-blocking)
