@@ -63,6 +63,10 @@ command -v yq >/dev/null 2>&1 || {
 	echo "error: yq is required to validate backend '${backend}' in work/backends.local.yaml" >&2
 	exit 1
 }
+command -v jq >/dev/null 2>&1 || {
+	echo "error: jq is required for cluster smoke lease updates" >&2
+	exit 1
+}
 export YQ_BACKEND="${backend}"
 backend_name="$(yq e -r '.backends[] | select(.name == strenv(YQ_BACKEND)) | .name' work/backends.local.yaml)"
 [[ "${backend_name}" == "${backend}" ]] || {

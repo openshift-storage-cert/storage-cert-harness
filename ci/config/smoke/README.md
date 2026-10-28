@@ -3,9 +3,12 @@
 Files in this directory are the **canonical** harness smoke bundle staged into
 `work/` by `make prepare-smoke-env` (see
 [`ci/scripts/run-harness/README.md`](../../scripts/run-harness/README.md)).
-The tracked `backends.local.yaml` contains the shared smoke-lab backend
-definitions and no credentials. Do not add secrets to it; use local secret
-files or Kubernetes Secrets as documented in `backends.example.yaml`.
+
+Tracking `backends.local.yaml` here is **intentional** (design doc §6.5): shared
+smoke-lab storage class names only—no credentials. Operator-specific secrets
+belong in gitignored `work/backends.local.yaml` (preserved by prepare) or local
+secret files per `backends.example.yaml`. Changes require maintainer review
+below; this is not the generic fake-value example at repo root.
 
 ## Change control
 

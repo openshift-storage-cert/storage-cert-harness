@@ -204,7 +204,7 @@ harness_smoke_resolve_local_image() {
 	echo "${image}"
 }
 
-# Hold local-image.lock from image check through container create; release after podman run -d returns.
+# Hold local-image.lock through podman run -d (container create), then stream logs.
 harness_smoke_run_podman() {
 	require_cmd flock
 	mkdir -p "${REPO_ROOT}/work"

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Kubernetes Coordination Lease for harness smoke (edge-112 / shared lab).
 set -euo pipefail
 
 SMOKE_CLUSTER_LEASE_EXIT_BUSY="${SMOKE_CLUSTER_LEASE_EXIT_BUSY:-2}"
@@ -194,6 +193,34 @@ smoke_cluster_lease_holder() {
 	smoke_cluster_lease_field '{.spec.holderIdentity}'
 }
 
+smoke_cluster_lease_require_jq() {
+	command -v jq >/dev/null 2>&1 ||
+		smoke_cluster_lease_die "jq is required for atomic cluster smoke lease updates"
+}
+
+smoke_cluster_lease_fetch_json() {
+	local oc_args=()
+	smoke_cluster_lease_oc_args oc_args
+	oc "${oc_args[@]}" get lease "${SMOKE_CLUSTER_LEASE_NAME}" \
+		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" -o json
+}
+
+smoke_cluster_lease_verify_holder_json() {
+	local json="$1"
+	local holder run_id
+	run_id="${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}"
+	holder="$(jq -r '.spec.holderIdentity // ""' <<<"${json}")"
+	[[ -n "${holder}" ]] || {
+		echo "smoke lease: object has no holderIdentity" >&2
+		return 1
+	}
+	if [[ "${holder}" != "${run_id}" ]]; then
+		echo "smoke lease: holder is ${holder} (this run=${run_id})" >&2
+		return 1
+	fi
+	return 0
+}
+
 smoke_cluster_lease_is_expired() {
 	local holder renew duration renew_epoch now_epoch
 	holder="$(smoke_cluster_lease_holder)"
@@ -248,12 +275,10 @@ smoke_cluster_lease_apply_metadata() {
 	local plan_file="${3:-plans/harness-smoke-plan.yaml}"
 	local oc_args=()
 	smoke_cluster_lease_oc_args oc_args
-	local holder
-	holder="$(smoke_cluster_lease_holder)"
-	if [[ "${holder}" != "${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}" ]]; then
-		echo "smoke lease: metadata skipped; holder is ${holder:-<empty>} (this run=${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY})" >&2
-		return 1
-	fi
+	local json
+	smoke_cluster_lease_require_jq
+	json="$(smoke_cluster_lease_fetch_json)" || return 1
+	smoke_cluster_lease_verify_holder_json "${json}" || return 1
 	local anns=()
 	smoke_cluster_lease_collect_annotations "${run_id}" "${plan_name}" "${plan_file}" anns
 
@@ -277,27 +302,29 @@ smoke_cluster_lease_renew_heartbeat() {
 	[[ "${SMOKE_CLUSTER_LEASE_HELD:-0}" == "1" ]] || return 0
 	local oc_args=()
 	smoke_cluster_lease_oc_args oc_args
-	local holder now
+	local json now updated err st
+	smoke_cluster_lease_require_jq
 	now="$(smoke_cluster_lease_api_time_now)"
-	holder="$(smoke_cluster_lease_holder)"
-	[[ -n "${holder}" ]] || {
-		echo "smoke lease renew: lease has no holder" >&2
-		return 1
-	}
-	if [[ "${holder}" != "${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}" ]]; then
-		echo "smoke lease renew: holder is ${holder} (this run=${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}); not renewing" >&2
+	set +e
+	json="$(smoke_cluster_lease_fetch_json 2>&1)"
+	st=$?
+	set -e
+	if [[ "${st}" -ne 0 ]]; then
+		echo "smoke lease renew: fetch failed: ${json}" >&2
 		return 1
 	fi
-
+	smoke_cluster_lease_verify_holder_json "${json}" || return 1
+	updated="$(jq --arg now "${now}" --argjson dur "${SMOKE_CLUSTER_LEASE_DURATION_SECONDS}" \
+		'.spec.renewTime = $now | .spec.leaseDurationSeconds = $dur' <<<"${json}")"
 	set +e
-	oc "${oc_args[@]}" patch lease "${SMOKE_CLUSTER_LEASE_NAME}" \
-		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
-		--type=merge \
-		-p "{\"spec\":{\"renewTime\":\"${now}\",\"leaseDurationSeconds\":${SMOKE_CLUSTER_LEASE_DURATION_SECONDS}}}" \
-		>/dev/null
-	local st=$?
+	err="$(printf '%s' "${updated}" | oc "${oc_args[@]}" replace -f - 2>&1)"
+	st=$?
 	set -e
-	[[ "${st}" -eq 0 ]]
+	if [[ "${st}" -ne 0 ]]; then
+		echo "smoke lease renew: replace failed (resourceVersion conflict?): ${err}" >&2
+		return 1
+	fi
+	return 0
 }
 
 smoke_cluster_lease_delete_lease() {
@@ -417,21 +444,50 @@ smoke_cluster_lease_release() {
 
 	local oc_args=()
 	smoke_cluster_lease_oc_args oc_args
-	local holder run_id
-	run_id="${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}"
-	holder="$(smoke_cluster_lease_holder)"
-
-	if [[ -n "${holder}" && "${holder}" != "${run_id}" ]]; then
-		echo "smoke lease: not releasing ${SMOKE_CLUSTER_LEASE_NAME}; holder is ${holder} (this run=${run_id})" >&2
+	local json rv err st
+	smoke_cluster_lease_require_jq
+	set +e
+	json="$(smoke_cluster_lease_fetch_json 2>&1)"
+	st=$?
+	set -e
+	if [[ "${st}" -ne 0 ]]; then
+		echo "smoke lease: release skipped; fetch failed: ${json}" >&2
 		export SMOKE_CLUSTER_LEASE_HELD=0
 		return 0
 	fi
+	if ! smoke_cluster_lease_verify_holder_json "${json}"; then
+		export SMOKE_CLUSTER_LEASE_HELD=0
+		return 0
+	fi
+	rv="$(jq -r '.metadata.resourceVersion // ""' <<<"${json}")"
+	[[ -n "${rv}" ]] || {
+		echo "smoke lease: release skipped; empty resourceVersion" >&2
+		export SMOKE_CLUSTER_LEASE_HELD=0
+		return 0
+	}
 
-	echo "smoke lease: releasing ${SMOKE_CLUSTER_LEASE_NAME}"
-	if ! oc "${oc_args[@]}" delete lease "${SMOKE_CLUSTER_LEASE_NAME}" \
-		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
-		--ignore-not-found; then
-		echo "smoke lease: warning: failed to delete lease (may expire via TTL)" >&2
+	echo "smoke lease: releasing ${SMOKE_CLUSTER_LEASE_NAME} (resourceVersion=${rv})"
+	set +e
+	if oc delete --help 2>&1 | grep -q 'resource-version'; then
+		err="$(oc "${oc_args[@]}" delete lease "${SMOKE_CLUSTER_LEASE_NAME}" \
+			-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
+			--resource-version="${rv}" 2>&1)"
+		st=$?
+	else
+		err="$(oc "${oc_args[@]}" patch lease "${SMOKE_CLUSTER_LEASE_NAME}" \
+			-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
+			--type=json \
+			-p="[{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"${rv}\"},{\"op\":\"test\",\"path\":\"/spec/holderIdentity\",\"value\":\"${SMOKE_CLUSTER_LEASE_HOLDER_IDENTITY}\"}]" 2>&1)"
+		st=$?
+		if [[ "${st}" -eq 0 ]]; then
+			err="$(oc "${oc_args[@]}" delete lease "${SMOKE_CLUSTER_LEASE_NAME}" \
+				-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" 2>&1)"
+			st=$?
+		fi
+	fi
+	set -e
+	if [[ "${st}" -ne 0 ]]; then
+		echo "smoke lease: warning: delete failed (object may have changed): ${err}" >&2
 	fi
 	export SMOKE_CLUSTER_LEASE_HELD=0
 }
@@ -448,6 +504,7 @@ smoke_cluster_lease_start_renewal_loop() {
 	mkdir -p "$(dirname "${guard}")"
 	: >"${guard}"
 
+	set -m
 	(
 		trap 'rm -f "${guard}"; exit 0' TERM INT
 		while [[ -f "${guard}" ]]; do
@@ -461,6 +518,7 @@ smoke_cluster_lease_start_renewal_loop() {
 		done
 	) &
 	_smoke_cluster_lease_renew_pid=$!
+	set +m
 	echo "smoke lease: background renewal pid=${_smoke_cluster_lease_renew_pid}"
 }
 
@@ -468,7 +526,8 @@ smoke_cluster_lease_stop_renewal_loop() {
 	local guard="${REPO_ROOT:-.}/work/.smoke-cluster-lease-renew-$$"
 	rm -f "${guard}" 2>/dev/null || true
 	if [[ -n "${_smoke_cluster_lease_renew_pid}" ]]; then
-		kill -TERM "${_smoke_cluster_lease_renew_pid}" 2>/dev/null || true
+		kill -TERM "-${_smoke_cluster_lease_renew_pid}" 2>/dev/null ||
+			kill -TERM "${_smoke_cluster_lease_renew_pid}" 2>/dev/null || true
 		wait "${_smoke_cluster_lease_renew_pid}" 2>/dev/null || true
 		_smoke_cluster_lease_renew_pid=""
 	fi

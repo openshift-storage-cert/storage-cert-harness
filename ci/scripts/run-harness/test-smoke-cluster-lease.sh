@@ -14,6 +14,7 @@ export KUBECONFIG="$(realpath "${kubeconfig}")"
 export SMOKE_CLUSTER_LEASE_KUBECONFIG="${KUBECONFIG}"
 
 command -v oc >/dev/null 2>&1 || die "oc is required"
+command -v jq >/dev/null 2>&1 || die "jq is required for lease self-test"
 
 oc_args=(--kubeconfig "${KUBECONFIG}")
 if [[ "${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" == "true" ]]; then
@@ -93,9 +94,16 @@ echo "==> trap release (subshell)"
 	smoke_cluster_lease_install_traps
 	exit 0
 )
-if oc "${oc_args[@]}" get lease storage-cert-harness-smoke-selftest-trap \
-	-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" >/dev/null 2>&1; then
+set +e
+trap_get_err="$(oc "${oc_args[@]}" get lease storage-cert-harness-smoke-selftest-trap \
+	-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" 2>&1)"
+trap_get_st=$?
+set -e
+if [[ "${trap_get_st}" -eq 0 ]]; then
 	die "trap subshell should have deleted storage-cert-harness-smoke-selftest-trap"
+fi
+if ! grep -qiE 'notfound|\(NotFound\)|not found' <<<"${trap_get_err}"; then
+	die "trap release check: expected NotFound, got exit ${trap_get_st}: ${trap_get_err}"
 fi
 echo "==> trap release ok"
 

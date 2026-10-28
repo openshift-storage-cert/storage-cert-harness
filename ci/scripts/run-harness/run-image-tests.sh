@@ -47,6 +47,12 @@ yq_bin="${YQ:-$(command -v yq || true)}"
 }
 echo "validation passed: yq is available"
 
+command -v jq >/dev/null 2>&1 || {
+	echo "error: jq is required for cluster smoke lease updates" >&2
+	exit 1
+}
+echo "validation passed: jq is available"
+
 harness_thresholds="work/harness-run-thresholds.json"
 [[ -s "${harness_thresholds}" ]] || {
 	echo "error: smoke thresholds missing: ${harness_thresholds} (run: make prepare-smoke-env)" >&2
@@ -159,6 +165,19 @@ case "${arch}" in
 	x86_64) arch=amd64 ;;
 	aarch64) arch=arm64 ;;
 esac
+# Harness args as an array (not continued lines) so a stray CR or "$backend"
+# in "/work/backends.local.yaml" cannot split into a separate shell command.
+harness_run_args=(
+	--catalog /work/catalog.json
+	--thresholds /work/harness-run-thresholds.json
+	--plan /plans/harness-smoke-plan.yaml
+	--backends /work/backends.local.yaml
+	--backend "${backend}"
+	--workdir /work/harness-smoke-work
+	--output /work/harness-smoke-report
+	--no-attestations
+	--verbose
+)
 harness_smoke_run_podman --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
 	--platform "linux/${arch}" \
 	-v "${repo_root}/work:/work:Z" \
@@ -167,13 +186,4 @@ harness_smoke_run_podman --rm --userns=keep-id --user "$(id -u):$(id -g)" --netw
 	-w /work \
 	-e KUBECONFIG=/work/kubeconfig \
 	-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" \
-	-- \
-	--catalog /work/catalog.json \
-	--thresholds /work/harness-run-thresholds.json \
-	--plan /plans/harness-smoke-plan.yaml \
-	--backends /work/backends.local.yaml \
-	--backend "${backend}" \
-	--workdir /work/harness-smoke-work \
-	--output /work/harness-smoke-report \
-	--no-attestations \
-	--verbose
+	-- "${harness_run_args[@]}"
