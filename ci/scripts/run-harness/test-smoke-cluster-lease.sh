@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 # Exercise cluster smoke lease acquire, renew, busy conflict, and trap release.
-# Requires: oc, readable KUBECONFIG, RBAC for leases in storage-cert-ci.
-#
-# Usage:
-#   KUBECONFIG=work/kubeconfig ./ci/scripts/run-harness/test-smoke-cluster-lease.sh
-#   KUBECTL_INSECURE_SKIP_TLS_VERIFY=true ...  # when needed
 set -euo pipefail
 
 _run_harness_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,11 +55,12 @@ after="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
 [[ "${after}" != "${before}" ]] || die "renewTime did not change after manual renew"
 
 echo "==> background renewal loop"
+before_loop="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
 smoke_cluster_lease_start_renewal_loop
 sleep 3
 smoke_cluster_lease_stop_renewal_loop
 after_loop="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
-[[ "${after_loop}" != "${after}" ]] || echo "note: renewTime unchanged after loop (timing; continuing)"
+[[ "${after_loop}" != "${before_loop}" ]] || die "renewTime did not change after background renewal loop"
 
 echo "==> busy conflict (second holder must fail with exit ${SMOKE_CLUSTER_LEASE_EXIT_BUSY})"
 busy_env=(

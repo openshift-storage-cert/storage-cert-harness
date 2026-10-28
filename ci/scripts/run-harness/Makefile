@@ -1,14 +1,10 @@
-# Harness image run entry points (local cluster smoke, Quay image smoke, offline replay).
-# Repo root Makefile delegates here; CI continues to invoke the root Makefile.
-#
-# Direct use: make -f ci/scripts/run-harness/Makefile smoke-ci
-# From repo root: make smoke-ci
-
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../..)
 SCRIPTS := $(REPO_ROOT)/ci/scripts/run-harness
 
 KUBECONFIG ?= work/kubeconfig
 VERSION ?= latest
+
+.NOTPARALLEL: clean-smoke-env prepare-smoke-env smoke-env smoke-ci run-harness-smoke
 
 .PHONY: help replay-smoke prepare-smoke-env clean-smoke-env smoke-env smoke-ci \
 	run-harness-smoke run-quay-image-tests
@@ -29,9 +25,11 @@ prepare-smoke-env:
 clean-smoke-env:
 	cd "$(REPO_ROOT)" && "$(SCRIPTS)/clean-smoke-env.sh"
 
-smoke-env: clean-smoke-env prepare-smoke-env
+smoke-env:
+	cd "$(REPO_ROOT)" && "$(SCRIPTS)/clean-smoke-env.sh" && "$(SCRIPTS)/prepare-smoke-env.sh"
 
-smoke-ci: smoke-env run-harness-smoke
+smoke-ci:
+	cd "$(REPO_ROOT)" && "$(SCRIPTS)/clean-smoke-env.sh" && "$(SCRIPTS)/prepare-smoke-env.sh" && "$(SCRIPTS)/run-image-tests.sh" "$(KUBECONFIG)"
 
 replay-smoke:
 	cd "$(REPO_ROOT)" && "$(SCRIPTS)/replay-smoke.sh"

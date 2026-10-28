@@ -8,8 +8,8 @@ source "${_run_harness_dir}/../ci-utils.sh"
 # shellcheck source=smoke-cluster-lease.sh
 source "${_run_harness_dir}/smoke-cluster-lease.sh"
 repo_root="${REPO_ROOT}"
-ci_log_init_temp "run-image-tests"
 acquire_smoke_run_lock
+ci_log_init_temp "run-image-tests"
 
 command -v podman >/dev/null 2>&1 || {
 	echo "error: podman is required" >&2

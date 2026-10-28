@@ -48,32 +48,41 @@ jobs:
             const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
             const since = new Date(sinceMs).toISOString();
             const canonical = `${context.repo.owner}/${context.repo.repo}`;
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              base: 'main',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: 50,
-            });
             const items = [];
-            for (const pr of prs) {
-              if (pr.head.repo.full_name !== canonical) {
-                continue;
-              }
-              const title = pr.title || '';
-              const body = pr.body || '';
-              if (title.includes('[skip live-smoke]') || body.includes('[skip live-smoke]')) {
-                continue;
-              }
-              if (new Date(pr.updated_at).getTime() < sinceMs) {
-                continue;
-              }
-              items.push({
-                pr_number: pr.number,
-                head_sha: pr.head.sha,
+            for (let page = 1; page <= 50; page += 1) {
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                base: 'main',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100,
+                page,
               });
+              if (prs.length === 0) {
+                break;
+              }
+              for (const pr of prs) {
+                if (pr.head.repo.full_name !== canonical) {
+                  continue;
+                }
+                const title = pr.title || '';
+                const body = pr.body || '';
+                if (title.includes('[skip live-smoke]') || body.includes('[skip live-smoke]')) {
+                  continue;
+                }
+                if (new Date(pr.updated_at).getTime() < sinceMs) {
+                  continue;
+                }
+                items.push({
+                  pr_number: pr.number,
+                  head_sha: pr.head.sha,
+                });
+              }
+              if (prs.length < 100) {
+                break;
+              }
             }
             if (items.length === 0) {
               core.info(
@@ -138,6 +147,31 @@ jobs:
           ref: refs/heads/main
           fetch-depth: 1
           persist-credentials: false
+      - name: Verify PR head matches bundled artifact
+        uses: actions/github-script@v9
+        env:
+          BUNDLE_HEAD_SHA: ${{ env.LIVE_SMOKE_HEAD_SHA }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            if (pr.data.state !== 'open') {
+              core.setFailed(`PR #${pr.data.number} is not open (${pr.data.state})`);
+              return;
+            }
+            if (pr.data.base.ref !== 'main') {
+              core.setFailed(`PR #${pr.data.number} targets ${pr.data.base.ref}, not main`);
+              return;
+            }
+            if (pr.data.head.sha !== process.env.BUNDLE_HEAD_SHA) {
+              core.setFailed(
+                `PR head is ${pr.data.head.sha} but bundle is ${process.env.BUNDLE_HEAD_SHA}; re-run live smoke`,
+              );
+            }
       - uses: actions/download-artifact@v8
         with:
           name: live-smoke-src-${{ github.run_id }}-${{ matrix.pr_number }}-${{ github.run_attempt }}
@@ -146,8 +180,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
-            exit 0
+            echo "::error::ci/scripts/run-harness/live-cluster-smoke.sh is not on main"
+            exit 1
           fi
           bash ci/scripts/run-harness/live-cluster-smoke.sh
 
@@ -183,6 +217,14 @@ jobs:
             const title = pr.data.title || '';
             if (title.includes('[skip live-smoke]') || body.includes('[skip live-smoke]')) {
               core.setFailed('PR has [skip live-smoke]');
+              return;
+            }
+            if (pr.data.state !== 'open') {
+              core.setFailed(`PR #${pr.data.number} is not open (${pr.data.state})`);
+              return;
+            }
+            if (pr.data.base.ref !== 'main') {
+              core.setFailed(`PR #${pr.data.number} targets ${pr.data.base.ref}, not main`);
               return;
             }
             core.setOutput('head_sha', pr.data.head.sha);
@@ -230,6 +272,31 @@ jobs:
           ref: refs/heads/main
           fetch-depth: 1
           persist-credentials: false
+      - name: Verify PR head matches bundled artifact
+        uses: actions/github-script@v9
+        env:
+          BUNDLE_HEAD_SHA: ${{ env.LIVE_SMOKE_HEAD_SHA }}
+          PR_NUMBER: ${{ env.LIVE_SMOKE_PR_NUMBER }}
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            if (pr.data.state !== 'open') {
+              core.setFailed(`PR #${pr.data.number} is not open (${pr.data.state})`);
+              return;
+            }
+            if (pr.data.base.ref !== 'main') {
+              core.setFailed(`PR #${pr.data.number} targets ${pr.data.base.ref}, not main`);
+              return;
+            }
+            if (pr.data.head.sha !== process.env.BUNDLE_HEAD_SHA) {
+              core.setFailed(
+                `PR head is ${pr.data.head.sha} but bundle is ${process.env.BUNDLE_HEAD_SHA}; re-run live smoke`,
+              );
+            }
       - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.bundle-comment.outputs.src_artifact }}
@@ -238,8 +305,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
-            exit 0
+            echo "::error::ci/scripts/run-harness/live-cluster-smoke.sh is not on main"
+            exit 1
           fi
           bash ci/scripts/run-harness/live-cluster-smoke.sh
 
@@ -276,6 +343,14 @@ jobs:
             const title = pr.data.title || '';
             if (title.includes('[skip live-smoke]') || body.includes('[skip live-smoke]')) {
               core.setFailed('PR has [skip live-smoke]');
+              return;
+            }
+            if (pr.data.state !== 'open') {
+              core.setFailed(`PR #${pr.data.number} is not open (${pr.data.state})`);
+              return;
+            }
+            if (pr.data.base.ref !== 'main') {
+              core.setFailed(`PR #${pr.data.number} targets ${pr.data.base.ref}, not main`);
               return;
             }
             core.setOutput('head_sha', pr.data.head.sha);
@@ -323,6 +398,31 @@ jobs:
           ref: refs/heads/main
           fetch-depth: 1
           persist-credentials: false
+      - name: Verify PR head matches bundled artifact
+        uses: actions/github-script@v9
+        env:
+          BUNDLE_HEAD_SHA: ${{ env.LIVE_SMOKE_HEAD_SHA }}
+          PR_NUMBER: ${{ env.LIVE_SMOKE_PR_NUMBER }}
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            if (pr.data.state !== 'open') {
+              core.setFailed(`PR #${pr.data.number} is not open (${pr.data.state})`);
+              return;
+            }
+            if (pr.data.base.ref !== 'main') {
+              core.setFailed(`PR #${pr.data.number} targets ${pr.data.base.ref}, not main`);
+              return;
+            }
+            if (pr.data.head.sha !== process.env.BUNDLE_HEAD_SHA) {
+              core.setFailed(
+                `PR head is ${pr.data.head.sha} but bundle is ${process.env.BUNDLE_HEAD_SHA}; re-run live smoke`,
+              );
+            }
       - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.bundle-dispatch.outputs.src_artifact }}
@@ -331,7 +431,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -f ci/scripts/run-harness/live-cluster-smoke.sh ]]; then
-            echo "::warning::ci/scripts/run-harness/live-cluster-smoke.sh is not on main; skipping live smoke"
-            exit 0
+            echo "::error::ci/scripts/run-harness/live-cluster-smoke.sh is not on main"
+            exit 1
           fi
           bash ci/scripts/run-harness/live-cluster-smoke.sh

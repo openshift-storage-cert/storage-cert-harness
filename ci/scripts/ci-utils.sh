@@ -204,8 +204,7 @@ harness_smoke_resolve_local_image() {
 	echo "${image}"
 }
 
-# Hold local-image.lock from image check through podman start; release once the container is running.
-# Args: podman run flags, then "--", then harness "run" subcommand flags (image ref is resolved here).
+# Hold local-image.lock from image check through container create; release after podman run -d returns.
 harness_smoke_run_podman() {
 	require_cmd flock
 	mkdir -p "${REPO_ROOT}/work"
@@ -229,18 +228,41 @@ harness_smoke_run_podman() {
 	(
 		exec 200>"${lock}"
 		flock -x 200
-		local image
+		local image cid logs_pid wait_status inspect_ec
 		image="$(harness_smoke_resolve_local_image)"
-		echo "validation passed: local harness image '${image}' present (image lock held for podman start)"
-		podman run "${podman_opts[@]}" "${image}" run "${harness_args[@]}" &
-		local podman_pid=$!
+		echo "validation passed: local harness image '${image}' present (image lock held through podman create)"
+		cid="$(podman run -d "${podman_opts[@]}" "${image}" run "${harness_args[@]}")"
+		[[ -n "${cid}" ]] || {
+			echo "error: podman run -d did not return a container id" >&2
+			exit 1
+		}
 		flock -u 200
-		wait "${podman_pid}"
-		exit_code=$?
-		exit "${exit_code}"
+		echo "smoke: container ${cid:0:12} started; streaming harness logs"
+		podman logs -f "${cid}" &
+		logs_pid=$!
+		wait_status=0
+		podman wait "${cid}" || wait_status=$?
+		wait "${logs_pid}" 2>/dev/null || true
+		inspect_ec="$(podman inspect -f '{{.State.ExitCode}}' "${cid}" 2>/dev/null || echo "${wait_status}")"
+		exit "${inspect_ec}"
 	)
 	exit_code=$?
 	return "${exit_code}"
+}
+
+export SMOKE_RUN_LOCK_EXIT_BUSY="${SMOKE_RUN_LOCK_EXIT_BUSY:-3}"
+
+acquire_smoke_run_lock_for_hygiene() {
+	if [[ "${SMOKE_RUN_LOCK_HELD:-}" == "1" ]]; then
+		return 0
+	fi
+	require_cmd flock
+	mkdir -p "${REPO_ROOT}/work"
+	exec 7>"${REPO_ROOT}/work/smoke-run.lock"
+	if ! flock -x -n 7; then
+		die "smoke is already running (work/smoke-run.lock held); wait for it to finish before clean/prepare"
+	fi
+	export SMOKE_RUN_LOCK_HELD=1
 }
 
 # Exit when another local smoke holds work/smoke-run.lock (distinct from lease busy).

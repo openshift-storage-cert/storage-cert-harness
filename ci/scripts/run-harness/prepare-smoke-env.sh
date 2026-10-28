@@ -15,13 +15,18 @@ require_smoke_bundle_file() {
 }
 
 echo "==> prepare-smoke-env: staging ${smoke_config} -> ${work}/"
+acquire_smoke_run_lock_for_hygiene
 require_smoke_bundle_file backends.local.yaml
 require_smoke_bundle_file thresholds-smoke.json
 require_smoke_bundle_file thresholds.json
 [[ -f "${REPO_ROOT}/catalog.json" ]] || die "missing repo catalog.json"
 
 mkdir -p "${work}"
-cp -f "${smoke_config}/backends.local.yaml" "${work}/backends.local.yaml"
+if [[ -f "${work}/backends.local.yaml" ]]; then
+	echo "prepare-smoke-env: preserving existing ${work}/backends.local.yaml"
+else
+	cp -f "${smoke_config}/backends.local.yaml" "${work}/backends.local.yaml"
+fi
 cp -f "${smoke_config}/thresholds-smoke.json" "${work}/harness-run-thresholds.json"
 cp -f "${smoke_config}/thresholds.json" "${work}/thresholds.json"
 cp -f "${REPO_ROOT}/catalog.json" "${work}/catalog.json"
