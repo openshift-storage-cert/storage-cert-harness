@@ -240,10 +240,19 @@ harness_smoke_run_podman() {
 		echo "smoke: container ${cid:0:12} started; streaming harness logs"
 		podman logs -f "${cid}" &
 		logs_pid=$!
-		wait_status=0
-		podman wait "${cid}" || wait_status=$?
+		local wait_rc=0
+		local container_exit=""
+		container_exit="$(podman wait "${cid}" 2>/dev/null)" || wait_rc=$?
 		wait "${logs_pid}" 2>/dev/null || true
-		inspect_ec="$(podman inspect -f '{{.State.ExitCode}}' "${cid}" 2>/dev/null || echo "${wait_status}")"
+		container_exit="${container_exit//$'\r'/}"
+		container_exit="${container_exit//$'\n'/}"
+		if inspect_ec="$(podman inspect -f '{{.State.ExitCode}}' "${cid}" 2>/dev/null)"; then
+			:
+		elif [[ -n "${container_exit}" && "${container_exit}" =~ ^[0-9]+$ ]]; then
+			inspect_ec="${container_exit}"
+		else
+			inspect_ec="${wait_rc}"
+		fi
 		exit "${inspect_ec}"
 	)
 	exit_code=$?
