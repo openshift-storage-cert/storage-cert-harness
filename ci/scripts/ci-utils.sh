@@ -252,6 +252,84 @@ harness_smoke_run_podman() {
 
 export SMOKE_RUN_LOCK_EXIT_BUSY="${SMOKE_RUN_LOCK_EXIT_BUSY:-3}"
 
+# Exit when another local smoke holds work/smoke-run.lock (distinct from lease busy).
+SMOKE_RUN_LOCK_EXIT_BUSY="${SMOKE_RUN_LOCK_EXIT_BUSY:-3}"
+
+smoke_run_lock_busy() {
+	echo "error: local harness smoke is already running (work/smoke-run.lock is held)" >&2
+	echo "error: wait for the active run to finish before starting another; see logs/run-image-tests.log" >&2
+	exit "${SMOKE_RUN_LOCK_EXIT_BUSY}"
+}
+
+# Serialize concurrent harness smoke runs (shared work/report dirs). Never blocks.
+acquire_smoke_run_lock() {
+	if [[ "${SMOKE_RUN_LOCK_HELD:-}" == "1" ]]; then
+		return 0
+	fi
+	require_cmd flock
+	mkdir -p "${REPO_ROOT}/work"
+	exec 8>"${REPO_ROOT}/work/smoke-run.lock"
+	if ! flock -x -n 8; then
+		smoke_run_lock_busy
+	fi
+	export SMOKE_RUN_LOCK_HELD=1
+}
+
+# Preflight logging before a smoke run is committed (lock + lease acquired).
+ci_log_init_temp() {
+	local name="$1"
+	local log="${LOG_DIR}/${name}-temp.log"
+	: >"${log}"
+	_ci_log_start_tee "${log}"
+	echo "==> ${name} (preflight)  $(date -u +%Y-%m-%dT%H:%M:%SZ)  sha=$(git_sha)"
+	echo "smoke hygiene: logging to ${log} until smoke run is committed"
+}
+
+# After lock and cluster lease: archive prior smoke log and tee to logs/run-image-tests.log.
+commit_harness_smoke_run_log() {
+	local name="${1:-run-image-tests}"
+	echo "smoke hygiene: smoke run committed; archiving prior ${name}.log if present"
+	archive_run_image_tests_log
+	# Switch tee target: ci_log_init replaces stdout (ends temp tee) without _ci_log_flush.
+	ci_log_init "${name}"
+	echo "smoke hygiene: preflight details are in ${LOG_DIR}/${name}-temp.log"
+}
+
+# Drop the previous local image pointer, its engine image, and shared dist
+# metadata before starting a new build. Caller must hold acquire_local_image_lock.
+invalidate_previous_local_image_build() {
+	local local_ref_file="${REPO_ROOT}/work/local-image-ref" old_ref eng
+
+	if [[ -s "${local_ref_file}" ]]; then
+		old_ref="$(tr -d '[:space:]' < "${local_ref_file}")"
+		if [[ -n "${old_ref}" ]] && command -v podman >/dev/null 2>&1; then
+			if podman image exists "${old_ref}" >/dev/null 2>&1; then
+				echo "==> removing previous local image ${old_ref}"
+				podman rmi -f "${old_ref}" >/dev/null 2>&1 || true
+			fi
+		fi
+	fi
+
+	rm -f -- "${local_ref_file}"
+	rm -f -- "${IMAGE_TAR}"
+	rm -f -- "${REPO_ROOT}/dist/image-version.txt" "${REPO_ROOT}/dist/binary-version.txt"
+}
+
+# Archive the previous run-image-tests log (if any) before ci_log_init truncates it.
+archive_run_image_tests_log() {
+	local log="${LOG_DIR}/run-image-tests.log"
+	if [[ ! -f "${log}" || ! -s "${log}" ]]; then
+		echo "smoke hygiene: no previous run-image-tests log to archive"
+		return 0
+	fi
+	local archived
+	archived="${LOG_DIR}/run-image-tests-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+	echo "smoke hygiene: archiving previous log ${log} -> ${archived}"
+	mv -- "${log}" "${archived}"
+	echo "smoke hygiene: archived previous smoke log"
+}
+
+# Remove run-image-tests log files under logs/ (not other CI job logs).
 # Drop harness smoke work/report trees under work/ (kubeconfig, backends, catalog, image ref kept).
 clean_harness_smoke_artifacts() {
 	local work="${REPO_ROOT}/work"

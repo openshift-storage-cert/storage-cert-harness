@@ -380,22 +380,42 @@ when a command fails. The image lock is not a transaction: a failed build can
 leave partial engine layers, so rerun the relevant build before validation after
 an error. Lock files may remain on disk and are reused by subsequent runs.
 
-### Cluster smoke lease (shared lab / edge-112)
+### Partner certification runs (published image)
 
-`run-harness/run-image-tests.sh` and `run-harness/live-cluster-smoke.sh` acquire a Kubernetes
-**Coordination Lease** (`storage-cert-ci/storage-cert-harness-smoke`) via
-`ci/scripts/run-harness/smoke-cluster-lease.sh`: holder identity is the CI run id or
-`local-<user>-<epoch>` for developer runs; annotations record run id, host,
-plan, git SHA, and related metadata (see design doc §2). A background loop renews
-the lease every 5 minutes; `trap` on `EXIT` / `INT` / `TERM` stops renewal and
-deletes the lease when this run holds it. If another run holds the lease, the
-script exits with code **2** (cluster busy). Set
-`HARNESS_SMOKE_SKIP_CLUSTER_LEASE=true` to skip when the namespace is unavailable.
-Lease objects are rendered from
-`ci/config/smoke/cluster-smoke-lease.yaml.template` (placeholders replaced at
-acquire time). Verify behavior with
-`./ci/scripts/run-harness/test-smoke-cluster-lease.sh` (uses a dedicated
-`*-selftest` lease name; requires lease RBAC in `storage-cert-ci`).
+Partners run Level 3 certification against the **published** Quay image (no local
+`make image-build-local`). Workflow and cluster prep:
+[PARTNER-CERTIFICATION-GUIDE.md](../PARTNER-CERTIFICATION-GUIDE.md).
+
+| Make target | Script | Role |
+| --- | --- | --- |
+| `make partner-preflight` | `run-partner-preflight.sh` | Host `oc` checks + `harness preflight` in the container |
+| `make partner-cert-load-80` | `run-partner-cert.sh load-80` | `plans/level3-customer-load-80.yaml`, root `thresholds.json` |
+| `make partner-cert-no-load-80` | `run-partner-cert.sh no-load-80` | `plans/level3-customer-no-load-80.yaml`, `--continue-from` load-80 report |
+| `make partner-package-results` | `run-partner-package-results.sh` | Level 3 → `certification-results-level3.tar.gz` (`load-80` + `no-load-80`) |
+| `make partner-smoke-package` | `run-partner-package-results.sh` | Lab smoke → `certification-results-smoke.tar.gz` (branch `test/partner-scripts-smoke`) |
+
+Required environment: `KUBECONFIG`, `BACKEND` (name in `backends.yaml`). Optional:
+`HARNESS_IMAGE` (default `quay.io/virtarraycert/storage-cert-harness:main`),
+`CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).
+
+Outputs:
+
+- **Host logs:** each partner script archives the previous file, then tees to
+  `logs/run-partner-preflight.log`, `logs/run-partner-cert-load-80.log`, or
+  `logs/run-partner-cert-no-load-80.log` (see `ci_log_init` in `ci-utils.sh`).
+- **Harness artifacts:** `certification-results/<profile>/report/` (reports,
+  `run.log`) and `certification-results/<profile>/work/` (tool workdirs).
+  Re-running a profile archives the prior `certification-results/<profile>/`
+  tree with a UTC timestamp unless `PARTNER_KEEP_WORK=true`.
+
+`partner-harness-common.sh` is sourced only (validation, `podman pull`, log/
+result hygiene). Partner runs do **not** take `work/smoke-run.lock`; only one
+harness execution per cluster is documented as partner responsibility.
+
+Contributor smoke against a **local** image still uses `make run-harness-smoke`
+(`run-harness/run-image-tests.sh`, `work/local-image-ref`). Pulling the registry image for
+lab checks uses `make run-quay-image-tests` (`run-harness/run-quay-image-tests.sh`), which
+also archives `logs/run-quay-image-tests.log` before each run.
 
 ## Job images (no Docker Hub)
 
@@ -525,10 +545,16 @@ uploads `logs/*.log` when a job fails (not the README).
 | `mirror-ci-tools.sh` | Retag Trivy/Dive/Hadolint into `quay.io/virtarraycert/ci_tools`; run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
 | `advance-version.sh` | Auto-advance both tracks on main push (CI only) |
+| `partner-harness-common.sh` | Shared partner helpers (sourced): image default, backends/cluster validation, log and result archiving |
+| `run-partner-preflight.sh` | Partner preflight via published image (`make partner-preflight`) |
+| `run-partner-cert.sh` | Partner Level 3 load-80 or no-load-80 run (`make partner-cert-*`) |
+| `run-partner-package-results.sh` | `PARTNER_PACKAGE_MODE=level3\|smoke\|all`; default tarballs `certification-results-level3.tar.gz` or `-smoke.tar.gz` |
+| `run-harness/run-image-tests.sh` | Live smoke with **local** image ref (`make run-harness-smoke`); holds `work/smoke-run.lock` |
+| `run-harness/run-quay-image-tests.sh` | Pull and smoke **published** image against `work/` (`make run-quay-image-tests`) |
 
 The **release artifact** is that image ([ADR-0011](../decisions/0011-harness-ships-as-container-image.md)),
 not the `bin/harness` binary. Registry:
-`quay.io/eco-special-projects/storage-cert-harness:<image_version>` and `:main` on the
+`quay.io/virtarraycert/storage-cert-harness:<image_version>` and `:main` on the
 default branch. The `build` job produces `bin/harness` as a debug/dev artifact.
 
 On **GitHub**, `image-lint` runs before `image-build` with
@@ -564,6 +590,8 @@ make ci-image      # image-build (linux/amd64 + contents-check) + trivy + dive
 ```
 
 Scratch/logs stay gitignored (`/bin/`, `/dist/`, `/logs/**`, `/ci-local/`).
+Partner and smoke wrappers write transcripts under `logs/` (see
+[logs/README.md](../logs/README.md)); only `logs/README.md` is tracked.
 Self-tests use `mktemp`.
 
 On GitHub, `image-lint`, `image-scan-trivy`, and `image-scan-dive` run with
