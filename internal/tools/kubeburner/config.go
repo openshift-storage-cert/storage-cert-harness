@@ -1,54 +1,52 @@
 package kubeburner
 
 import (
-	"embed"
+	"encoding/json"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"strconv"
-	"strings"
 
+	"github.com/openshift-storage-cert/storage-cert-harness/internal/manifest"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/safefs"
 )
 
-//go:embed assets
-var assets embed.FS
+var renderer manifest.ManifestRenderer = manifest.Native{}
 
-const snapshotJobsMarker = "# SNAPSHOT_JOBS"
-
-// writeConfig writes assets and renders snapshot jobs.
-func writeConfig(dir string, params Params) (string, error) {
-	root := "assets"
-	err := fs.WalkDir(assets, root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		dst := filepath.Join(dir, rel)
-		if d.IsDir() {
-			return safefs.MkdirAll(dst, 0o755)
-		}
-		b, err := assets.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		if rel == "config.yaml" {
-			b = []byte(strings.Replace(string(b), snapshotJobsMarker, snapshotJobs(params), 1))
-		}
-		return safefs.WriteFile(dst, b, 0o600)
-	})
+// writeConfig stages unchanged sources for kube-burner's native renderer.
+func writeConfig(dir string) (string, error) {
+	if err := safefs.MkdirAll(filepath.Join(dir, "templates"), 0o755); err != nil {
+		return "", fmt.Errorf("kube-burner: create template directory: %w", err)
+	}
+	entries, err := templates.ReadDir(snapshotTemplatesDir)
 	if err != nil {
-		return "", fmt.Errorf("kube-burner: write config assets: %w", err)
+		return "", fmt.Errorf("kube-burner: read templates: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		b, err := templates.ReadFile(snapshotTemplatesDir + "/" + name)
+		if err != nil {
+			return "", fmt.Errorf("kube-burner: read template %s: %w", name, err)
+		}
+		b, err = manifest.Render(renderer, name, b, nil)
+		if err != nil {
+			return "", err
+		}
+		dst := filepath.Join(dir, "templates", name)
+		if name == "config.yaml" {
+			dst = filepath.Join(dir, name)
+		}
+		if err := safefs.WriteFile(dst, b, 0o600); err != nil {
+			return "", fmt.Errorf("kube-burner: write template %s: %w", name, err)
+		}
 	}
 	return "config.yaml", nil
 }
 
 // buildEnv renders the config's template vars from plan params + backend (never a threshold — secret hygiene) as KEY=VALUE strings.
 func buildEnv(p Params, storageClass string) []string {
+	jobs, _ := json.Marshal(snapshotJobInputs(p))
 	return []string{
+		"SNAPSHOT_JOBS=" + string(jobs),
 		"REPLICAS=" + strconv.Itoa(p.Replicas),
 		"VM_IMAGE=" + p.VMImage,
 		"DISK_SIZE=" + p.DiskSize,
@@ -61,55 +59,23 @@ func buildEnv(p Params, storageClass string) []string {
 	}
 }
 
-// snapshotJobs renders one job or sequential batches.
-func snapshotJobs(p Params) string {
-	if !p.snapshotCountSet && p.SnapshotCount == p.Replicas {
-		return legacySnapshotJob()
-	}
-
-	var jobs strings.Builder
-	for start, batch := 0, 1; start < p.SnapshotCount; start, batch = start+p.Replicas, batch+1 {
-		replicas := min(p.Replicas, p.SnapshotCount-start)
-		fmt.Fprintf(&jobs, `  - name: %s%d
-    jobType: create
-    jobIterations: 1
-    qps: {{.QPS}}
-    burst: {{.BURST}}
-    namespace: {{.NAMESPACE}}
-    namespacedIterations: false
-    waitWhenFinished: true
-    maxWaitTimeout: {{.MAX_WAIT}}
-    objects:
-      - objectTemplate: templates/vmsnapshot-batch.yaml
-        replicas: %d
-        inputVars:
-          snapshotBatch: %d
-        wait: true
-        waitOptions:
-          customStatusPaths:
-            - key: '.readyToUse | tostring'
-              value: "true"
-`, snapshotJobPrefix, batch, replicas, batch)
-	}
-	return strings.TrimSuffix(jobs.String(), "\n")
+type snapshotJobInput struct {
+	Name     string `json:"name"`
+	Template string `json:"template"`
+	Replicas int    `json:"replicas"`
+	Batch    int    `json:"batch"`
 }
 
-func legacySnapshotJob() string {
-	return `  - name: vmsnapshot-snapshot
-    jobType: create
-    jobIterations: 1
-    qps: {{.QPS}}
-    burst: {{.BURST}}
-    namespace: {{.NAMESPACE}}
-    namespacedIterations: false
-    waitWhenFinished: true
-    maxWaitTimeout: {{.MAX_WAIT}}
-    objects:
-      - objectTemplate: templates/vmsnapshot.yaml
-        replicas: {{.REPLICAS}}
-        wait: true
-        waitOptions:
-          customStatusPaths:
-            - key: '.readyToUse | tostring'
-              value: "true"`
+func snapshotJobInputs(p Params) []snapshotJobInput {
+	if !p.snapshotCountSet && p.SnapshotCount == p.Replicas {
+		return []snapshotJobInput{{Name: legacySnapshotJobName, Template: "templates/vmsnapshot.yaml", Replicas: p.Replicas}}
+	}
+	var jobs []snapshotJobInput
+	for start, batch := 0, 1; start < p.SnapshotCount; start, batch = start+p.Replicas, batch+1 {
+		jobs = append(jobs, snapshotJobInput{
+			Name: snapshotJobPrefix + strconv.Itoa(batch), Template: "templates/vmsnapshot-batch.yaml",
+			Replicas: min(p.Replicas, p.SnapshotCount-start), Batch: batch,
+		})
+	}
+	return jobs
 }
