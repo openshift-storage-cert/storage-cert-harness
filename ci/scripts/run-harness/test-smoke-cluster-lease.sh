@@ -58,10 +58,13 @@ after="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
 echo "==> background renewal loop"
 before_loop="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
 smoke_cluster_lease_start_renewal_loop
-sleep 3
-smoke_cluster_lease_stop_renewal_loop
+sleep $((SMOKE_CLUSTER_LEASE_RENEW_INTERVAL_SECONDS + 1))
+mid_loop="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
+[[ "${mid_loop}" != "${before_loop}" ]] || die "renewTime did not change after first renewal interval"
+sleep $((SMOKE_CLUSTER_LEASE_RENEW_INTERVAL_SECONDS + 1))
 after_loop="$(lease_get "${SMOKE_CLUSTER_LEASE_NAME}" '{.spec.renewTime}')"
-[[ "${after_loop}" != "${before_loop}" ]] || die "renewTime did not change after background renewal loop"
+[[ "${after_loop}" != "${mid_loop}" ]] || die "renewTime did not advance again during background renewal loop"
+smoke_cluster_lease_stop_renewal_loop
 
 echo "==> busy conflict (second holder must fail with exit ${SMOKE_CLUSTER_LEASE_EXIT_BUSY})"
 busy_env=(

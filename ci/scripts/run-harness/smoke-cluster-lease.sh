@@ -282,20 +282,27 @@ smoke_cluster_lease_apply_metadata() {
 	local anns=()
 	smoke_cluster_lease_collect_annotations "${run_id}" "${plan_name}" "${plan_file}" anns
 
+	local ann_obj updated err st
+	ann_obj="$(printf '%s\n' "${anns[@]}" | jq -R -s '
+		split("\n") | map(select(length > 0)) |
+		map(capture("^(?<k>[^=]+)=(?<v>.*)$")) |
+		map({(.k): .v}) | add // {}')"
+	updated="$(jq \
+		--arg run_id "${run_id}" \
+		--arg label_key "${SMOKE_CLUSTER_LEASE_LABEL_KEY}" \
+		--argjson new_anns "${ann_obj}" \
+		'.metadata.labels["app.kubernetes.io/managed-by"] = "storage-cert-harness" |
+		.metadata.labels[$label_key] = $run_id |
+		.metadata.annotations = ((.metadata.annotations // {}) + $new_anns)' <<<"${json}")"
 	set +e
-	oc "${oc_args[@]}" label lease "${SMOKE_CLUSTER_LEASE_NAME}" \
-		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
-		"app.kubernetes.io/managed-by=storage-cert-harness" \
-		"${SMOKE_CLUSTER_LEASE_LABEL_KEY}=${run_id}" \
-		--overwrite >/dev/null
-	local st=$?
-	# shellcheck disable=SC2068
-	oc "${oc_args[@]}" annotate lease "${SMOKE_CLUSTER_LEASE_NAME}" \
-		-n "${SMOKE_CLUSTER_LEASE_NAMESPACE}" \
-		--overwrite "${anns[@]}" >/dev/null
-	st=$((st + $?))
+	err="$(printf '%s' "${updated}" | oc "${oc_args[@]}" replace -f - 2>&1)"
+	st=$?
 	set -e
-	[[ "${st}" -eq 0 ]]
+	if [[ "${st}" -ne 0 ]]; then
+		echo "smoke lease metadata: replace failed (holder or resourceVersion changed?): ${err}" >&2
+		return 1
+	fi
+	return 0
 }
 
 smoke_cluster_lease_renew_heartbeat() {

@@ -165,8 +165,7 @@ case "${arch}" in
 	x86_64) arch=amd64 ;;
 	aarch64) arch=arm64 ;;
 esac
-# Harness args as an array (not continued lines) so a stray CR or "$backend"
-# in "/work/backends.local.yaml" cannot split into a separate shell command.
+# Harness args as array so CR/backend paths cannot split the podman command line.
 harness_run_args=(
 	--catalog /work/catalog.json
 	--thresholds /work/harness-run-thresholds.json
