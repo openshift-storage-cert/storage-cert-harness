@@ -63,8 +63,14 @@ func (preflight) Check(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs 
 		} else {
 			bag.Set("snapshot_selection", selection)
 			findings = append(findings, selection.Finding())
-			// Provisioning this storage uses "wait --for=create".
-			findings = append(findings, clustercheck.WaitForCreateSupported(ctx, ""))
+			// Mirror Provision's condition exactly: it only builds the private
+			// StorageProfile — the sole user of "wait --for=create" — when the
+			// backend names a snapshot class. A class resolved from the cluster
+			// default or the profile skips that path, so demanding the newer
+			// client there would block a run that never needs it.
+			if rc.Backend.SnapshotClass != "" {
+				findings = append(findings, clustercheck.WaitForCreateSupported(ctx, ""))
+			}
 		}
 	}
 	cli := clustercheck.KubeCLI()
