@@ -768,10 +768,9 @@ from `select.ids` (document in table below).
 ### 6.5 Local smoke configuration bundle (`ci/config/smoke/`)
 
 Smoke needs three **versioned, non-secret** inputs plus cluster-specific secrets
-that stay out of git. To avoid scattering paths (`plans/…`, repo-root
-`thresholds-smoke.json`, ad hoc `work/backends.local.yaml`), the repo will keep a
-**single ordered bundle** under `ci/config/smoke/` (alongside existing
-`ci/config/images.env`, `golangci.yml`, etc.).
+that stay out of git. Paths are centralized under `ci/config/smoke/` alongside
+`ci/config/images.env`, `golangci.yml`, etc. The smoke **plan** remains at
+`plans/harness-smoke-plan.yaml`.
 
 | File in bundle | Purpose | Secret? |
 | --- | --- | --- |
@@ -779,11 +778,10 @@ that stay out of git. To avoid scattering paths (`plans/…`, repo-root
 | `backends.yaml` | **Template** backends file: defines the plan’s `backend:` name (e.g. `oc-edge-112`), `storage_class`, `snapshot_class`, vendor params **without** credentials | No (no `inline` secrets) |
 | `thresholds-smoke.json` | SLA bars for smoke grading | No |
 
-**Migration:** Today the plan lives in `plans/harness-smoke-plan.yaml` and
-thresholds in repo-root `thresholds-smoke.json`. When `ci/config/smoke/` lands,
-those paths become the **canonical** smoke bundle (either move files or symlink
-from the old paths for one release — prefer **one** canonical tree). The plan
-`backend:` field must match a `backends[].name` entry in the staged backends file.
+**Migration:** Canonical smoke thresholds live only in
+`ci/config/smoke/thresholds-smoke.json` (repo-root `thresholds-smoke.json` removed).
+The plan remains `plans/harness-smoke-plan.yaml`. Full certification bars stay in
+repo-root **`thresholds.json`** (not staged for smoke).
 
 **Not in the bundle (remain under `work/`, gitignored):**
 
@@ -985,7 +983,7 @@ This section mirrors that list for design readers.
 | --- | --- | --- | --- |
 | A1 | [5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | edge-112 sign-off — 8 TRs; record §6.3/§6.4 timings | Open |
 | A2 | [5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | Re-enable TR-STOR-002 in smoke plan | Blocked — [5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566) |
-| A3 | [5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | Runbook + smoke docs aligned with `prepare-smoke-env` | Mostly done |
+| A3 | [5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | Runbook + smoke docs aligned with `prepare-smoke-env` | Mostly done — [smoke-testing.md](../smoke-testing.md) |
 | B1 | [5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | `CI_LIVE_SMOKE_ENABLED`, `live-smoke` env secrets, runner | Open |
 | B2 | [5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | `live-cluster-smoke.sh` — podman run, secrets, janitor, timing artifact | Open |
 | B3 | [5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | GHA `timeout-minutes` (~240m) on live-smoke jobs | **Done** in `ci-live-smoke.yml` |
@@ -1056,7 +1054,7 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 | **Cluster lease (core)** | `smoke-cluster-lease.sh` in `run-image-tests.sh` and start of `live-cluster-smoke.sh` |
 | **CI workflow** | `ci-live-smoke.yml`: schedule, comment, dispatch, fork guards, `timeout-minutes: 240`; gated on `CI_LIVE_SMOKE_ENABLED` |
 | **CI entry (incomplete)** | `live-cluster-smoke.sh` acquires lease then exits **5** until **B2** |
-| **Docs / process** | Skip live-smoke token in `docs/ci.md` / contributing; [plan-based-test-suite-runbook.md](plan-based-test-suite-runbook.md) |
+| **Docs / process** | Skip live-smoke token in `docs/ci.md` / contributing; [smoke-testing.md](../smoke-testing.md); [plan-based-test-suite-runbook.md](plan-based-test-suite-runbook.md) |
 
 ### In progress / blocked
 
@@ -1074,6 +1072,7 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 
 ## References
 
+- Contributor smoke guide: [smoke-testing.md](../smoke-testing.md)
 - Runbook: [plan-based-test-suite-runbook.md](plan-based-test-suite-runbook.md)
 - CI overview: `storage-cert-harness/docs/ci.md` (Dedicated CI cluster section)
 - Scripts: `ci/scripts/run-harness/` (`run-image-tests.sh`, `run-quay-image-tests.sh`,

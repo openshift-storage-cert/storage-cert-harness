@@ -5,6 +5,7 @@ certification-scale execution. Use **private** runbooks for site-specific hostna
 kubeconfig paths, and credentials.
 
 Design and CI behavior: [storage-cert-harness-ci-smoke-test.md](storage-cert-harness-ci-smoke-test.md).
+**How to run smoke locally:** [smoke-testing.md](../smoke-testing.md).
 
 ## Test selection
 
@@ -116,7 +117,7 @@ Track completion against [storage-cert-harness-ci-smoke-test.md §11–§13](sto
 | --- | --- | --- | --- | --- |
 | A1 | [ECOPROJECT-5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | **Validate edge-112 with current kubeconfig** | Run `make smoke-ci` (or prepare + `run-harness-smoke`) after rotating lab kubeconfig; confirm all **eight** active TRs pass; record per-TR durations for design §6.3/§6.4. | Open |
 | A2 | [ECOPROJECT-5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | **Re-enable TR-STOR-002 in the smoke plan** | Uncomment in `harness-smoke-plan.yaml` after virtbench gather fix; re-run full sign-off on edge-112. | Blocked — [ECOPROJECT-5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566) |
-| A3 | [ECOPROJECT-5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | **Review and update this runbook + harness smoke docs** | Keep selection table, `prepare-smoke-env`, and thresholds paths aligned with `ci/config/smoke/` and `run-image-tests.sh`. | Mostly done — spot-check with design §11 |
+| A3 | [ECOPROJECT-5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | **Review and update smoke contributor docs** | Primary guide: [smoke-testing.md](../smoke-testing.md); plan runbook in `design/` | Mostly done |
 
 ### CI enablement and secrets
 
