@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
-	"github.com/openshift-storage-cert/storage-cert-harness/internal/safefs"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/stages"
 )
 
@@ -63,8 +62,10 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 		}
 		seen[p.Workload] = true
 
-		subdir := filepath.Join(resultsDir, tr.ID)
-		if err := safefs.MkdirAll(subdir, 0o755); err != nil {
+		// Keep previous invocations for diagnostics, but never collect their
+		// evidence for a retry, even if the new process writes no files.
+		subdir, err := os.MkdirTemp(resultsDir, tr.ID+"-")
+		if err != nil {
 			runs[i].RunErr = err.Error()
 			continue
 		}
@@ -73,7 +74,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 			runs[i].RunErr = err.Error()
 			continue
 		}
-		cmd, err := buildRunCmd(ctx, rc, args, resultsDir, tr.ID)
+		cmd, err := buildRunCmd(ctx, rc, args, resultsDir, filepath.Base(subdir))
 		if err != nil {
 			runs[i].RunErr = err.Error()
 			rc.Logger.Warn("kube-burner-ocp: could not build run command", "tr", tr.ID, "err", err)
@@ -152,7 +153,7 @@ func (collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, _ st
 	return core.LogBundle{Refs: refs, RefsByTR: refsByTR, Data: data}, nil
 }
 
-// findCollectedMetrics returns the metric files under root keyed by base name,
+// findCollectedMetrics returns the metric files under root keyed by relative path,
 // alongside the path of each one read, so a report can cite the files a verdict
 // came from rather than the directory that held them.
 func findCollectedMetrics(root string) (map[string][]byte, []string, error) {

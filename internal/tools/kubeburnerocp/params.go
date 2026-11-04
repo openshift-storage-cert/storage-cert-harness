@@ -120,6 +120,8 @@ func virtParallelParams(raw map[string]any) (map[string]any, error) {
 		}
 		p["initial_vms"] = n
 	}
+	// With no catalog vms, explicit initial_vms is valid; otherwise use the
+	// documented bounded defaults. Invalid explicit values are rejected below.
 	for key, def := range map[string]int{"initial_vms": 5, "increment": 0, "max_iterations": 1} {
 		if _, ok := p[key]; !ok {
 			p[key] = def

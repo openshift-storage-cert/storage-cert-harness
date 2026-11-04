@@ -74,7 +74,7 @@ func mapVirtParallelResults(summaries []jobSummary, data map[string][]byte, resu
 	if lifecycleSeconds > 0 {
 		result.Metrics = append(result.Metrics, core.Metric{Name: virtParallelMetric, Value: lifecycleSeconds, Unit: "s"})
 	}
-	evidence := verifyVirtParallel(summaries, data)
+	evidence := verifyTRVirt019Lifecycle(summaries, data)
 	if result.Native == core.OutcomeFail && evidence.Outcome == core.OutcomePass {
 		evidence.Outcome = core.OutcomeFail
 		evidence.Reason = "one or more kube-burner jobs failed"
