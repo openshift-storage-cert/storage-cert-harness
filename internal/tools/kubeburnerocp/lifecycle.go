@@ -1,25 +1,35 @@
 package kubeburnerocp
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
-	"github.com/openshift-storage-cert/storage-cert-harness/internal/grader"
 )
 
 type virtParallelEvidence struct {
-	Outcome    core.Outcome `json:"outcome"`
-	Reason     string       `json:"reason"`
-	InitialVMs int          `json:"initial_vms"`
-	Increment  int          `json:"increment"`
-	Iterations int          `json:"iterations"`
-	Expected   int          `json:"expected_migrations"`
-	Completed  int          `json:"completed_migrations"`
+	Outcome    core.Outcome         `json:"outcome"`
+	Reason     string               `json:"reason"`
+	InitialVMs int                  `json:"initial_vms"`
+	Increment  int                  `json:"increment"`
+	Iterations int                  `json:"iterations"`
+	Expected   int                  `json:"expected_migrations"`
+	Completed  int                  `json:"completed_migrations"`
+	Created    int                  `json:"created_vms"`
+	Observed   []lifecycleIteration `json:"observed_iterations"`
+}
+
+// lifecycleIteration preserves diagnostics for observed iterations even when a
+// run stops before its configured iteration limit. Counts are distinct VM IDs.
+type lifecycleIteration struct {
+	Index    int                     `json:"index"`
+	Stages   map[string]core.Outcome `json:"stages"`
+	Created  int                     `json:"created_vms"`
+	Migrated int                     `json:"migrated_vms"`
 }
 
 // Individual vmimLatencyMeasurement documents are emitted by kube-burner
@@ -44,7 +54,12 @@ func (e *virtParallelEvidence) reject(out core.Outcome, reason string) {
 	e.Reason = reason
 }
 
-func verifyVirtParallel(summaries []jobSummary, data map[string][]byte) virtParallelEvidence {
+// verifyTRVirt019Lifecycle applies TR-VIRT-019's full-lifecycle certification
+// policy: no stage may be skipped, and every created VM must migrate. This is
+// deliberately specific to this requirement; other tests may need a different
+// stage policy. Missing iterations fail the check while observed evidence is
+// still inspected to retain useful creation, migration, and stage diagnostics.
+func verifyTRVirt019Lifecycle(summaries []jobSummary, data map[string][]byte) virtParallelEvidence {
 	e := virtParallelEvidence{Outcome: core.OutcomePass, Reason: "all lifecycle stages succeeded and every test VM completed migration"}
 	jobs := map[string]jobSummary{}
 	for _, s := range summaries {
@@ -82,37 +97,62 @@ func verifyVirtParallel(summaries []jobSummary, data map[string][]byte) virtPara
 	// Derive the finite iteration set from summaries instead of looping over an
 	// untrusted maxIterations value in the tool output.
 	creates := 0
+	observed := map[int]bool{}
 	for name := range jobs {
 		if strings.HasPrefix(name, "virt-parallel-create-vms-") {
 			creates++
 		}
+		if strings.HasPrefix(name, virtParallelJobPrefix) {
+			suffix := name[strings.LastIndex(name, "-")+1:]
+			if i, err := strconv.Atoi(suffix); err == nil && i >= 0 {
+				observed[i] = true
+			}
+		}
 	}
 	if creates != e.Iterations {
 		e.reject(core.OutcomeFail, fmt.Sprintf("expected %d lifecycle iterations, found %d VM creation stages", e.Iterations, creates))
-		return e
 	}
-	for i := 0; i < e.Iterations; i++ {
+	indices := make([]int, 0, len(observed))
+	for i := range observed {
+		indices = append(indices, i)
+	}
+	sort.Ints(indices)
+	for _, i := range indices {
+		if i >= e.Iterations {
+			e.reject(core.OutcomeError, fmt.Sprintf("unexpected lifecycle iteration: %d", i))
+			continue
+		}
+		e.Observed = append(e.Observed, lifecycleIteration{Index: i, Stages: map[string]core.Outcome{}})
+		iteration := &e.Observed[len(e.Observed)-1]
 		count := e.InitialVMs + i*e.Increment
 		for _, stage := range []string{"create-vms", "resize-volumes", "restart-vms", "snapshot-vms", "migrate-vms", "delete-vms"} {
 			name := fmt.Sprintf("virt-parallel-%s-%d", stage, i)
 			s, exists := jobs[name]
+			iteration.Stages[stage] = core.OutcomePass
 			if !exists {
+				iteration.Stages[stage] = core.OutcomeFail
 				e.reject(core.OutcomeFail, "missing required lifecycle stage: "+name)
 				continue
 			}
 			if !s.Passed || s.ExecutionErrors != "" {
+				iteration.Stages[stage] = core.OutcomeFail
 				e.reject(core.OutcomeFail, "lifecycle stage failed: "+name)
 			}
 			if s.UUID == "" || s.UUID != first.UUID {
+				iteration.Stages[stage] = core.OutcomeError
 				e.reject(core.OutcomeError, "inconsistent lifecycle run UUID: "+name)
 			}
 			for _, flag := range []string{"initialVms", "increment", "maxIterations"} {
 				if s.WorkloadFlags[flag] != first.WorkloadFlags[flag] {
+					iteration.Stages[stage] = core.OutcomeError
 					e.reject(core.OutcomeError, "inconsistent lifecycle workload flags: "+name)
 				}
 			}
 			for _, flag := range []string{"skipMigrationJob", "skipResizeJob", "skipRestartJob", "skipSnapshotJob"} {
 				if s.WorkloadFlags[flag] == "true" {
+					if iteration.Stages[stage] != core.OutcomeError {
+						iteration.Stages[stage] = core.OutcomeFail
+					}
 					e.reject(core.OutcomeFail, "required lifecycle stage disabled: "+flag)
 				}
 			}
@@ -126,6 +166,8 @@ func verifyVirtParallel(summaries []jobSummary, data map[string][]byte) virtPara
 		for _, sample := range created {
 			guests[sample.Namespace+"/"+sample.VMIName] = true
 		}
+		iteration.Created = len(guests)
+		e.Created += len(guests)
 		if len(guests) != count {
 			e.reject(core.OutcomeFail, fmt.Sprintf("iteration %d: expected %d distinct test VMs, found %d", i, count, len(guests)))
 		}
@@ -147,6 +189,7 @@ func verifyVirtParallel(summaries []jobSummary, data map[string][]byte) virtPara
 			}
 			completed[key] = true
 		}
+		iteration.Migrated = len(completed)
 		e.Completed += len(completed)
 		if len(completed) != count {
 			e.reject(core.OutcomeFail, fmt.Sprintf("iteration %d: expected %d migrated VMs, observed %d successful distinct VM migrations", i, count, len(completed)))
@@ -181,60 +224,10 @@ func readLifecycleSamples(data map[string][]byte, job, metric, uuid string) ([]l
 	return samples, nil
 }
 
-type virtParallelEvaluator struct{}
-
-func (virtParallelEvaluator) Evaluate(_ context.Context, tr core.TestRequirement, res core.TestResult) ([]core.Verdict, error) {
-	var raw struct {
-		Lifecycle *virtParallelEvidence `json:"lifecycle"`
-	}
-	outcome := res.Checks[virtParallelCheck]
-	reason := "missing lifecycle evidence"
-	expected, actual := "", ""
-	if json.Unmarshal(res.Raw, &raw) != nil || raw.Lifecycle == nil {
-		outcome = core.OutcomeError
-	} else {
-		e := raw.Lifecycle
-		reason = e.Reason
-		expected = fmt.Sprintf("%d distinct VM migrations", e.Expected)
-		actual = fmt.Sprintf("%d distinct VM migrations", e.Completed)
-		p, err := virtParallelParams(tr.Params)
-		if err != nil {
-			outcome = core.OutcomeError
-			reason = err.Error()
-		} else {
-			initial, _ := asInt(p["initial_vms"])
-			increment, _ := asInt(p["increment"])
-			iterations, _ := asInt(p["max_iterations"])
-			total, totalErr := virtParallelTotal(initial, increment, iterations)
-			if totalErr != nil {
-				return nil, totalErr
-			}
-			expected = fmt.Sprintf("%d distinct VM migrations", total)
-			if initial != e.InitialVMs || increment != e.Increment || iterations != e.Iterations {
-				outcome = core.OutcomeError
-				reason = "lifecycle workload size does not match the effective plan/catalog parameters"
-			}
-		}
-	}
-	vs := grader.GradeSLAs(tr, res)
-	checks := grader.GradeChecks(tr, res)
-	found := false
-	for i := range checks {
-		if checks[i].Item == "check:"+virtParallelCheck {
-			checks[i].Outcome = outcome
-			checks[i].Reason = reason
-			checks[i].Expected = expected
-			checks[i].Actual = actual
-			found = true
-		}
-	}
-	vs = append(vs, checks...)
-	if !found {
-		vs = append(vs, core.Verdict{TR: tr.ID, Item: "check:" + virtParallelCheck, Outcome: outcome, Reason: reason, Expected: expected, Actual: actual})
-	}
-	return vs, nil
-}
-
+// virtParallelTotal sums the arithmetic progression of VM populations:
+// initial*iterations + increment*iterations*(iterations-1)/2. Divide one factor
+// before multiplying, and check each product against the remaining int range
+// so even untrusted workload flags cannot overflow the expected migration count.
 func virtParallelTotal(initial, increment, iterations int) (int, error) {
 	maxInt := int(^uint(0) >> 1)
 	if initial <= 0 || increment < 0 || iterations <= 0 || initial > maxInt/iterations {

@@ -124,7 +124,31 @@ func ParseResults(workload, trID string, data map[string][]byte) (core.TestResul
 			return core.TestResult{}, err
 		}
 	}
+	result.Metrics = worstLatencyMetrics(result.Metrics)
 	raw, _ := json.Marshal(map[string]any{"jobSummary": summaries, "lifecycle": result.Raw})
 	result.Raw = raw
 	return result, nil
+}
+
+// worstLatencyMetrics reports the maximum observed latency for each metric and
+// percentile across jobs/iterations. This is a conservative SLA input, not an
+// estimate of the combined population percentile. Sort keys for stable reports.
+func worstLatencyMetrics(metrics []core.Metric) []core.Metric {
+	byKey := map[string]core.Metric{}
+	for _, m := range metrics {
+		key := m.Name + "\x00" + m.Percentile + "\x00" + m.Unit
+		if prev, ok := byKey[key]; !ok || m.Value > prev.Value {
+			byKey[key] = m
+		}
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]core.Metric, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, byKey[key])
+	}
+	return out
 }

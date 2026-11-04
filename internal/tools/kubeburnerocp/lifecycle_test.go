@@ -267,3 +267,120 @@ func TestVirtParallelRunErrorOverridesSuccessfulSummary(t *testing.T) {
 		t.Fatalf("%v %+v", err, results)
 	}
 }
+
+func TestVirtParallelIncompleteRunDiagnostics(t *testing.T) {
+	data := lifecycleFixture(t)
+	var jobs []jobSummary
+	if err := json.Unmarshal(data["jobSummary.json"], &jobs); err != nil {
+		t.Fatal(err)
+	}
+	for i := range jobs {
+		jobs[i].WorkloadFlags["maxIterations"] = "3"
+	}
+	jobs[4].Passed = false
+	data["jobSummary.json"], _ = json.Marshal(jobs)
+	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Lifecycle virtParallelEvidence `json:"lifecycle"`
+	}
+	if err := json.Unmarshal(res.Raw, &raw); err != nil {
+		t.Fatal(err)
+	}
+	e := raw.Lifecycle
+	if res.Native != core.OutcomeFail || e.Expected != 6 || e.Created != 2 || e.Completed != 2 ||
+		len(e.Observed) != 1 || e.Observed[0].Stages["migrate-vms"] != core.OutcomeFail ||
+		e.Observed[0].Stages["create-vms"] != core.OutcomePass {
+		t.Fatalf("lost partial-run diagnostics: %s", res.Raw)
+	}
+}
+
+func TestVirtParallelEvaluatorPreservesProcessError(t *testing.T) {
+	bag := core.NewBag()
+	bag.Set("kbo_runs", []kboRun{{TRID: "TR-VIRT-019", Workload: WorkloadVirtParallel, RunErr: "exec: permission denied"}})
+	results, err := (parser{}).Parse(context.Background(), nil, bag, core.LogBundle{})
+	if err != nil || len(results) != 1 {
+		t.Fatalf("results=%+v err=%v", results, err)
+	}
+	vs, err := (virtParallelEvaluator{}).Evaluate(context.Background(), core.TestRequirement{ID: "TR-VIRT-019"}, results[0])
+	if err != nil || len(vs) != 1 || vs[0].Outcome != core.OutcomeError || vs[0].Reason != "exec: permission denied" {
+		t.Fatalf("lost process failure: %+v, %v", vs, err)
+	}
+}
+
+func TestRunnerRetryDoesNotCollectPreviousEvidence(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "kube-burner-ocp"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	bag := core.NewBag()
+	bag.Set("results_dir", t.TempDir())
+	rc := &core.RunCtx{Backend: &core.ResolvedBackend{StorageClass: "test-sc"}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	trs := []core.TestRequirement{{ID: "TR-VIRT-019", Params: map[string]any{"workload": WorkloadVirtParallel, "vms": 2}}}
+	if _, err := (runner{}).Run(context.Background(), rc, bag, trs); err != nil {
+		t.Fatal(err)
+	}
+	runs, _ := core.GetAs[[]kboRun](bag, "kbo_runs")
+	first := runs[0].Subdir
+	if first == "" || runs[0].RunErr != "" {
+		t.Fatalf("first run: %+v", runs)
+	}
+	for name, blob := range lifecycleFixture(t) {
+		if err := os.WriteFile(filepath.Join(first, name), blob, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handle, err := (runner{}).Run(context.Background(), rc, bag, trs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs, _ = core.GetAs[[]kboRun](bag, "kbo_runs")
+	if runs[0].Subdir == first || runs[0].RunErr != "" {
+		t.Fatalf("retry: %+v", runs)
+	}
+	logs, err := (collector{}).Collect(context.Background(), rc, bag, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs.Data) != 0 {
+		t.Fatalf("collected stale evidence: %v", logs.Data)
+	}
+	results, err := (parser{}).Parse(context.Background(), rc, bag, logs)
+	if err != nil || len(results) != 1 || results[0].Native == core.OutcomePass {
+		t.Fatalf("empty retry passed: %+v %v", results, err)
+	}
+}
+
+func TestRepeatedQuantilesUseWorstIteration(t *testing.T) {
+	data := lifecycleFixture(t)
+	for _, tc := range []struct {
+		name  string
+		value float64
+	}{{"a", 100}, {"b", 900}} {
+		blob, err := json.Marshal([]latencyQuantile{{MetricName: "vmiLatencyQuantilesMeasurement", QuantileName: "Running", P50: tc.value / 10, P95: tc.value / 2, P99: tc.value}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data[tc.name+"/vmiLatencyQuantilesMeasurement.json"] = blob
+	}
+	res, err := ParseResults(WorkloadVirtParallel, "TR-VIRT-019", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, m := range res.Metrics {
+		if m.Name == "vmiLatency_Running" {
+			count++
+			want := map[string]float64{"p50": 90, "p95": 450, "p99": 900}[m.Percentile]
+			if m.Value != want {
+				t.Fatalf("wrong aggregate: %+v", m)
+			}
+		}
+	}
+	if count != 3 {
+		t.Fatalf("duplicate/missing quantiles: %+v", res.Metrics)
+	}
+}
