@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
-	"github.com/openshift-storage-cert/storage-cert-harness/internal/safefs"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/stages"
 )
 
@@ -63,8 +62,10 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 		}
 		seen[p.Workload] = true
 
-		subdir := filepath.Join(resultsDir, tr.ID)
-		if err := safefs.MkdirAll(subdir, 0o755); err != nil {
+		// Keep previous invocations for diagnostics, but never collect their
+		// evidence for a retry, even if the new process writes no files.
+		subdir, err := os.MkdirTemp(resultsDir, tr.ID+"-")
+		if err != nil {
 			runs[i].RunErr = err.Error()
 			continue
 		}
@@ -73,7 +74,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 			runs[i].RunErr = err.Error()
 			continue
 		}
-		cmd, err := buildRunCmd(ctx, rc, args, resultsDir, tr.ID)
+		cmd, err := buildRunCmd(ctx, rc, args, resultsDir, filepath.Base(subdir))
 		if err != nil {
 			runs[i].RunErr = err.Error()
 			rc.Logger.Warn("kube-burner-ocp: could not build run command", "tr", tr.ID, "err", err)
@@ -152,7 +153,7 @@ func (collector) Collect(_ context.Context, rc *core.RunCtx, bag *core.Bag, _ st
 	return core.LogBundle{Refs: refs, RefsByTR: refsByTR, Data: data}, nil
 }
 
-// findCollectedMetrics returns the metric files under root keyed by base name,
+// findCollectedMetrics returns the metric files under root keyed by relative path,
 // alongside the path of each one read, so a report can cite the files a verdict
 // came from rather than the directory that held them.
 func findCollectedMetrics(root string) (map[string][]byte, []string, error) {
@@ -168,12 +169,13 @@ func findCollectedMetrics(root string) (map[string][]byte, []string, error) {
 			return walkErr
 		}
 		name := entry.Name()
-		if name == "jobSummary.json" || strings.Contains(name, "Quantiles") {
+		if name == "jobSummary.json" || strings.Contains(name, "Quantiles") ||
+			strings.HasPrefix(name, "vmiLatencyMeasurement-") || strings.HasPrefix(name, "vmimLatencyMeasurement-") {
 			content, err := rootFS.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			data[name] = content
+			data[filepath.ToSlash(path)] = content
 			paths = append(paths, filepath.Join(root, path))
 		}
 		return nil
@@ -207,7 +209,7 @@ func (parser) Parse(_ context.Context, _ *core.RunCtx, bag *core.Bag, logs core.
 			}
 		}
 
-		if _, ok := sub["jobSummary.json"]; !ok {
+		if !hasJobSummary(sub) {
 			reason := "kube-burner produced no jobSummary"
 			if r.RunErr != "" {
 				reason = r.RunErr
@@ -233,6 +235,23 @@ func (parser) Parse(_ context.Context, _ *core.RunCtx, bag *core.Bag, logs core.
 				res.Native = core.OutcomeError
 			}
 		}
+		if r.RunErr != "" {
+			res.Native = core.OutcomeFail
+			res.Checks["jobs_passed"] = core.OutcomeFail
+			if r.Workload == WorkloadVirtParallel {
+				res.Checks[virtParallelCheck] = core.OutcomeFail
+				var raw map[string]json.RawMessage
+				if json.Unmarshal(res.Raw, &raw) == nil {
+					var ev virtParallelEvidence
+					if json.Unmarshal(raw["lifecycle"], &ev) == nil {
+						ev.Outcome = core.OutcomeFail
+						ev.Reason = "kube-burner execution failed: " + r.RunErr
+						raw["lifecycle"], _ = json.Marshal(ev)
+						res.Raw, _ = json.Marshal(raw)
+					}
+				}
+			}
+		}
 		out = append(out, res)
 	}
 	return out, nil
@@ -243,4 +262,13 @@ type teardown struct{}
 // Teardown relies on each workload's native gc/cleanup.
 func (teardown) Teardown(_ context.Context, _ *core.RunCtx, _ *core.Bag) error {
 	return nil
+}
+
+func hasJobSummary(data map[string][]byte) bool {
+	for name := range data {
+		if filepath.Base(name) == "jobSummary.json" {
+			return true
+		}
+	}
+	return false
 }

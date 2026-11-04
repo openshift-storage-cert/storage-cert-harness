@@ -18,13 +18,13 @@ Implemented in `kube-burner-ocp/pkg/workloads/virt-parallel.go` as cobra subcomm
 
 ## CLI flags
 
-| Flag | Default | Harness plan param |
+| Flag | Harness default | Harness plan param |
 |------|---------|-------------------|
 | `--storage-class` | (cluster default) | from `--backend` / plan `backend:` |
-| `--initial-vms` | `5` | `initial_vms` (optional) |
-| `--increment` | `5` | `increment` (optional) |
+| `--initial-vms` | `5` | `initial_vms` (optional); catalog `vms` takes precedence and must match if both are set |
+| `--increment` | `0` | `increment` (optional) |
 | `--data-volume-count` | `9` | `data_volume_count` (optional) |
-| `--max-iterations` | `0` (run until failure) | `max_iterations` (optional) |
+| `--max-iterations` | `1` | `max_iterations` (optional) |
 | `--vm-image` | `quay.io/containerdisks/fedora:41` | `vm_image` (optional) |
 | `--vm-cpu` | `1` | `vm_cpu` (optional) |
 | `--vm-memory` | `512Mi` | `vm_memory` (optional) |
@@ -47,21 +47,26 @@ Harness also appends `--local-indexing` and optional globals: `--qps`, `--burst`
 4. **restart-vms** — stop and start each VM; wait for VMI Running
 5. **snapshot-vms** — create a VolumeSnapshot per VM; wait for ReadyToUse
 6. **propagate-labels** — label nodes for migration targeting (hook)
-7. **migrate-vms** — migrate all VMs off a randomly selected node; wait for completion
+7. **migrate-vms** — migrate every VM created in the current iteration; wait for successful completion
 8. **delete-vms** — delete the namespace; wait for full cleanup
 
-Then N += `increment`. Stops when a job fails or `max-iterations` is reached (0 = unlimited).
+Then N += `increment`. Stops when a job fails or the positive `max-iterations` limit is reached.
+The harness rejects `max_iterations: 0` (upstream unlimited mode) for certification.
+All lifecycle stages are required for TR-VIRT-019; every `skip_*_job` must be
+absent or `false`. In particular, skipping migration cannot certify this test.
 
 ## Cluster prerequisites
 
 - KubeVirt / OpenShift Virtualization (`kubevirts.kubevirt.io` CRD)
 - CDI (`datavolumes.cdi.kubevirt.io` CRD)
 - VolumeSnapshotClass on the storage class (snapshot job)
-- ≥ 3 schedulable workers (migration job selects a random node; use `skip_migration_job: true` on 2-worker clusters)
+- Schedulable migration targets with compatible CPU, storage, and network configuration; migration cannot be skipped for certification
 
 ## Output files
 
-Collected by the harness from the run directory (`*Quantiles*` + `jobSummary.json`):
+Collected recursively from the current invocation’s unique run directory. Preserve
+relative directories and every iteration’s summaries and individual measurements
+when assembling a replay archive; quantiles alone cannot prove migration coverage.
 
 | File | Measurement |
 |------|------------|
@@ -71,5 +76,22 @@ Collected by the harness from the run directory (`*Quantiles*` + `jobSummary.jso
 | `pvcLatencyQuantilesMeasurement-virt-parallel-resize-volumes-0.json` | PVC resize propagation latency |
 | `vmiLatencyQuantilesMeasurement-virt-parallel-restart-vms-0.json` | VMI latency phases at restart |
 | `volumeSnapshotLatencyQuantilesMeasurement-virt-parallel-snapshot-vms-0.json` | Snapshot readiness latency |
-| `vmimLatencyQuantilesMeasurement-virt-parallel-migrate-vms-0.json` | Migration latency (when not skipped) |
-| `jobSummary.json` | Per-job pass/fail + elapsed time |
+| `vmimLatencyQuantilesMeasurement-virt-parallel-migrate-vms-0.json` | Migration latency |
+| `vmiLatencyMeasurement-virt-parallel-create-vms-*.json` | Required distinct created VM identities for each iteration |
+| `vmimLatencyMeasurement-virt-parallel-migrate-vms-*.json` | Required successful migrations, matched by run UUID, job, namespace, and VMI name |
+| `jobSummary.json` (every iteration) | Required per-job pass/fail, workload flags, run UUID, and elapsed time |
+
+The `*` in individual measurement filenames is the iteration index. Each created
+VM must have a successful individual migration measurement (`vmimName` and
+nonnegative `succeededLatency`). Missing or malformed evidence reports ERROR;
+incomplete migration or missing/disabled lifecycle stages reports FAIL. Partial
+runs retain created/migrated counts and stage outcomes in `lifecycle` diagnostics.
+Repeated latency quantiles are reduced to the maximum value per metric and
+percentile across iterations for conservative, deterministic SLA grading; this
+is not a percentile recomputed over the combined population.
+
+Complete-population migration requires the upstream change in
+[kube-burner-ocp #542](https://github.com/kube-burner/kube-burner-ocp/pull/542).
+Older binaries that only migrate VMs from one randomly chosen worker cannot
+prove TR-VIRT-019 when that leaves other test VMs unmigrated. The harness checks
+evidence independently of the tool version and will reject incomplete coverage.
