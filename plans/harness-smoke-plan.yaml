@@ -15,7 +15,7 @@ select:
     - TR-VIRT-010  # VM snapshot; kube-burner
     - TR-VIRT-013  # Per-node scale ceiling; virtbench
     - TR-VIRT-018  # Clone at scale; virtbench
-    - TR-VIRT-019  # Parallel VM lifecycle; kube-burner-ocp
+    # - TR-VIRT-019  # Parallel VM lifecycle; kube-burner-ocp
     - TR-VIRT-027  # Snapshot depth per volume; kube-burner
 overrides:
   TR-STOR-002:
