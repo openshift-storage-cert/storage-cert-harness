@@ -3,7 +3,8 @@ name: harness-smoke
 description: >-
   Internal smoke-scale selection for run-image-tests.sh / make run-harness-smoke.
   All non-disruptive catalog TRs at minimal scale; excludes TR-VIRT-007 (HA /
-  node failure) and TR-VIRT-008 (node drain / cordon). Backend oc-edge-112.
+  node failure), TR-VIRT-008 (node drain / cordon), and TR-VIRT-019 (known test
+  issue — omitted from smoke until fixed). Backend oc-edge-112.
 backend: oc-edge-112
 concurrency: 1
 select:
@@ -15,7 +16,7 @@ select:
     - TR-VIRT-010  # VM snapshot; kube-burner
     - TR-VIRT-013  # Per-node scale ceiling; virtbench
     - TR-VIRT-018  # Clone at scale; virtbench
-    # - TR-VIRT-019  # Parallel VM lifecycle; kube-burner-ocp
+    # - TR-VIRT-019  # Dropped from smoke: known virt-parallel / test issue (re-enable when fixed)
     - TR-VIRT-027  # Snapshot depth per volume; kube-burner
 overrides:
   TR-STOR-002:

@@ -1,7 +1,7 @@
 # Live cluster smoke — prepare, validate, run, troubleshoot
 
 How contributors run the **harness smoke plan** on a real OpenShift cluster from
-this repository. This is development-scale smoke (**nine** catalog TRs at minimal
+this repository. This is development-scale smoke (**eight** catalog TRs at minimal
 size), not full Level-3 certification.
 
 ## Related docs
@@ -29,10 +29,11 @@ upstream GitHub live smoke when operators enable it.
 | Backends | Staged from `ci/config/smoke/backends.local.yaml` → `work/backends.local.yaml` (preserved if you already have one) |
 | Catalog | Repo `catalog.json` → `work/catalog.json` |
 
-**Nine** TRs run from `plans/harness-smoke-plan.yaml`, including **TR-STOR-002**
-(FIO storage IO via virtbench; smoke overrides use `fio_runtime: 50` and extended
-`fio_collect_*` retries). **TR-VIRT-007** (HA node failure) and **TR-VIRT-008**
-(node drain) stay excluded by design.
+**Eight** TRs run from `plans/harness-smoke-plan.yaml`, including **TR-STOR-002**
+(FIO / virtbench). **TR-VIRT-007** (HA node failure) and **TR-VIRT-008** (node
+drain) are excluded by policy. **TR-VIRT-019** (parallel VM lifecycle) is
+**dropped** from smoke due to a **known test issue** — it stays commented out in
+the plan until that is fixed.
 
 ---
 
