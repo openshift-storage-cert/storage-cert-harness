@@ -127,7 +127,7 @@ smoke_cluster_lease_collect_annotations() {
 	_anns+=("${SMOKE_CLUSTER_LEASE_ANNOT_PREFIX}git-sha=$(git_sha)")
 	_anns+=("${SMOKE_CLUSTER_LEASE_ANNOT_PREFIX}started-at=$(smoke_cluster_lease_rfc3339_now)")
 
-	local pr="${LIVE_SMOKE_PR_NUMBER:-${GITHUB_PR_NUMBER:-${CI_MERGE_REQUEST_IID:-}}}"
+	local pr="${LIVE_SMOKE_PR_NUMBER:-${GITHUB_PR_NUMBER:-}}"
 	if [[ -n "${pr}" ]]; then
 		_anns+=("${SMOKE_CLUSTER_LEASE_ANNOT_PREFIX}pr-number=${pr}")
 	fi
