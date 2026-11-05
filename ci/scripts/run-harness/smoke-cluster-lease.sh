@@ -44,10 +44,6 @@ smoke_cluster_lease_run_id() {
 		echo "${GITHUB_RUN_ID}"
 		return
 	fi
-	if [[ -n "${CI_PIPELINE_ID:-}" ]]; then
-		echo "${CI_PIPELINE_ID}"
-		return
-	fi
 	if [[ -n "${HARNESS_SMOKE_LEASE_RUN_ID:-}" ]]; then
 		echo "${HARNESS_SMOKE_LEASE_RUN_ID}"
 		return
@@ -97,10 +93,6 @@ smoke_cluster_lease_api_server_host() {
 smoke_cluster_lease_workflow_url() {
 	if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]]; then
 		echo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-		return
-	fi
-	if [[ -n "${CI_PIPELINE_URL:-}" ]]; then
-		echo "${CI_PIPELINE_URL}"
 		return
 	fi
 	echo ""

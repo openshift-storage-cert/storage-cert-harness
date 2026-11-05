@@ -443,7 +443,7 @@ needed):
 | Field | Value |
 | --- | --- |
 | Lease name | `storage-cert-harness-smoke` |
-| Holder identity | `run_id` = `${GITHUB_RUN_ID}` or `${CI_PIPELINE_ID}` |
+| Holder identity | `run_id` = `${GITHUB_RUN_ID}`, `${HARNESS_SMOKE_LEASE_RUN_ID}`, or local `local-<user>-…` |
 | `leaseDurationSeconds` | Job timeout + 15m; **renew** every 5m while harness runs |
 | Labels on workloads created by harness | `storage-cert-harness/ci-smoke=<run_id>` |
 

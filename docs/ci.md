@@ -388,9 +388,11 @@ an error. Lock files may remain on disk and are reused by subsequent runs.
 
 `run-harness/run-image-tests.sh` and `run-harness/live-cluster-smoke.sh` acquire a Kubernetes
 **Coordination Lease** (`storage-cert-ci/storage-cert-harness-smoke`) via
-`ci/scripts/run-harness/smoke-cluster-lease.sh`: holder identity is the CI run id or
-`local-<user>-<epoch>` for developer runs; annotations record run id, host,
-plan, git SHA, and related metadata (see design doc §2). A background loop renews
+`ci/scripts/run-harness/smoke-cluster-lease.sh`: on **GitHub Actions** live smoke,
+holder identity is `GITHUB_RUN_ID`; locally it is `local-<user>-<epoch>-…`
+(or `HARNESS_SMOKE_LEASE_RUN_ID` when set). Annotations record run id, optional
+PR number (`LIVE_SMOKE_PR_NUMBER` / `GITHUB_PR_NUMBER`), workflow URL when GitHub
+run metadata is present, host, plan, git SHA, and related metadata (see design doc §2). A background loop renews
 the lease every 5 minutes; `trap` on `EXIT` / `INT` / `TERM` stops renewal and
 deletes the lease when this run holds it. If another run holds the lease, the
 script exits with code **2** (cluster busy). Set
