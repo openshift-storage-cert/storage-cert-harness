@@ -177,7 +177,7 @@ the ops runbook instead.
 | --- | --- | --- |
 | `pull_request` → `main` (any type) | **No** | No automatic smoke on open or new commits |
 | Contributor **on demand** (`/run-live-smoke`, `workflow_dispatch`) | Yes when allowed | [§1.4](#14-contributor-on-demand-smoke-on-a-pr) |
-| **`schedule`** (daily) | **Conditional** | Only if an open same-repo PR to `main` was updated in the last 24h and not skipped |
+| **`schedule`** (daily) | **Conditional** | Open same-repo PR to `main`: **today** — updated in last 24h; **target** — diff touches smoke-relevant paths (§ path filter) |
 | Push to `main` | **No** | Lint/build/publish only |
 | `workflow_dispatch` | On demand | `pr_number` only (SHA resolved on `ubuntu-latest` before self-hosted checkout) |
 | Fork PR → upstream | **No** | No upstream kubeconfig |
@@ -624,14 +624,14 @@ When Layer C fails, the GitHub Actions job exits non-zero so the PR check is
 | **Always exclude**        | `TR-VIRT-007` (VM HA restart after node failure) — requires node remediation / fencing and is out of scope for CI smoke                                                                      |
 | **Conditionally exclude** | Any other TR whose **measured** wall time exceeds **20 minutes** at the smoke overrides in section 6, after tuning — document the TR, duration, and reason in this file and in plan comments |
 
-Today’s catalog has **11** automated TRs → **10** belong in CI smoke when all
-meet the 20-minute bar.
+Today’s catalog has **11** automated TRs. The **active** smoke plan runs **8**
+TRs (policy excludes **007** / **008**; **TR-VIRT-019** omitted until test fix).
 
 ### CI smoke selection (target)
 
 | TR          | Title (short)                  | Tool family                | In CI smoke                          |
 | ----------- | ------------------------------ | -------------------------- | ------------------------------------ |
-| TR-STOR-002 | FIO storage IO (smoke profile) | virtbench fio              | Yes ( **temporarily out** of plan — [ECOPROJECT-5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566)) |
+| TR-STOR-002 | FIO storage IO (smoke profile) | virtbench fio              | Yes                                  |
 | TR-STOR-006 | PVC provisioning density       | kube-burner-ocp            | Yes                                  |
 | TR-VIRT-001 | Cold VM boot storm             | virtbench                  | Yes                                  |
 | TR-VIRT-004 | Parallel live migration        | kube-burner-ocp            | Yes (single variant; see section 6)  |
@@ -640,13 +640,12 @@ meet the 20-minute bar.
 | TR-VIRT-010 | VM snapshot at scale           | kube-burner                | Yes                                  |
 | TR-VIRT-013 | Per-node scale ceiling         | virtbench single-node      | Yes                                  |
 | TR-VIRT-018 | Clone at scale                 | virtbench clone            | Yes                                  |
-| TR-VIRT-019 | Parallel VM lifecycle          | kube-burner-ocp            | Yes (must stay ≤ 20m; tune timeouts) |
+| TR-VIRT-019 | Parallel VM lifecycle          | kube-burner-ocp            | **No** (known test issue — commented out in plan; re-enable via **A2**) |
 | TR-VIRT-027 | Snapshot depth per volume      | kube-burner                | Yes                                  |
 
-**Plan source of truth:** expand `plans/harness-smoke-plan.yaml` to list the ten
-`select.ids` rows above (same overrides as section 6). Until that lands, treat
-`level3-internal-minimal.yaml` minus `TR-VIRT-007` and minus `variants` as the
-reference — CI must not ship a four-TR subset.
+**Plan source of truth:** `plans/harness-smoke-plan.yaml` lists the eight active
+`select.ids` rows (STOR-002, STOR-006, VIRT-001/004/010/013/018/027) with section 6
+overrides. **TR-VIRT-019** overrides remain in the plan file for when **A2** lands.
 
 `concurrency: 1` keeps cluster load predictable for CI.
 
@@ -847,11 +846,12 @@ section 6’s exclusion table — not replaced by a smaller default four-TR plan
 
 An early four-TR run (`work/harness-smoke-report/report.json`, 2026-10-08) is
 **not** representative of full-catalog smoke; use it only for order-of-magnitude
-on TR-001, 006, 010, 019. Re-benchmark all ten TRs after expanding the plan.
+on TR-001, 006, 010, 019. Re-benchmark the **eight** active smoke TRs on edge-112
+(**A1**); add **TR-VIRT-019** again when **A2** re-enables it.
 
 | TR (partial run) | Approx. duration | Notes                      |
 | ---------------- | ---------------- | -------------------------- |
-| TR-VIRT-019      | ~5.5 min         | Tune to stay under 20m cap |
+| TR-VIRT-019      | ~5.5 min (historical) | Dropped from smoke plan until test fix (**A2**) |
 | TR-VIRT-001      | ~4 min           |                            |
 | TR-STOR-006      | ~1.5 min         |                            |
 | TR-VIRT-010      | ~4.5 min         |                            |
@@ -968,14 +968,14 @@ This section mirrors that list for design readers.
 | ID | Jira | Summary | Status |
 | --- | --- | --- | --- |
 | A1 | [5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | edge-112 sign-off — 8 TRs; record §6.3/§6.4 timings | Open |
-| A2 | [5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | Re-enable TR-STOR-002 in smoke plan | Blocked — [5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566) |
+| A2 | [5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | Re-enable TR-VIRT-019 in smoke plan | Blocked — known virt-parallel / test issue |
 | A3 | [5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | Runbook + smoke docs aligned with `prepare-smoke-env` | Mostly done — [smoke-testing.md](../smoke-testing.md) |
 | B1 | [5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | `CI_LIVE_SMOKE_ENABLED`, `live-smoke` env secrets, runner | Open |
 | B2 | [5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | `live-cluster-smoke.sh` — podman run, secrets, janitor, timing artifact | Open |
 | B3 | [5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | GHA `timeout-minutes` (~240m) on live-smoke jobs | **Done** in `ci-live-smoke.yml` |
 | B4 | [5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | Branch protection — required `live-smoke` on PRs to `main` | Open |
 | C1 | [5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | `[skip live-smoke]` — verify **Skipped** conclusion + summary | Open |
-| C2 | [5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | Scheduled smoke — first green run after enablement | Enablement open |
+| C2 | [5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | Scheduled smoke — daily cron + path-aware PR filter (24h activity today) | Partial |
 | C3 | [5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | On-demand smoke — first green run after enablement | Enablement open |
 | C4 | [5589](https://redhat.atlassian.net/browse/ECOPROJECT-5589) | Fork PR guard — re-verify when CI enabled | Verify at enablement |
 | D1 | [5590](https://redhat.atlassian.net/browse/ECOPROJECT-5590) | Consolidate duplicate smoke scripts / doc naming | Open |
@@ -987,7 +987,7 @@ This section mirrors that list for design readers.
 | Topic | Resolution |
 | --- | --- |
 | **`ci/config/smoke/` + `prepare-smoke-env.sh`** (§6.5–6.6) | Done — `make prepare-smoke-env`, `make smoke-ci` |
-| **Daily scheduled smoke** (24h open-PR gate) | Done in `ci-live-smoke.yml`; enable with **B1** |
+| **Daily scheduled smoke** (24h gate; path filter **planned**) | Resolver in `ci-live-smoke.yml`; enable with **B1** |
 | **On-demand triggers** (`/run-live-smoke`, `workflow_dispatch`) | Done in workflow; enable with **B1**–**B2** |
 | **Contributor execution runbook** | Done — [plan-based-test-suite-runbook.md](plan-based-test-suite-runbook.md) |
 | **[ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462)** hosted runners | **Optional** — skip when an existing self-hosted runner reaches the cluster (§5462) |
@@ -1011,14 +1011,14 @@ Legend: **[x]** satisfied in repo today; **[~]** partial or pending CI enablemen
 - [~] `[skip live-smoke]` in PR title/body skips smoke scheduling only (lab down); not used to bypass failures (**C1** — verify check conclusion).
 - [~] Second concurrent smoke **fails fast** (no queue); Lease shows holder annotations (**D2** — local + CI acquire; janitor with **B2**).
 - [ ] Harness **error** or CI **cancel** still **releases** lease and runs janitor (**D2** + **B2**).
-- [~] All catalog TRs except `TR-VIRT-007` / `TR-VIRT-008` execute on edge-112 (8 TRs today; **A2** adds STOR-002).
+- [~] Smoke plan TRs on edge-112: **8 active** (007/008 policy; **019** dropped for test issue).
 - [ ] Per-TR and suite durations in workflow summary / `smoke-timing.json` (**B2**).
 - [ ] Secrets never appear in artifacts (verify on first CI run).
 - [~] **Fork** PR: no smoke, no kubeconfig (**C4** — workflow guards; verify when enabled).
 - [x] Push to `main` does **not** auto-trigger smoke (default design).
 - [x] Local `run-harness-smoke` / `smoke-ci` parity with CI plan/overrides and staged thresholds.
 - [x] `ci/config/smoke/` staged to `work/` via `prepare-smoke-env` (§6.6).
-- [ ] TR-STOR-002 included when ECOPROJECT-5566 is resolved (**A2**).
+- [ ] Re-enable **TR-VIRT-019** in smoke plan when test issue fixed (**A2**).
 
 ---
 
@@ -1030,7 +1030,7 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 
 | Area | Delivered |
 | --- | --- |
-| **Smoke plan** | Expanded `harness-smoke-plan.yaml`: 8 TRs (excludes TR-VIRT-007/008); TR-STOR-002 **commented out** until FIO gather reliable |
+| **Smoke plan** | `harness-smoke-plan.yaml`: **8 TRs** active; excludes TR-VIRT-007/008; **TR-VIRT-019** dropped (test issue); TR-STOR-002 enabled |
 | **Smoke thresholds** | `thresholds-smoke.json`; staged → `work/harness-run-thresholds.json` |
 | **TR-STOR-002 FIO runner** | `engine.go`: deploy → `waitForFIOVMs` → `gather-results` with `fio_collect_*` (no harness guest SSH) |
 | **Local smoke hygiene** | `acquire_smoke_run_lock`; log archive; `clean_harness_smoke_artifacts`; `HARNESS_SMOKE_KEEP_WORK` |
@@ -1046,7 +1046,7 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 
 | Area | State |
 | --- | --- |
-| **Full catalog smoke (9 TRs with STOR-002)** | Blocked on TR-STOR-002 (**A2** / ECOPROJECT-5566); TR-VIRT-008 excluded by policy |
+| **Nine-TR smoke (with TR-VIRT-019)** | Blocked on **A2** (test fix); **007** / **008** excluded by policy |
 | **edge-112 sign-off + CI** | **A1** local; **B1**–**B2** for GitHub live runs |
 | **Per-TR timing table** | §6.3/§6.4 still TBD until **A1** |
 
