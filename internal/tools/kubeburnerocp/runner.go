@@ -3,6 +3,7 @@ package kubeburnerocp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,22 +12,25 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/openshift-storage-cert/storage-cert-harness/internal/clustercheck"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/safefs"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/stages"
+	"github.com/openshift-storage-cert/storage-cert-harness/internal/toolprocess"
 )
 
 // kboRun records one workload execution (one TR) so Collect/Parse can handle a
 // job that bundles several kube-burner TRs.
 type kboRun struct {
-	Iterations int // resolved plan count, checked against the PVC-density job summary
-	TRID       string
-	Workload   string
-	Subdir     string
-	RunErr     string
-	Skipped    string
+	Iterations       int // resolved plan count, checked against the PVC-density job summary
+	TRID             string
+	Workload         string
+	Subdir           string
+	RunErr           string
+	RunCancelled     bool
+	Skipped          string
+	CleanupNamespace string
 }
 
 type runner struct{}
@@ -62,6 +66,18 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 			continue
 		}
 		seen[p.Workload] = true
+		if namespace := workloadNamespace(p); namespace != "" {
+			exists, err := namespaceExists(ctx, namespace)
+			if err != nil {
+				runs[i].RunErr = fmt.Errorf("check workload namespace %q: %w", namespace, err).Error()
+				continue
+			}
+			if !exists {
+				runs[i].CleanupNamespace = namespace
+			} else if rc.Logger != nil {
+				rc.Logger.Info("kube-burner-ocp: workload namespace existed before run; teardown will skip namespace cleanup", "tr", tr.ID, "namespace", namespace)
+			}
+		}
 
 		subdir := filepath.Join(resultsDir, tr.ID)
 		if err := safefs.MkdirAll(subdir, 0o755); err != nil {
@@ -98,6 +114,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 				runs[i].RunErr = err.Error()
 				rc.Logger.Warn("kube-burner-ocp: run failed", "tr", runs[i].TRID, "err", err)
 			}
+			runs[i].RunCancelled = ctx.Err() != nil
 		}(i)
 	}
 	wg.Wait()
@@ -106,14 +123,25 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 	return stages.RunHandle{ID: "kube-burner-ocp"}, nil
 }
 
+func namespaceExists(ctx context.Context, namespace string) (bool, error) {
+	cli := clustercheck.KubeCLI()
+	if cli == "" {
+		return false, fmt.Errorf("kubectl or oc not found on PATH")
+	}
+	out, err := exec.CommandContext(ctx, cli, "get", "namespace", namespace, "--ignore-not-found", "-o", "name").Output() // #nosec G204 -- CLI is resolved by clustercheck and namespace comes from adapter parameters.
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
 // buildRunCmd runs kube-burner-ocp from the host PATH, writing into resultsDir/<subdir>.
 func buildRunCmd(ctx context.Context, rc *core.RunCtx, args []string, resultsDir, subdir string) (*exec.Cmd, error) {
 	path, err := exec.LookPath("kube-burner-ocp")
 	if err != nil {
 		return nil, fmt.Errorf("kube-burner-ocp: kube-burner-ocp not on PATH: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, path, args...) // #nosec G204 -- path comes from LookPath and args are harness-generated.
-	cmd.WaitDelay = 5 * time.Second
+	cmd := toolprocess.CommandContext(ctx, path, args...) // #nosec G204 -- path comes from LookPath and args are harness-generated.
 	cmd.Dir = filepath.Join(resultsDir, subdir)
 	rc.Logger.Info("kube-burner-ocp: running host binary", "path", path)
 	return cmd, nil
@@ -240,7 +268,25 @@ func (parser) Parse(_ context.Context, _ *core.RunCtx, bag *core.Bag, logs core.
 
 type teardown struct{}
 
-// Teardown relies on each workload's native gc/cleanup.
-func (teardown) Teardown(_ context.Context, _ *core.RunCtx, _ *core.Bag) error {
-	return nil
+// Teardown removes a namespace created by a workload that failed or was cancelled.
+func (teardown) Teardown(ctx context.Context, rc *core.RunCtx, bag *core.Bag) error {
+	runs, _ := core.GetAs[[]kboRun](bag, "kbo_runs")
+	cleanupCtx := ctx
+	var errs []error
+	for _, run := range runs {
+		if (run.RunErr == "" && !run.RunCancelled) || run.Subdir == "" || run.CleanupNamespace == "" {
+			continue
+		}
+		cli := clustercheck.KubeCLI()
+		output, err := exec.CommandContext(cleanupCtx, cli, "delete", "namespace", run.CleanupNamespace, "--ignore-not-found", "--timeout=3m").CombinedOutput() // #nosec G204 -- CLI is resolved by clustercheck and namespace was selected by the adapter.
+		if err != nil {
+			err = fmt.Errorf("delete workload namespace %q: %w: %s", run.CleanupNamespace, err, strings.TrimSpace(string(output)))
+			if rc.Logger != nil {
+				rc.Logger.Warn("kube-burner-ocp: timeout cleanup failed", "namespace", run.CleanupNamespace, "err", err)
+			}
+			errs = append(errs, err)
+			continue
+		}
+	}
+	return errors.Join(errs...)
 }
