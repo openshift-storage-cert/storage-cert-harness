@@ -82,7 +82,8 @@ var workloadSpecs = map[string]workloadSpec{
 			{flag: "--skip-restart-job", param: "skip_restart_job", typ: argBool, optional: true},
 			{flag: "--skip-snapshot-job", param: "skip_snapshot_job", typ: argBool, optional: true},
 		},
-		prereqs: []clustercheck.Capability{clustercheck.KubeVirt, clustercheck.CDI},
+		prereqs:  []clustercheck.Capability{clustercheck.KubeVirt, clustercheck.CDI},
+		hostBins: []string{"virtctl"},
 	},
 }
 
