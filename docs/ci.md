@@ -11,8 +11,11 @@ pre-commit (yamllint, markdownlint, golangci-lint, secret-scan).
 **`unittest.sh`** (`make unittest`) runs unit tests only (`go test ./...`:
 package tests and golden-file parser tests). It does not need a cluster.
 `make lint` / `make test` provide the corresponding local checks.
-Offline CLI smoke is `run-harness/replay-smoke.sh`. Live 3-VM boot-storm is a follow-up
-(see Open items).
+Offline CLI smoke is `run-harness/replay-smoke.sh`. Live cluster smoke uses
+`plans/harness-smoke-plan.yaml` via `make smoke-ci` locally and
+[ci-live-smoke.yml](../.github/workflows/ci-live-smoke.yml) on GitHub Actions when
+enabled (see [Dedicated CI cluster (live smoke)](#dedicated-ci-cluster-live-smoke) and
+[design/storage-cert-harness-ci-smoke-test.md](design/storage-cert-harness-ci-smoke-test.md)).
 
 The GitHub Actions `supply-chain` job is gating: a failure fails the workflow.
 
@@ -679,14 +682,18 @@ until repository variable `CI_LIVE_SMOKE_ENABLED` is set to `true` and the
 `work/kubeconfig`).
 
 Today's other jobs use hosted GitHub runners (no cluster). The **live-smoke** job
-(planned; see design doc below) runs against a real OpenShift cluster using the
-harness smoke plan. It will use GitHub environment secrets for
-`CI_CLUSTER_KUBECONFIG` and `HARNESS_THRESHOLDS_JSON`. Never echo them (`set +x`);
-write kubeconfig to a `0600` temp file and delete it in `trap`. Do not artifact
-full graded reports that contain real SLA bars.
+runs on a self-hosted runner with cluster access, executes the harness smoke plan,
+and stages config from `ci/config/smoke/` (see design doc). GitHub **environment**
+`live-smoke` supplies `CI_CLUSTER_KUBECONFIG` and backend materialization secrets
+— never commit kubeconfig or site credentials. Never echo secrets (`set +x`); write
+kubeconfig to a `0600` temp file and delete it in `trap`. Do not artifact full
+graded reports that contain real SLA bars.
 
 Design: [storage-cert-harness-ci-smoke-test.md](design/storage-cert-harness-ci-smoke-test.md)
 (in this repository).
+
+**Operator setup** (Model A laptop vs Model B GitHub, runner VPN, variables,
+schedule, triggers, branch protection): [github-live-smoke-setup.md](github-live-smoke-setup.md).
 
 **What live smoke affects.** When enabled, smoke runs only **on demand** or on the
 **daily schedule** (open same-repo PR activity in the last 24 hours). A **failed**

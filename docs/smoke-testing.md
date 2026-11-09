@@ -12,6 +12,7 @@ size), not full Level-3 certification.
 | Plan selection and lab overrides | [design/plan-based-test-suite-runbook.md](design/plan-based-test-suite-runbook.md) |
 | Cluster prerequisites | [cluster-requirements.md](cluster-requirements.md), [cluster-setup-guide.md](cluster-setup-guide.md) |
 | CI pipeline (not live smoke) | [ci.md](ci.md) |
+| **Model A** laptop vs **Model B** GitHub smoke + runner VPN | [github-live-smoke-setup.md](github-live-smoke-setup.md) |
 | Script internals (short) | [ci/scripts/run-harness/README.md](../ci/scripts/run-harness/README.md) |
 
 Do **not** commit kubeconfigs, passwords, or site-specific secrets. Use your own
@@ -21,6 +22,9 @@ upstream GitHub live smoke when operators enable it.
 ---
 
 ## What runs
+
+Baseline workflow and staging landed in [PR #175](https://github.com/openshift-storage-cert/storage-cert-harness/pull/175)
+(merged 2026-11-03). Open CI work tracks under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406).
 
 | Item | Location |
 | --- | --- |
@@ -320,12 +324,17 @@ in the report and design doc §6. Historical gather fixes: [ECOPROJECT-5566](htt
 Expected until CI harness execution is implemented; use local `make smoke-ci` for
 validation. Track progress under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406).
 
-### Personal lab vs shared edge-112
+### Personal lab vs shared edge-112 (Model A vs Model B)
 
-- **Your lab:** custom kubeconfig and optionally gitignored `work/backends.local.yaml`
-  (prepare preserves an existing file).
-- **Shared CI lab:** only operators configure GitHub secrets; contributors must not
-  paste CI kubeconfig into the repo.
+| | **Model A — this guide (laptop)** | **Model B — GitHub CI/CD** |
+| --- | --- | --- |
+| When | Pre-PR validation, **A1** sign-off | `/run-live-smoke`, schedule, merge gate |
+| VPN | You connect before `make smoke-ci` | Always-on VPN on org smoke runner VM |
+| Credentials | Your kubeconfig + `work/backends.local.yaml` | GitHub `live-smoke` env secrets |
+
+- **edge-112:** VPN required for Model A; never commit CI kubeconfig.
+- **Your own cluster:** custom kubeconfig; prepare may preserve gitignored backends.
+- Operators: [Model B setup Steps 1–7](github-live-smoke-setup.md#model-b-setup--self-hosted-runner-steps-17).
 
 ---
 

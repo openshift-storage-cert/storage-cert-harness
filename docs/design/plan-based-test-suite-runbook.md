@@ -102,7 +102,8 @@ Upstream live cluster smoke is implemented in
 [`.github/workflows/ci-live-smoke.yml`](../../.github/workflows/ci-live-smoke.yml).
 It is **off** until operators set repository variable **`CI_LIVE_SMOKE_ENABLED=true`**
 and configure the **`live-smoke`** GitHub **environment** (cluster kubeconfig and
-related secrets). See [docs/ci.md](../ci.md) and [contributing.md](../contributing.md).
+related secrets). Operator guide: [github-live-smoke-setup.md](../github-live-smoke-setup.md);
+see also [docs/ci.md](../ci.md) and [contributing.md](../contributing.md).
 
 ### What never runs live smoke
 
@@ -197,44 +198,48 @@ endpoint. Do not commit kubeconfig or backend credentials.
 ## Action items — finish local smoke and CI/CD
 
 Track completion against [storage-cert-harness-ci-smoke-test.md §11–§13](storage-cert-harness-ci-smoke-test.md)
-(same IDs **A1–D3**). Jira umbrella: [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406).
+(same IDs **A1–D3**). Jira umbrella: [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406) — **In Progress**
+(assignee: <nlevanon@redhat.com>). Merged baseline: [PR #175](https://github.com/openshift-storage-cert/storage-cert-harness/pull/175)
+(2026-11-03). Refresh statuses with: `acli jira workitem search -j 'parent = ECOPROJECT-5406 OR key = ECOPROJECT-5406 ORDER BY key'`.
 
 ### Lab sign-off (local / edge-112)
 
 | ID | Jira (sub-task of [5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406)) | Item | Notes | Status |
 | --- | --- | --- | --- | --- |
-| A1 | [ECOPROJECT-5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | **Validate edge-112 with current kubeconfig** | Run `make smoke-ci`; confirm active TRs in `harness-smoke-plan.yaml` pass; record §6.3/§6.4 timings. | Open |
-| A2 | [ECOPROJECT-5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | **Re-enable TR-VIRT-019 in smoke plan** | Omitted until virt-parallel smoke test issue is fixed; overrides remain in plan YAML. | Blocked — test fix |
-| A3 | [ECOPROJECT-5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | **Review and update smoke contributor docs** | Primary guide: [smoke-testing.md](../smoke-testing.md); plan runbook in `design/` | Mostly done |
+| A1 | [ECOPROJECT-5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | **Validate edge-112 with current kubeconfig** | Run `make smoke-ci`; confirm active TRs in `harness-smoke-plan.yaml` pass; record §6.3/§6.4 timings. | Jira: **Code Review** |
+| A2 | [ECOPROJECT-5598](https://redhat.atlassian.net/browse/ECOPROJECT-5598) | **Re-enable TR-VIRT-019 in smoke plan** | Omitted until virt-parallel smoke test issue is fixed; overrides remain in plan YAML. | Jira: **Backlog** |
+| — | [ECOPROJECT-5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | **TR-STOR-002 in smoke plan** | Delivered in **#175**; close Jira (still **Review**). | **Done in repo** |
+| A3 | [ECOPROJECT-5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | **Review and update smoke contributor docs** | Primary guide: [smoke-testing.md](../smoke-testing.md); shipped in **#175** | Jira: **Review** |
 
 ### CI enablement and secrets
 
 | ID | Jira | Item | Notes | Status |
 | --- | --- | --- | --- | --- |
-| B1 | [ECOPROJECT-5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | **GitHub secrets and repository variable** | Set `vars.CI_LIVE_SMOKE_ENABLED=true`; configure **`live-smoke`** environment (masked `CI_CLUSTER_KUBECONFIG`, backend materialization, self-hosted runner labels). No kubeconfig in git. | Open |
-| B2 | [ECOPROJECT-5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | **Implement `live-cluster-smoke.sh` execution** | Today: lease acquire + exit **5** (track under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406)). Still needed: secrets → `work/`, load PR image or build, `podman run` from PR `plans/`, janitor, `smoke-timing.json`, release lease on error/cancel. | Open |
-| B3 | [ECOPROJECT-5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | **Job timeouts** | `ci-live-smoke.yml` self-hosted jobs use `timeout-minutes: 240`. Reopen Jira only if other workflows need the same budget. | Done |
-| B4 | [ECOPROJECT-5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | **Branch protection** | Require **`live-smoke`** (or agreed check name) on PRs to `main` once B1–B2 pass. | Open |
+| B1 | [ECOPROJECT-5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | **GitHub secrets and repository variable** | Set `vars.CI_LIVE_SMOKE_ENABLED=true`; configure **`live-smoke`** environment (masked `CI_CLUSTER_KUBECONFIG`, backend materialization, self-hosted runner labels). No kubeconfig in git. | Jira: **In Progress** |
+| B2 | [ECOPROJECT-5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | **Implement `live-cluster-smoke.sh` execution** | Today: lease acquire + exit **5** (track under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406)). Still needed: secrets → `work/`, load PR image or build, `podman run` from PR `plans/`, janitor, `smoke-timing.json`, release lease on error/cancel. | Jira: **In Progress** |
+| B3 | [ECOPROJECT-5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | **Job timeouts** | `ci-live-smoke.yml` self-hosted jobs use `timeout-minutes: 240`. Reopen Jira only if other workflows need the same budget. | Jira: **Closed** |
+| B4 | [ECOPROJECT-5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | **Branch protection** | Require **`live-smoke`** (or agreed check name) on PRs to `main` once B1–B2 pass. | Jira: **In Progress** |
 
 ### CI triggers and policy (workflow mostly scaffolded)
 
 | ID | Jira | Item | Notes | Status |
 | --- | --- | --- | --- | --- |
-| C1 | [ECOPROJECT-5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | **`[skip live-smoke]` opt-out** | Documented in `docs/ci.md` / contributing; workflow skips scheduling when token is in PR title/body. **Verify:** skipped runs report auditable conclusion (e.g. `live_smoke_skipped` in summary) and do not block merge when lab is down. | Open |
-| C2 | [ECOPROJECT-5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | **Scheduled smoke** | Cron **05:00 UTC** implemented; **extend resolver** to filter PRs by smoke-relevant paths vs `main` (not only 24h `updated_at`). Enablement after **B1**–**B2**. | Partial |
-| C3 | [ECOPROJECT-5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | **On-demand smoke** | **`/run-live-smoke`** + **`workflow_dispatch`** — **in repo**; not path-gated; first green run after **B1** + **B2**. | Enablement open |
-| C4 | [ECOPROJECT-5589](https://redhat.atlassian.net/browse/ECOPROJECT-5589) | **Fork / untrusted PRs** | Workflow rejects fork heads on comment/dispatch paths; schedule skips non-canonical PRs. Re-verify when **B1** enables jobs. | Verify at enablement |
+| C1 | [ECOPROJECT-5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | **`[skip live-smoke]` opt-out** | Documented in `docs/ci.md` / contributing; workflow skips scheduling when token is in PR title/body. **Verify:** skipped runs report auditable conclusion (e.g. `live_smoke_skipped` in summary) and do not block merge when lab is down. | Jira: **Closed** — verify at enablement |
+| C2 | [ECOPROJECT-5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | **Scheduled smoke** | Cron **05:00 UTC** implemented; **extend resolver** to filter PRs by smoke-relevant paths vs `main` (not only 24h `updated_at`). Enablement after **B1**–**B2**. | Jira: **In Progress** (resolver partial) |
+| C3 | [ECOPROJECT-5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | **On-demand smoke** | **`/run-live-smoke`** + **`workflow_dispatch`** — **in repo**; not path-gated; first green run after **B1** + **B2**. | Jira: **In Progress** |
+| C4 | [ECOPROJECT-5589](https://redhat.atlassian.net/browse/ECOPROJECT-5589) | **Fork / untrusted PRs** | Workflow rejects fork heads on comment/dispatch paths; schedule skips non-canonical PRs. Re-verify when **B1** enables jobs. | Jira: **Backlog** |
 
 ### Scripts and repo hygiene
 
 | ID | Jira | Item | Notes | Status |
 | --- | --- | --- | --- | --- |
-| D1 | [ECOPROJECT-5590](https://redhat.atlassian.net/browse/ECOPROJECT-5590) | **Remove or consolidate duplicate / unused scripts** | Prefer `prepare-smoke-env.sh` over legacy `stage-smoke-config.sh` naming in docs; drop stale copies under `ci/scripts/tests/` (local diag — gitignored) if not needed; align design doc references with `ci/scripts/run-harness/`. | Open |
-| D2 | [ECOPROJECT-5591](https://redhat.atlassian.net/browse/ECOPROJECT-5591) ([5569](https://redhat.atlassian.net/browse/ECOPROJECT-5569) closed) | **Cluster Coordination Lease** | Acquire, renewal, fail-fast, and traps in `run-image-tests.sh` and start of `live-cluster-smoke.sh`. Remaining: janitor + CI cancel paths with **B2**. | Partial |
-| D3 | [ECOPROJECT-5592](https://redhat.atlassian.net/browse/ECOPROJECT-5592) | **Update ECOPROJECT-5406** | Reflect PR smoke model (on-demand + schedule, no push/open auto-smoke). | Open |
+| D1 | [ECOPROJECT-5590](https://redhat.atlassian.net/browse/ECOPROJECT-5590) | **Remove or consolidate duplicate / unused scripts** | Prefer `prepare-smoke-env.sh` over legacy `stage-smoke-config.sh` naming in docs; drop stale copies under `ci/scripts/tests/` (local diag — gitignored) if not needed; align design doc references with `ci/scripts/run-harness/`. | Jira: **Backlog** |
+| D2 | [ECOPROJECT-5591](https://redhat.atlassian.net/browse/ECOPROJECT-5591) ([5569](https://redhat.atlassian.net/browse/ECOPROJECT-5569) closed) | **Cluster Coordination Lease** | Acquire, renewal, fail-fast, and traps in `run-image-tests.sh` and start of `live-cluster-smoke.sh`. Remaining: janitor + CI cancel paths with **B2**. | Jira: **Backlog** (core lease **Closed**) |
+| D3 | [ECOPROJECT-5592](https://redhat.atlassian.net/browse/ECOPROJECT-5592) | **Update ECOPROJECT-5406** | Align Jira story with harness smoke plan, GitHub Actions triggers (on-demand + schedule), and `make smoke-ci` local path. | Jira: **Backlog** |
 
 ### Already delivered (do not re-implement)
 
+- **[PR #175](https://github.com/openshift-storage-cert/storage-cert-harness/pull/175):** smoke bundle, `docs/smoke-testing.md`, **TR-STOR-002** in plan, `stage_smoke_work_config`, deduped thresholds, action-item tables in design/runbook.
 - **Smoke plan + bundle:** `plans/harness-smoke-plan.yaml`, `ci/config/smoke/thresholds-smoke.json`, **`stage_smoke_work_config`** / **`make prepare-smoke-env`**.
 - **Local smoke hygiene:** `smoke-run.lock`, log archive, artifact cleanup (`run-image-tests.sh` / `ci-utils.sh`).
 - **Cluster Coordination Lease (core):** `smoke-cluster-lease.sh` in local smoke and CI entry (see **D2** for janitor/cancel).
