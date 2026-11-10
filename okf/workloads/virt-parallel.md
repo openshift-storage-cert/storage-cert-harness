@@ -90,7 +90,8 @@ Repeated latency quantiles are reduced to the maximum value per metric and
 percentile across iterations for conservative, deterministic SLA grading; this
 is not a percentile recomputed over the combined population.
 
-Complete-population migration requires the upstream change in
+Complete-population migration requires kube-burner-ocp v1.13.0 or later, which
+includes the upstream change in
 [kube-burner-ocp #542](https://github.com/kube-burner/kube-burner-ocp/pull/542).
 Older binaries that only migrate VMs from one randomly chosen worker cannot
 prove TR-VIRT-019 when that leaves other test VMs unmigrated. The harness checks
