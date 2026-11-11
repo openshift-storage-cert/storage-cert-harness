@@ -82,7 +82,8 @@ var workloadSpecs = map[string]workloadSpec{
 			{flag: "--skip-restart-job", param: "skip_restart_job", typ: argBool, optional: true},
 			{flag: "--skip-snapshot-job", param: "skip_snapshot_job", typ: argBool, optional: true},
 		},
-		prereqs: []clustercheck.Capability{clustercheck.KubeVirt, clustercheck.CDI},
+		prereqs:  []clustercheck.Capability{clustercheck.KubeVirt, clustercheck.CDI},
+		hostBins: []string{"virtctl"},
 	},
 }
 
@@ -101,6 +102,13 @@ func buildCLIArgs(p Params, storageClass string) ([]string, error) {
 	spec, ok := workloadSpecs[p.Workload]
 	if !ok {
 		return nil, fmt.Errorf("kube-burner-ocp: unknown workload %q", p.Workload)
+	}
+	if p.Workload == WorkloadVirtParallel {
+		raw, err := virtParallelParams(p.Raw)
+		if err != nil {
+			return nil, err
+		}
+		p.Raw = raw
 	}
 	args := []string{spec.sub}
 	for _, set := range [][]argSpec{spec.args, globalArgs} {

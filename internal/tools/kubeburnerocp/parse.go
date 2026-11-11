@@ -3,6 +3,8 @@ package kubeburnerocp
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/core"
@@ -43,20 +45,31 @@ type latencyQuantile struct {
 
 // parseJobSummaries reads jobSummary.json; native success = all jobs passed.
 func parseJobSummaries(data map[string][]byte) ([]jobSummary, core.Outcome, error) {
-	blob, ok := data["jobSummary.json"]
-	if !ok || len(blob) == 0 {
-		return nil, "", fmt.Errorf("kubeburner: missing or empty jobSummary.json")
+	var names []string
+	for name := range data {
+		if filepath.Base(name) == "jobSummary.json" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return nil, "", fmt.Errorf("kubeburner: missing jobSummary.json")
 	}
 	var summaries []jobSummary
-	if err := json.Unmarshal(blob, &summaries); err != nil {
-		return nil, "", fmt.Errorf("kubeburner: parse jobSummary.json: %w", err)
+	for _, name := range names {
+		var rows []jobSummary
+		if err := json.Unmarshal(data[name], &rows); err != nil {
+			return nil, "", fmt.Errorf("kubeburner: parse %s: %w", name, err)
+		}
+		summaries = append(summaries, rows...)
 	}
+
 	native := core.OutcomePass
 	if len(summaries) == 0 {
 		native = core.OutcomeFail
 	} else {
 		for _, s := range summaries {
-			if !s.Passed {
+			if !s.Passed || s.ExecutionErrors != "" {
 				native = core.OutcomeFail
 				break
 			}
@@ -111,7 +124,31 @@ func ParseResults(workload, trID string, data map[string][]byte) (core.TestResul
 			return core.TestResult{}, err
 		}
 	}
-	raw, _ := json.Marshal(map[string]any{"jobSummary": summaries})
+	result.Metrics = worstLatencyMetrics(result.Metrics)
+	raw, _ := json.Marshal(map[string]any{"jobSummary": summaries, "lifecycle": result.Raw})
 	result.Raw = raw
 	return result, nil
+}
+
+// worstLatencyMetrics reports the maximum observed latency for each metric and
+// percentile across jobs/iterations. This is a conservative SLA input, not an
+// estimate of the combined population percentile. Sort keys for stable reports.
+func worstLatencyMetrics(metrics []core.Metric) []core.Metric {
+	byKey := map[string]core.Metric{}
+	for _, m := range metrics {
+		key := m.Name + "\x00" + m.Percentile + "\x00" + m.Unit
+		if prev, ok := byKey[key]; !ok || m.Value > prev.Value {
+			byKey[key] = m
+		}
+	}
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]core.Metric, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, byKey[key])
+	}
+	return out
 }
