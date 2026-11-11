@@ -471,7 +471,7 @@ worker node names from `oc get nodes` (nodes that will run VMs or be drained).
 | Test | Plan field | Purpose |
 | --- | --- | --- |
 | TR-VIRT-007 | `overrides.TR-VIRT-007.node` | Worker targeted for failure / recovery (FAR). |
-| TR-VIRT-007 | `overrides.TR-VIRT-007.far_config` | Leave `/far-config.json` unless Red Hat gives you a different mount path. |
+| TR-VIRT-007 | `overrides.TR-VIRT-007.far_config` | Keep `/far-config.json`; the partner helpers mount `FAR_CONFIG` at this path. |
 | TR-VIRT-008 | `overrides.TR-VIRT-008.target_node` | Worker to drain for evacuation test. |
 | TR-VIRT-013 | `overrides.TR-VIRT-013.node_name` | Worker used for single-node VM ceiling sweep. |
 | TR-VIRT-010 | `overrides.TR-VIRT-010` | Uncomment / set `replicas` and `snapshot_count` per certification batch size. |
@@ -498,6 +498,21 @@ overrides:
 
 Leave other `overrides` and `select.ids` as shipped unless Red Hat tells you
 otherwise.
+
+For TR-VIRT-007 in `far-operator` mode, follow
+[the FAR setup steps](docs/cluster-setup-guide.md#step-4--configure-node-remediation-ha-test-plans-only).
+Copy `examples/far-config.example.json` to a local `far-config.json`, configure
+the target worker and its BMC address, and set `FAR_CONFIG` to the **host file**:
+
+```bash
+export FAR_CONFIG=/path/to/far-config.json
+```
+
+The partner preflight and no-load scripts verify that this file is readable and
+targets the same node as the plan, then mount it read-only at `/far-config.json`
+inside the container. If `FAR_CONFIG` is unset, the scripts look for
+`./far-config.json` at the repository root. The file is required for the default
+no-load plan (which selects TR-VIRT-007); the load-80 plan does not use it.
 
 ### Example
 
@@ -982,6 +997,7 @@ this repository clone if you customized plans.
 | `BACKENDS` | Scripts | Path to backends file (default `backends.yaml`) |
 | `HARNESS_IMAGE` | Scripts | Override Quay image (default `:main` on virtarraycert repo) |
 | `PLAN` | Preflight (and host validation for that plan) | Default `plans/level3-customer-no-load-80.yaml` |
+| `FAR_CONFIG` | Preflight + no-load when TR-VIRT-007 uses FAR | Host path to FAR manifest (default `./far-config.json`), mounted read-only at `/far-config.json` |
 | `CERT_RESULTS_ROOT` | Cert + package | Results base dir (default `certification-results`) |
 | `CONTINUE_FROM` | `no-load-80` only | Prior `report.json` (default load-80 report path) |
 | `PARTNER_KEEP_WORK` | Cert + preflight logs | When `true`, skip archiving prior results/logs |

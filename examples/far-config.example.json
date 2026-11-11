@@ -1,0 +1,25 @@
+{
+  "apiVersion": "fence-agents-remediation.medik8s.io/v1alpha1",
+  "kind": "FenceAgentsRemediation",
+  "metadata": {
+    "name": "worker-0.example.com",
+    "namespace": "openshift-workload-availability"
+  },
+  "spec": {
+    "agent": "fence_ipmilan",
+    "nodeparameters": {
+      "--ip": {
+        "worker-0.example.com": "192.0.2.10"
+      }
+    },
+    "remediationStrategy": "OutOfServiceTaint",
+    "retrycount": 5,
+    "retryinterval": "5s",
+    "sharedSecretName": "fence-agents-credentials-shared",
+    "sharedparameters": {
+      "--action": "reboot",
+      "--lanplus": ""
+    },
+    "timeout": "1m0s"
+  }
+}

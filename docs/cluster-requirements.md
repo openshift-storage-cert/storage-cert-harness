@@ -217,6 +217,11 @@ a remediation provider:
 | [Machine Health Check (MHC)](https://docs.openshift.com/container-platform/latest/machine_management/deploying-machine-health-checks.html) | OCP-native alternative; remediates via the Machine API (IPI/UPI clusters) |
 
 Choose the remediation provider that matches your infrastructure.
+For TR-VIRT-007 in FAR mode, the operator, a target-specific FAR configuration,
+and a separate fencing-credential Secret are required. The harness triggers FAR
+directly; NHC is optional for this test. Follow
+[Cluster Setup Guide — Step 4](cluster-setup-guide.md#step-4--configure-node-remediation-ha-test-plans-only)
+for the IPMI example, Secret handling, and container mount.
 
 ---
 

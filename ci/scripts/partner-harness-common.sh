@@ -261,6 +261,59 @@ validate_partner_level3_no_load_plan() {
 	echo "validation passed: Level-3 no-load plan overrides are customized (no placeholders; TR-VIRT-010 params set)"
 }
 
+# Bind the operator-supplied FAR manifest only when the selected plan actually
+# runs TR-VIRT-007 in far-operator mode. Examples are never run directly.
+# Call before pulling an image or preparing result directories. The validated
+# mount is shared by the preflight and certification container paths.
+partner_validate_far_config() {
+	local plan_path="$1" repo_root="$2" yq_bin selected mode target container_path source
+	local manifest_node manifest_kind manifest_namespace secret_name bmc_address
+	PARTNER_FAR_MOUNT=""
+	yq_bin="$(partner_resolve_yq || true)"
+	[[ -n "${yq_bin}" && -x "${yq_bin}" ]] || {
+		echo "error: yq is required to inspect the FAR plan" >&2
+		return 1
+	}
+	selected="$("${yq_bin}" e -r '(.select.ids // [])[] | select(. == "TR-VIRT-007")' "${plan_path}")"
+	[[ -n "${selected}" ]] || return 0
+	mode="$("${yq_bin}" e -r '.overrides."TR-VIRT-007".mode // "far-operator"' "${plan_path}")"
+	[[ "${mode}" == "far-operator" ]] || return 0
+
+	container_path="$("${yq_bin}" e -r '.overrides."TR-VIRT-007".far_config // ""' "${plan_path}")"
+	if [[ "${container_path}" != "/far-config.json" ]]; then
+		echo "error: TR-VIRT-007 far_config must be /far-config.json for the partner container mount (found '${container_path}')" >&2
+		return 1
+	fi
+	target="$("${yq_bin}" e -r '.overrides."TR-VIRT-007".node // ""' "${plan_path}")"
+	if [[ -z "${target}" || "${target}" == *'<'* ]]; then
+		echo "error: set overrides.TR-VIRT-007.node to the worker that will be fenced" >&2
+		return 1
+	fi
+	source="${FAR_CONFIG:-${repo_root}/far-config.json}"
+	if [[ "${source}" == *.example.json || ! -s "${source}" || ! -f "${source}" || ! -r "${source}" ]]; then
+		echo "error: FAR_CONFIG must name a readable, nonempty, real far-config.json (not an example): ${source}" >&2
+		return 1
+	fi
+	if ! manifest_node="$("${yq_bin}" e -r '.metadata.name // ""' "${source}")"; then
+		echo "error: FAR_CONFIG must be a valid FAR JSON manifest: ${source}" >&2
+		return 1
+	fi
+	if [[ "${manifest_node}" != "${target}" ]]; then
+		echo "error: FAR_CONFIG metadata.name '${manifest_node}' must match TR-VIRT-007 node '${target}'" >&2
+		return 1
+	fi
+	manifest_kind="$("${yq_bin}" e -r '.kind // ""' "${source}")"
+	manifest_namespace="$("${yq_bin}" e -r '.metadata.namespace // ""' "${source}")"
+	secret_name="$("${yq_bin}" e -r '.spec.sharedSecretName // ""' "${source}")"
+	bmc_address="$(PARTNER_FAR_NODE="${target}" "${yq_bin}" e -r '.spec.nodeparameters."--ip".[strenv(PARTNER_FAR_NODE)] // ""' "${source}")"
+	if [[ "${manifest_kind}" != "FenceAgentsRemediation" || -z "${manifest_namespace}" || -z "${secret_name}" || -z "${bmc_address}" ]]; then
+		echo "error: FAR_CONFIG must have kind FenceAgentsRemediation, metadata.namespace, spec.sharedSecretName and a --ip entry keyed by ${target}" >&2
+		return 1
+	fi
+	PARTNER_FAR_MOUNT="$(realpath -- "${source}"):${container_path}:ro,Z"
+	echo "validation passed: FAR config is readable and targets ${target} (${source})"
+}
+
 partner_pull_image() {
 	local image="$1"
 	echo "==> pulling ${image}"
@@ -284,16 +337,21 @@ partner_run_harness_container() {
 	arch="$(partner_podman_arch)"
 	local repo_root="${REPO_ROOT:?source ci-utils.sh before partner-harness-common.sh}"
 	local thresholds="${repo_root}/${PARTNER_THRESHOLDS_FILE}"
-	podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host \
-		--platform "linux/${arch}" \
-		-v "${repo_root}/catalog.json:/inputs/catalog.json:ro,Z" \
-		-v "${thresholds}:/inputs/thresholds.json:ro,Z" \
-		-v "${repo_root}/plans:/plans:ro,Z" \
-		-v "$(realpath "${backends_file}"):/inputs/backends.yaml:ro,Z" \
-		-v "$(realpath "${kubeconfig}"):/kubeconfig:ro,Z" \
-		-e KUBECONFIG=/kubeconfig \
-		-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}" \
-		"${image}" "${subcommand}" \
+	local -a podman_args=(
+		run --rm --userns=keep-id --user "$(id -u):$(id -g)" --network=host
+		--platform "linux/${arch}"
+		-v "${repo_root}/catalog.json:/inputs/catalog.json:ro,Z"
+		-v "${thresholds}:/inputs/thresholds.json:ro,Z"
+		-v "${repo_root}/plans:/plans:ro,Z"
+		-v "$(realpath "${backends_file}"):/inputs/backends.yaml:ro,Z"
+		-v "$(realpath "${kubeconfig}"):/kubeconfig:ro,Z"
+		-e KUBECONFIG=/kubeconfig
+		-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}"
+	)
+	if [[ -n "${PARTNER_FAR_MOUNT:-}" ]]; then
+		podman_args+=(-v "${PARTNER_FAR_MOUNT}")
+	fi
+	podman "${podman_args[@]}" "${image}" "${subcommand}" \
 		--catalog /inputs/catalog.json \
 		--backends /inputs/backends.yaml \
 		--backend "${backend}" \

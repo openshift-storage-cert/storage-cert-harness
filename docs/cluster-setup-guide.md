@@ -26,6 +26,7 @@ verifies most of these automatically.
 - [ ] `thresholds.json` present with the repository certification inputs
 - [ ] `backends.yaml` prepared with your array's details (copy `backends.example.yaml`)
 - [ ] A test-plan YAML chosen from `plans/` (or a custom plan)
+- [ ] Node remediation configured if the plan includes the HA/failure-recovery test (Step 4)
 - [ ] Image registry reachable from the execution host (or internal mirror configured)
 
 ---
@@ -149,7 +150,86 @@ cleanly before investing time in a full certification run.
 
 Install and configure node remediation with your preferred remediation provider.
 See [HA Testing — Node Remediation](cluster-requirements.md#ha-testing--node-remediation)
-in the cluster requirements for operator choices and guidance.
+in the cluster requirements for operator choices and guidance. The following
+example covers **TR-VIRT-007 in `far-operator` mode using IPMI**. Other fence
+agents require different parameters; follow your agent's and FAR operator's
+documentation rather than reusing the IPMI options unchanged.
+
+1. Install the Fence Agents Remediation (FAR) operator and verify that its CSV
+   is Succeeded and its CRD is installed:
+
+   ```bash
+   oc get csv -n openshift-workload-availability
+   oc get crd fenceagentsremediations.fence-agents-remediation.medik8s.io
+   ```
+
+   The operator/OLM creates the
+   `fence-agents-remediation-controller-manager-service-cert` TLS Secret.
+   **Do not create or replace it yourself.** It is unrelated to the BMC
+   credentials below. Node Health Check can automate detection of unhealthy
+   nodes, but the harness's `far-operator` test triggers FAR directly.
+
+2. Create a separate credential Secret in the namespace used by the FAR
+   configuration. Review [the Secret example](../examples/fence-agents-credentials-shared.example.yaml)
+   to see the required name and keys; it contains **fake values only** and must
+   not be applied as-is. For a real deployment, store the BMC username and
+   password in protected files outside this repository, then use the command
+   below to create the Secret from those files:
+
+   ```bash
+   oc create secret generic fence-agents-credentials-shared \
+     -n openshift-workload-availability \
+     --from-file=--username=/secure/path/far-username \
+     --from-file=--password=/secure/path/far-password
+   ```
+
+   Do not put real credentials in the plan, FAR JSON, shell arguments, or a
+   committed Secret manifest. Avoid client-side `oc apply` with a Secret
+   containing `stringData`: its `last-applied-configuration` annotation can
+   expose the plaintext values. If an existing Secret has that annotation,
+   remove the annotation and rotate any exposed credentials.
+
+3. Copy [the IPMI FAR example](../examples/far-config.example.json) to a local
+   `far-config.json` (ignored by Git at the repository root). Set
+   `metadata.name` to the exact Kubernetes name of the worker that will be
+   fenced; use that same name as the key under
+   `spec.nodeparameters["--ip"]`. Set its value to that worker's **BMC address**
+   (not its cluster IP), and set `spec.sharedSecretName` to the Secret from step
+   2. The example uses `fence_ipmilan`, `--action: reboot`, and `--lanplus`;
+   verify that the BMC is reachable from FAR and that its account is permitted
+   to reboot the node before starting this disruptive test.
+
+4. In the plan, configure `TR-VIRT-007` with `mode: far-operator`, the same
+   worker name in `node:`, and `far_config: /far-config.json`. For the partner
+   helper scripts, set `FAR_CONFIG` to the **host** copy before preflight and
+   the no-load run (the default is `./far-config.json` at the repository root):
+
+   ```bash
+   export FAR_CONFIG=/local/path/far-config.json
+   make partner-preflight
+   # After the load-80 run has produced a report:
+   make partner-cert-no-load-80
+   ```
+
+   The helper scripts verify the file and its `metadata.name` before pulling
+   the image, then mount it **read-only** at `/far-config.json` inside both
+   containers. Examples are never mounted automatically. For a manual
+   `podman run`, include `-v /local/path/far-config.json:/far-config.json:ro,Z`;
+   the plan path alone cannot make a host file accessible in the container.
+
+   Confirm the target is a Ready worker, the Secret and CRD are present, and
+   the test account can create FAR resources before running the HA plan:
+
+   ```bash
+   oc get node worker-0.example.com
+   oc get secret fence-agents-credentials-shared -n openshift-workload-availability -o name
+   oc auth can-i create fenceagentsremediations.fence-agents-remediation.medik8s.io \
+     -n openshift-workload-availability
+   ```
+
+   Replace the sample node name with the real target. **TR-VIRT-007 will
+   intentionally fence/reboot the named node**; schedule it only when that
+   disruption is acceptable.
 
 ---
 
