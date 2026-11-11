@@ -4,7 +4,8 @@
 
 In progress (2026-10-12 proposed; 2026-10-14 PR smoke, edge-112, lease; **2026-10-21**
 implementation on `smoke-plan-single` — local smoke path largely wired; cluster
-lease and CI live smoke still pending). See [§13 Implementation progress](#13-implementation-progress).
+lease wired; **2026-11-10** — lab-connected **GitHub self-hosted runner blocked**;
+adopt **Model C** lab executor VM (§2.6)). See [§13 Implementation progress](#13-implementation-progress).
 
 ## Summary
 
@@ -45,21 +46,52 @@ Measure **per-TR and full-suite** duration on edge-112 before locking CI
 overrides. Image build/publish on `main` stays on the existing `ci-images` /
 `ci-publish` path.
 
+**Infrastructure constraint (2026-11):** The organization **cannot** register a
+**GitHub self-hosted runner** that has **lab network access** (Leg 2 to
+`lab.eng.tlv2.redhat.com`). GitHub-hosted `ubuntu-latest` jobs may reach GitHub
+and public registries only. **Live cluster smoke therefore does not run inside
+GitHub Actions** against the lab. Adopt **Model C** — a **dedicated lab VM**
+that **polls** `main` on a schedule (and optionally PR smoke requests), builds or
+pulls the harness image, and runs the same portable scripts as local smoke.
+Model **A** (contributor laptop + VPN) remains required pre-PR validation;
+Model **B** (GHA self-hosted runner on a lab VM) is **not available** — do not
+block delivery on runner registration. Details:
+[smoke-execution-models.md](smoke-execution-models.md) (A / B / C).
+
+### Jira validity (2026-11, Model C constraint)
+
+Stories and sub-tasks under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406)
+after the lab-runner policy change:
+
+| Key | Verdict | Notes |
+| --- | --- | --- |
+| [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) | **Superseded** | Entire AC assumed org **self-hosted GHA runner** — not allowed; use Model C |
+| [ECOPROJECT-5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | **Scope replaced** | Was GitHub secrets + self-hosted runner; superseded by **Model C** sub-task |
+| [ECOPROJECT-5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | **Retarget** | “First green run” = lab VM timer, not GHA self-hosted job |
+| [ECOPROJECT-5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | **Retarget** | On-demand = GHA enqueue + VM execution |
+| [ECOPROJECT-5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | **Blocked** | Required check until VM **report-back** to GitHub |
+| [ECOPROJECT-5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | **Done** (partial) | GHA resolve timeouts; VM wrapper timeout is Model C work |
+| [ECOPROJECT-5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | **Done** | Skip token; still applies to GHA scheduling only |
+| [ECOPROJECT-5569](https://redhat.atlassian.net/browse/ECOPROJECT-5569) | **Done** | Lease core; janitor remains **D2** / **B2** |
+| [ECOPROJECT-5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580)–**5583**, **5589**–**5592**, **5598** | **Still valid** | Docs, sign-off, TRs, fork guard, cleanup, parent story text — adjust AC text where they mention “self-hosted runner” |
+
+New work: **[ECOPROJECT-5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612)** — Model C lab executor VM (parent **5406**).
+
 ## Architecture overview
 
 ```mermaid
 flowchart LR
-  subgraph trigger [Trigger]
-    OD[On demand comment or UI]
-    SCH[Daily schedule if PR activity 24h]
-    PF[Same guards when run starts]
-    OD --> PF
-    SCH --> PF
+  subgraph github [GitHub Actions ubuntu-latest]
+    CI[lint test build publish]
+    RES[Optional resolve jobs bundle PR metadata]
   end
-  subgraph ci [CI executor]
-    IB[Image from PR build artifact]
-    LS[live-cluster-smoke.sh]
-    IB --> LS
+  subgraph labvm [Lab smoke executor VM Model C]
+    CRON[systemd timer or cron]
+    SYNC[git fetch main or PR ref]
+    IMG[podman build or pull published image]
+    LS[live-cluster-smoke.sh or make smoke-ci]
+    OUT[results logs notify]
+    CRON --> SYNC --> IMG --> LS --> OUT
   end
   subgraph cluster [edge-112 CI cluster]
     LE[Lease max 1 holder]
@@ -68,8 +100,8 @@ flowchart LR
     CLN[Cleanup and release lease]
     LE --> PRE --> RUN --> CLN
   end
-  PF -->|explicit or scheduled| LS
-  OD -->|re-run| LS
+  CI -.->|no lab API path| cluster
+  RES -.->|future queue file or API poll| labvm
   LS --> LE
 ```
 
@@ -94,7 +126,8 @@ substitute for live smoke).
 | Jira                                                                   | Summary                                         | Design coverage                                                      |
 | ---------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
 | [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406) | Live cluster smoke (Jira text may still say post-merge) | PR smoke + edge-112; update Jira to match §1 |
-| [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) | Hosted runners for cluster smoke                | Section 2 — **optional**; see **When ECOPROJECT-5462 is not needed** |
+| [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) | Hosted runners for cluster smoke                | **Superseded** — see [5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) |
+| [ECOPROJECT-5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) | Model C lab smoke executor VM                   | [smoke-execution-model-c.md](smoke-execution-model-c.md) |
 | [ECOPROJECT-5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | Opt-out: skip live smoke from PR / merge commit | Section 1 — **Skip live smoke**; `docs/ci.md`, PR template           |
 
 ### ECOPROJECT-5536: skip live smoke on demand
@@ -140,32 +173,23 @@ The design keeps **portable scripts** under `storage-cert-harness/ci/scripts/`
 (e.g. extend `run-image-tests.sh` or add `live-cluster-smoke.sh`) as the shared
 entry point for CI and local runs.
 
-### When ECOPROJECT-5462 is not needed
+### Execution models and Jira
 
-[ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) targets
-**GitHub-hosted runners** that can reach the cluster, with triggers on **PR →**
-`main` and explicitly **not** on push to `main`. That conflicts with the
-historical post-merge-only lean; this design adopts **PR-open smoke** (see §1).
+| Model | Document |
+| --- | --- |
+| A — Contributor laptop | [smoke-execution-model-a.md](smoke-execution-model-a.md) |
+| B — GHA self-hosted runner (blocked) | [smoke-execution-model-b.md](smoke-execution-model-b.md) |
+| C — Lab smoke executor VM | [smoke-execution-model-c.md](smoke-execution-model-c.md) |
 
-Treat ECOPROJECT-5462 as **out of scope** when GitHub Actions uses a
-**self-hosted runner** or **runner group** with cluster access, while default
-`ubuntu-latest` jobs stay unchanged.
+Index: [smoke-execution-models.md](smoke-execution-models.md).
 
-In those cases, only ECOPROJECT-5406-style work is required: secrets, workflow
-job, path filters, and cluster lease/cleanup. No separate “hosted runner”
-product configuration story is needed; document runner owner and network path in
-the ops runbook instead.
+[ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) is
+**superseded** (see summary **Jira validity**). Lab automation is **ECOPROJECT-5406**
+Model C sub-task. `ci-live-smoke.yml` stays **resolve-only** on `ubuntu-latest`
+until VM **report-back** exists.
 
-### ECOPROJECT-5462 acceptance criteria vs this design
-
-| ECOPROJECT-5462 AC                         | This design                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Hosted runner used only for cluster smoke  | Satisfied by dedicating a self-hosted runner label to the live-smoke job only                            |
-| PR targeting `main` can run smoke on demand / schedule | **Adopted** — no PR-open auto-run; **required** merge gate on failure when check runs |
-| Push to `main` does not run smoke          | **Adopted** — no push trigger; optional daily schedule only with 24h PR activity       |
-| PR to non-`main` branch does not run smoke | Satisfied                                                                                                 |
-| Fork PRs cannot read cluster secrets       | Satisfied via protected environments / `main`-only workflows / no `pull_request` trigger for live smoke   |
-| Named owners, rotation, escalation         | Section 3 and **Operations**                                                                              |
+**Reference pattern (external):** Ansible `vmware.vmware` — hosted matrix + lab
+host that polls GitHub; no inbound from GitHub to the lab (same as Model C).
 
 ---
 
@@ -179,15 +203,15 @@ the ops runbook instead.
 | Contributor **on demand** (`/run-live-smoke`, `workflow_dispatch`) | Yes when allowed | [§1.4](#14-contributor-on-demand-smoke-on-a-pr) |
 | **`schedule`** (daily) | **Conditional** | Only if an open same-repo PR to `main` was updated in the last 24h and not skipped |
 | Push to `main` | **No** | Lint/build/publish only |
-| `workflow_dispatch` | On demand | `pr_number` only (SHA resolved on `ubuntu-latest` before self-hosted checkout) |
+| `workflow_dispatch` | On demand | `pr_number` only (SHA resolved on `ubuntu-latest`; **cluster step on lab VM**) |
 | Fork PR → upstream | **No** | No upstream kubeconfig |
 
-**Merge gate:** PR live-smoke is a **required** status check on pull requests to
-`main` (branch protection). A **failed** workflow run **blocks merge** until the
-contributor investigates the failure, fixes the branch if needed, and a **passing**
-re-run is recorded (on-demand §1.4). Treat failures as release blockers for that
-PR — not post-mortem-only. Configure GitHub branch rules to require the
-`live-smoke` (or workflow) check name once the job exists.
+**Merge gate:** Target state: PR live-smoke is a **required** status check on pull
+requests to `main` (branch protection) once the **lab executor** can **report back**
+to GitHub (§2.6.6). Until then, require **Model A** smoke evidence in the PR (§1.5)
+and maintainer review; do not enable a required GHA job that cannot reach the
+cluster. When report-back exists, a **failed** reported run **blocks merge** until
+a **passing** re-run is recorded (on-demand §1.4).
 
 **Frequency:** Opening a PR triggers **at most one** automatic smoke. Pushing
 additional commits to the PR branch does **not** trigger another automatic run;
@@ -236,8 +260,10 @@ fork workflows. Required behavior:
 4. **Do not** pass cluster secrets via `secrets: inherit` on the top-level `CI`
    workflow for fork-visible jobs; the live-smoke reusable workflow (if any)
    should reference `environment: live-smoke` only on the guarded job.
-5. **Self-hosted runner** `storage-cert-smoke` — register only on the upstream
-   org; do not attach cluster-capable runners to public fork copies.
+5. **No lab kubeconfig in GitHub** — cluster credentials live **only** on the lab
+   smoke executor VM (§2.6). Do not register lab-connected self-hosted runners.
+   `ci-live-smoke.yml` must not materialize `CI_CLUSTER_KUBECONFIG` on
+   `ubuntu-latest` jobs.
 
 **Verification:** open a test PR from a personal fork — upstream `CI` lint/test/build
 may run, but **no** `live-smoke` job appears and no workflow step receives
@@ -375,23 +401,22 @@ Today’s workflows under `storage-cert-harness/.github/workflows/` set **no**
 minutes (6 hours)** per job on GitHub-hosted runners (`ubuntu-latest` for lint,
 test, build, image jobs). See [Actions limits](https://docs.github.com/en/actions/reference/limits).
 
-| Limit                              | GitHub-hosted (`ubuntu-latest`)                                        | Self-hosted (smoke runner)                                         |
+| Limit                              | GitHub-hosted (`ubuntu-latest`)                                        | Lab smoke executor VM (Model C)                                    |
 | ---------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **Per-job execution**              | **6 hours max** (360 min default; `timeout-minutes` cannot exceed 360) | **5 days max** (Apr 2024); set `timeout-minutes` lower in practice |
-| **Workflow run (entire workflow)** | **35 days** wall clock (includes waits/approvals)                      | Same workflow-level cap                                            |
-| **This repo today**                | No explicit timeout → each job may run up to **6 h** before cancel     | N/A until live-smoke job exists                                    |
+| **Per-job execution**              | **6 hours max** (360 min default; `timeout-minutes` cannot exceed 360) | **No GHA cap** — use `timeout-minutes` in wrapper script (240–360) |
+| **Workflow run (entire workflow)** | **35 days** wall clock (includes waits/approvals)                      | N/A — single-host cron/systemd unit                                |
+| **This repo today**                | No explicit timeout → each job may run up to **6 h** before cancel     | Executor not yet provisioned (**B1**)                              |
 
 #### Implications for live smoke
 
-- Plan `timeout-minutes: 240` (4 h) on the `live-smoke` job — under the
-360-minute hosted cap if smoke ever ran on `ubuntu-latest` (it should not;
-smoke needs a self-hosted runner with cluster access).
-- On a **self-hosted** smoke runner, 240 minutes is valid; maximum is 5 days but
-use 240–360 unless benchmarks justify more.
+- **Do not** run harness smoke on `ubuntu-latest` — no lab API route.
+- On the **lab executor VM**, budget **240 minutes** per run (4 h); extend only
+after **A1** timings justify it. Use `timeout` in systemd/cron wrapper around
+`live-cluster-smoke.sh`.
 - **End-to-end pipeline time** (developer-visible): if `live-smoke` runs **in
 parallel** with `publish` after `images`, wall clock ≈ `max(live-smoke, lint→publish chain)` (~**30–60 min** for the hosted chain + **up to ~240 min** smoke ⇒ often **~2–4 h** total). If smoke **blocks** publish, wall clock is the **sum** (~**2.5–5 h** worst case).
-- Add explicit `timeout-minutes` to **all** jobs in a follow-up hygie                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ne task so
-stuck jobs fail fast (for example lint 30, test 45, image-build 90).
+- Add explicit `timeout-minutes` to **all** GitHub-hosted jobs in a follow-up
+hygiene task so stuck jobs fail fast (for example lint 30, test 45, image-build 90).
 
 ---
 
@@ -458,8 +483,8 @@ Publish **who is using the cluster** on the Lease object (no secrets):
 | `storage-cert-harness/plan-file` | `plans/harness-smoke-plan.yaml` |
 | `storage-cert-harness/git-sha` | `abc123def456` |
 | `storage-cert-harness/pr-number` | `42` (if PR smoke) |
-| `storage-cert-harness/workflow-url` | Link to GHA run |
-| `storage-cert-harness/runner` | Runner hostname or `storage-cert-smoke` label |
+| `storage-cert-harness/workflow-url` | Link to GHA run (if any) or results URL (§2.6.8) |
+| `storage-cert-harness/executor` | Lab VM hostname (`hostname -f`) or `model-c` |
 | `storage-cert-harness/api-server` | API server host from `oc whoami --show-server` (not credentials) |
 | `storage-cert-harness/started-at` | RFC3339 timestamp |
 
@@ -505,14 +530,20 @@ release the lease so the next contributor on-demand run can proceed.
 
 ### Runner placement
 
-| Model                                                    | Cluster access                   | ECOPROJECT-5462                                                   |
-| -------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
-| Self-hosted runner in lab VLAN                                | VPN/LAN to API                   | Not needed                                                        |
-| GHA self-hosted runner (`runs-on: [storage-cert-smoke]`) | Same                             | Partially overlaps 5462 — use runner group docs, not “PR-only” AC |
-| GHA `ubuntu-latest` + public API                         | Only if API is public (unlikely) | Impractical                                                       |
+| Model | Cluster access | CI integration |
+| --- | --- | --- |
+| **A — Laptop** | Manual VPN + kubeconfig | Pre-PR policy (§1.5) — [model A](smoke-execution-model-a.md) |
+| **B — GHA self-hosted runner** | Leg 1 + Leg 2 on runner host | **Not available** — [model B](smoke-execution-model-b.md) |
+| **C — Lab smoke executor VM** | Leg 1 + Leg 2 on dedicated VM | **Adopted** — [model C](smoke-execution-model-c.md) |
+| GHA `ubuntu-latest` | No lab API | Lint, test, build, publish only |
 
-GitHub **hosted** `ubuntu-latest` cannot reach a private OpenShift API without
-a bespoke network connector; do not depend on it for live smoke.
+GitHub **hosted** `ubuntu-latest` cannot reach a private OpenShift API; do not
+depend on it for live smoke.
+
+### 2.6 Lab smoke executor (Model C)
+
+Full specification: [smoke-execution-model-c.md](smoke-execution-model-c.md)
+(VM install, cron, results, notify, web UI, validation checklist).
 
 ---
 
@@ -520,11 +551,15 @@ a bespoke network connector; do not depend on it for live smoke.
 
 Never commit kubeconfig, backend passwords, or private `thresholds.json` exports.
 
+**Model C:** Lab kubeconfig, backends, and optional threshold overlays live on
+the **executor VM** ([model C](smoke-execution-model-c.md)). GitHub **must not**
+store lab kubeconfig once Model C is active.
+
 ### Protected variables / secrets
 
 | Name                               | Format                         | Used for                                                                                      |
 | ---------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `CI_CLUSTER_KUBECONFIG`            | Base64-encoded kubeconfig file | API access; write to `$(mktemp)` mode `0600`, `trap` delete                                   |
+| `CI_CLUSTER_KUBECONFIG`            | Base64-encoded kubeconfig file | **Legacy Model B only** — use VM files for Model C                                            |
 | `HARNESS_THRESHOLDS_JSON`          | Raw JSON string                | Write to `work/thresholds.json` (or path mounted in container)                                |
 | `HARNESS_BACKENDS_YAML`            | Raw YAML                       | CI cluster backend (`storage_class`, `snapshot_class`, array creds) → `work/backends.ci.yaml` |
 | `HARNESS_CATALOG_JSON`             | Optional if not in repo        | Only if catalog must stay private; default use git `catalog.json`                             |
@@ -926,21 +961,24 @@ secrets and lease.
 ### GitHub Actions
 
 Implementation: [`.github/workflows/ci-live-smoke.yml`](../../.github/workflows/ci-live-smoke.yml).
-Each trigger uses **`ubuntu-latest` resolve + bundle jobs** (no `live-smoke`
-environment) to validate same-repo PR metadata, check out the PR head SHA, and
-upload a short-lived workflow artifact. **Self-hosted** jobs check out **`main`**
-only (trusted [`ci/scripts/run-harness/live-cluster-smoke.sh`](../../ci/scripts/run-harness/live-cluster-smoke.sh)),
-download the PR tree to `pr-src/`, and run the script with **`bash`** (not PR
-executables). Resolvers load the current PR head via the **Pulls API** (on-demand
-and scheduled paths). `workflow_dispatch` accepts **`pr_number` only** (not
-arbitrary `git_ref`).
+Under **Model C**, GHA stays on **`ubuntu-latest` only**:
 
-Wire smoke as a **separate** workflow with a **required** PR status check when
-operators enable it. Triggers: **`workflow_dispatch`**, **`issue_comment`**
-`/run-live-smoke`, and **daily schedule** (only if open same-repo PRs were updated
-in the last 24 hours). **No** `pull_request` or `push` triggers. Failed runs
-block merge when branch protection requires the check. Resolvers load the current
-PR head via the Pulls API.
+| GHA responsibility | Lab VM responsibility (§2.6) |
+| --- | --- |
+| Resolve PR metadata via Pulls API | `git fetch` + checkout requested SHA |
+| Bundle PR source as short-lived artifact | Pull image or build locally |
+| Enqueue smoke request (file, issue, or artifact — **B1**) | Run `live-cluster-smoke.sh` / `make smoke-ci` |
+| (Future) publish check from executor callback | Store results, notify, serve web UI |
+
+**Remove or gate** self-hosted `live-smoke` jobs in the workflow until org policy
+changes — they cannot reach the cluster. Triggers remain **`workflow_dispatch`**,
+**`issue_comment`** `/run-live-smoke`, and **daily schedule** (24h PR activity) to
+**schedule lab work**, not to execute harness on GitHub runners. **No**
+`pull_request` or `push` triggers for cluster steps.
+
+Branch protection **required check** for `live-smoke` depends on **report-back**
+(§2.6.6) or stays off (**B4**) while merge gate uses contributor **Model A**
+evidence (§1.5).
 
 ---
 
@@ -949,10 +987,11 @@ PR head via the Pulls API.
 | Item                 | Owner (TBD)        | Notes                                                |
 | -------------------- | ------------------ | ---------------------------------------------------- |
 | CI cluster lifecycle | Platform / QE      | edge-112; backend aligned with smoke plan `backend:` field |
-| Kubeconfig rotation  | Cluster admin      | Update `CI_CLUSTER_KUBECONFIG`; no git commit        |
+| Kubeconfig rotation  | Cluster admin      | Update `/etc/storage-cert-smoke/kubeconfig` on executor VM |
 | Lease stuck          | On-call harness CI | Delete lease object with audit log                   |
-| Runner / network     | CI admin           | Document VLAN, firewall, `oc` version pin            |
-| Failure escalation   | Team channel       | Link job URL + `run_id` + last smoke SHA annotation  |
+| Executor VM / VPN    | CI admin           | §2.6; TLV2 doc; Leg 1 + Leg 2 health checks          |
+| Results / web / NFS  | CI admin           | §2.6.5–§2.6.8 retention and scrub rules              |
+| Failure escalation   | Team channel       | Results URL + `run_id` + failing TR from `status.json` |
 
 Log retention: keep smoke logs 14–30 days; no full cluster dumps.
 
@@ -970,13 +1009,13 @@ This section mirrors that list for design readers.
 | A1 | [5582](https://redhat.atlassian.net/browse/ECOPROJECT-5582) | edge-112 sign-off — 8 TRs; record §6.3/§6.4 timings | Open |
 | A2 | [5583](https://redhat.atlassian.net/browse/ECOPROJECT-5583) | Re-enable TR-STOR-002 in smoke plan | Blocked — [5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566) |
 | A3 | [5580](https://redhat.atlassian.net/browse/ECOPROJECT-5580) | Runbook + smoke docs aligned with `prepare-smoke-env` | Mostly done — [smoke-testing.md](../smoke-testing.md) |
-| B1 | [5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | `CI_LIVE_SMOKE_ENABLED`, `live-smoke` env secrets, runner | Open |
+| B1 | [5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) | Model C lab executor VM — [smoke-execution-model-c.md](smoke-execution-model-c.md) | Open |
 | B2 | [5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | `live-cluster-smoke.sh` — podman run, secrets, janitor, timing artifact | Open |
-| B3 | [5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | GHA `timeout-minutes` (~240m) on live-smoke jobs | **Done** in `ci-live-smoke.yml` |
+| B3 | [5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | GHA `timeout-minutes` on resolve jobs; **240m** on VM wrapper | Partial — GHA done; VM in **B1** |
 | B4 | [5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | Branch protection — required `live-smoke` on PRs to `main` | Open |
 | C1 | [5536](https://redhat.atlassian.net/browse/ECOPROJECT-5536) | `[skip live-smoke]` — verify **Skipped** conclusion + summary | Open |
-| C2 | [5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | Scheduled smoke — first green run after enablement | Enablement open |
-| C3 | [5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | On-demand smoke — first green run after enablement | Enablement open |
+| C2 | [5587](https://redhat.atlassian.net/browse/ECOPROJECT-5587) | First green **main** regression on lab VM timer | Blocked on **B1**–**B2** |
+| C3 | [5588](https://redhat.atlassian.net/browse/ECOPROJECT-5588) | On-demand PR smoke via GHA → VM queue | Blocked on **B1** |
 | C4 | [5589](https://redhat.atlassian.net/browse/ECOPROJECT-5589) | Fork PR guard — re-verify when CI enabled | Verify at enablement |
 | D1 | [5590](https://redhat.atlassian.net/browse/ECOPROJECT-5590) | Consolidate duplicate smoke scripts / doc naming | Open |
 | D2 | [5591](https://redhat.atlassian.net/browse/ECOPROJECT-5591) | Lease janitor + CI cancel (core lease: [5569](https://redhat.atlassian.net/browse/ECOPROJECT-5569) closed) | Partial |
@@ -987,15 +1026,15 @@ This section mirrors that list for design readers.
 | Topic | Resolution |
 | --- | --- |
 | **`ci/config/smoke/` + `prepare-smoke-env.sh`** (§6.5–6.6) | Done — `make prepare-smoke-env`, `make smoke-ci` |
-| **Daily scheduled smoke** (24h open-PR gate) | Done in `ci-live-smoke.yml`; enable with **B1** |
-| **On-demand triggers** (`/run-live-smoke`, `workflow_dispatch`) | Done in workflow; enable with **B1**–**B2** |
+| **Daily scheduled smoke** (24h open-PR gate) | GHA resolver done; **cluster** run on VM (**B1**) |
+| **On-demand triggers** (`/run-live-smoke`, `workflow_dispatch`) | GHA triggers done; **cluster** run on VM (**B1**–**B2**) |
 | **Contributor execution runbook** | Done — [plan-based-test-suite-runbook.md](plan-based-test-suite-runbook.md) |
-| **[ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462)** hosted runners | **Optional** — skip when an existing self-hosted runner reaches the cluster (§5462) |
+| **[ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462)** hosted runners | **Out of scope** — lab self-hosted runner not allowed; **Model C** (§2.6) |
 
 **Closed team decisions (for reference):** **no** automatic smoke on PR open or
-push to `main`; on-demand + daily schedule (24h PR activity) only; **failed PR
-smoke blocks merge** when the check ran; no lease queue; `[skip live-smoke]` only
-when lab unavailable.
+push to `main`; GHA schedule/comment **enqueue** lab smoke when enabled; **failed
+PR smoke blocks merge** when a **reported** check ran (otherwise **Model A** +
+review); no lease queue; `[skip live-smoke]` only when lab unavailable.
 
 ---
 
@@ -1047,7 +1086,7 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 | Area | State |
 | --- | --- |
 | **Full catalog smoke (9 TRs with STOR-002)** | Blocked on TR-STOR-002 (**A2** / ECOPROJECT-5566); TR-VIRT-008 excluded by policy |
-| **edge-112 sign-off + CI** | **A1** local; **B1**–**B2** for GitHub live runs |
+| **edge-112 sign-off + CI** | **A1** local; **B1**–**B2** for lab executor VM (not GHA cluster jobs) |
 | **Per-TR timing table** | §6.3/§6.4 still TBD until **A1** |
 
 ### Remaining (see runbook § Action items)
@@ -1068,4 +1107,6 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 - Plans: `storage-cert-harness/plans/level3-internal-minimal.yaml` (override reference)
 - FIO gather issue: [ECOPROJECT-5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566)
 - Catalog: `storage-cert-harness/catalog.json`
-- Jira: [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406), [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462)
+- Execution models: [smoke-execution-models.md](smoke-execution-models.md), [model A](smoke-execution-model-a.md), [model B](smoke-execution-model-b.md), [model C](smoke-execution-model-c.md)
+- TLV2 lab VM networking (Leg 1/Leg 2): [storage-cert-harness-smoke-runner-tlv2.md](../../../Docs/Github/storage-cert-harness-smoke-runner-tlv2.md) — provisioning only; **skip** GitHub runner registration
+- Jira: [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406), [ECOPROJECT-5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) (Model C), [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) (superseded)

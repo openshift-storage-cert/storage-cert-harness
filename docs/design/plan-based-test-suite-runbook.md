@@ -123,7 +123,7 @@ Track completion against [storage-cert-harness-ci-smoke-test.md §11–§13](sto
 
 | ID | Jira | Item | Notes | Status |
 | --- | --- | --- | --- | --- |
-| B1 | [ECOPROJECT-5584](https://redhat.atlassian.net/browse/ECOPROJECT-5584) | **GitHub secrets and repository variable** | Set `vars.CI_LIVE_SMOKE_ENABLED=true`; configure **`live-smoke`** environment (masked `CI_CLUSTER_KUBECONFIG`, backend materialization, self-hosted runner labels). No kubeconfig in git. | Open |
+| B1 | [ECOPROJECT-5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) | **Lab smoke executor VM** | Model C per [smoke-execution-model-c.md](smoke-execution-model-c.md). **5584** superseded. | Open |
 | B2 | [ECOPROJECT-5585](https://redhat.atlassian.net/browse/ECOPROJECT-5585) | **Implement `live-cluster-smoke.sh` execution** | Today: lease acquire + exit **5** (track under [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406)). Still needed: secrets → `work/`, load PR image or build, `podman run` from PR `plans/`, janitor, `smoke-timing.json`, release lease on error/cancel. | Open |
 | B3 | [ECOPROJECT-5535](https://redhat.atlassian.net/browse/ECOPROJECT-5535) | **Job timeouts** | `ci-live-smoke.yml` self-hosted jobs use `timeout-minutes: 240`. Reopen Jira only if other workflows need the same budget. | Done |
 | B4 | [ECOPROJECT-5586](https://redhat.atlassian.net/browse/ECOPROJECT-5586) | **Branch protection** | Require **`live-smoke`** (or agreed check name) on PRs to `main` once B1–B2 pass. | Open |

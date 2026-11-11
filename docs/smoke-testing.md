@@ -9,6 +9,7 @@ size), not full Level-3 certification.
 | Topic | Document |
 | --- | --- |
 | CI policy, edge cluster, GitHub live smoke | [design/storage-cert-harness-ci-smoke-test.md](design/storage-cert-harness-ci-smoke-test.md) |
+| Execution models (A laptop / B blocked / C lab VM) | [design/smoke-execution-models.md](design/smoke-execution-models.md) |
 | Plan selection and lab overrides | [design/plan-based-test-suite-runbook.md](design/plan-based-test-suite-runbook.md) |
 | Cluster prerequisites | [cluster-requirements.md](cluster-requirements.md), [cluster-setup-guide.md](cluster-setup-guide.md) |
 | CI pipeline (not live smoke) | [ci.md](ci.md) |
@@ -200,9 +201,10 @@ or `make ci` for offline validate+run in the default pipeline.
 ### GitHub live cluster smoke (operators / on-demand)
 
 Workflow [`.github/workflows/ci-live-smoke.yml`](../.github/workflows/ci-live-smoke.yml)
-runs on self-hosted runners when `CI_LIVE_SMOKE_ENABLED=true`. It invokes
-**trusted** `ci/scripts/run-harness/live-cluster-smoke.sh` from the default branch
-with PR source in an artifact.
+is intended to **enqueue** smoke under [Model C](design/smoke-execution-model-c.md)
+(lab VM executor). Org policy **blocks** lab-connected **self-hosted** GitHub
+runners ([Model B](design/smoke-execution-model-b.md)). Until the executor VM is
+live, use [Model A](design/smoke-execution-model-a.md) (`make smoke-ci`).
 
 **Important:** `live-cluster-smoke.sh` currently acquires the cluster lease then
 exits with code **5** — full harness execution from CI is not implemented yet
