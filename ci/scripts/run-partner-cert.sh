@@ -14,6 +14,7 @@ Environment:
   HARNESS_IMAGE       Container image (default: quay.io/virtarraycert/storage-cert-harness:main)
   CERT_RESULTS_ROOT   Base directory for results (default: certification-results)
   CONTINUE_FROM       For no-load-80: prior report.json (default: <CERT_RESULTS_ROOT>/load-80/report/report.json)
+  FAR_CONFIG          Host FAR manifest for TR-VIRT-007 (default: ./far-config.json)
   PARTNER_KEEP_WORK   When true, do not archive prior result directories (default: false)
   SKIP_HOST_VALIDATE  When true, skip host oc connectivity checks (default: false)
 
@@ -85,6 +86,7 @@ fi
 if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
 	validate_partner_level3_no_load_plan "${plan_path}"
 fi
+partner_validate_far_config "${plan_path}" "${repo_root}"
 partner_pull_image "${image}"
 
 partner_prepare_result_dir "${out_dir}"
@@ -120,6 +122,9 @@ podman_args=(
 )
 if [[ -n "${prior_mount}" ]]; then
 	podman_args+=(-v "${prior_mount}:/prior-load:ro,Z")
+fi
+if [[ -n "${PARTNER_FAR_MOUNT}" ]]; then
+	podman_args+=(-v "${PARTNER_FAR_MOUNT}")
 fi
 podman_args+=(
 	"${image}" run

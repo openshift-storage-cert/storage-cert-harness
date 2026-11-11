@@ -13,6 +13,7 @@ Environment:
   BACKENDS            Path to backends file (default: backends.yaml)
   HARNESS_IMAGE       Container image (default: quay.io/virtarraycert/storage-cert-harness:main)
   PLAN                Plan for tool selection (default: plans/level3-customer-no-load-80.yaml)
+  FAR_CONFIG          Host FAR manifest for TR-VIRT-007 (default: ./far-config.json)
   PARTNER_KEEP_WORK   When true, do not archive prior logs (default: false)
 
 Runs host validation (API reachability, node Ready, StorageClass / VolumeSnapshotClass
@@ -64,6 +65,7 @@ validate_partner_cluster_connectivity "${kubeconfig}" "${plan_path}"
 if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
 	validate_partner_level3_no_load_plan "${plan_path}"
 fi
+partner_validate_far_config "${plan_path}" "${repo_root}"
 partner_pull_image "${image}"
 
 echo "==> harness preflight (container)"

@@ -5,6 +5,7 @@
 # at local secret files — keep them out of git (decisions/0005). The curated
 # smoke-lab fixture is the only tracked backends.local.yaml.
 backends.yaml
+/far-config.json
 backends.local.yaml
 *.backends.yaml
 !backends.example.yaml
