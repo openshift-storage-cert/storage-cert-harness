@@ -4,7 +4,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["ci/config/images\\.env$"],
+      "managerFilePatterns": [
+        "/ci/config/images\\.env$/"
+      ],
       "matchStrings": [
         "\\w+_IMAGE=(?<depName>[^:\\s@]+):(?<currentValue>[^\\s@]+)\\n"
       ],
@@ -12,7 +14,9 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["ci/config/images\\.env$"],
+      "managerFilePatterns": [
+        "/ci/config/images\\.env$/"
+      ],
       "matchStrings": [
         "\\w+_IMAGE=(?<depName>[^:\\s@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
