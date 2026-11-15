@@ -1,9 +1,11 @@
 package kubeburnerocp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -27,9 +29,26 @@ type kboRun struct {
 	Subdir     string
 	RunErr     string
 	Skipped    string
+	stdout     *bytes.Buffer
+	stderr     *bytes.Buffer
 }
 
 type runner struct{}
+
+func logSubprocessFailure(rc *core.RunCtx, run kboRun) {
+	const maxOutput = 32 * 1024
+	for stream, output := range map[string]*bytes.Buffer{"stdout": run.stdout, "stderr": run.stderr} {
+		if output == nil || output.Len() == 0 {
+			continue
+		}
+		text := output.String()
+		if len(text) > maxOutput {
+			text = text[len(text)-maxOutput:]
+			text = "[truncated to last 32 KiB]\n" + text
+		}
+		rc.Logger.Warn("kube-burner-ocp: subprocess output on failure", "tr", run.TRID, "stream", stream, "output", text)
+	}
+}
 
 func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []core.TestRequirement) (stages.RunHandle, error) {
 	if len(trs) == 0 {
@@ -79,9 +98,15 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 			rc.Logger.Warn("kube-burner-ocp: could not build run command", "tr", tr.ID, "err", err)
 			continue
 		}
-		cmd.Stdout = rc.ToolOutput(os.Stdout)
-		cmd.Stderr = rc.ToolOutput(os.Stderr)
+		// Keep streaming tool output to the normal log while retaining a bounded
+		// copy so failures in hooks (whose stderr is otherwise swallowed by the
+		// upstream tool) remain diagnosable.
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = io.MultiWriter(rc.ToolOutput(os.Stdout), &stdout)
+		cmd.Stderr = io.MultiWriter(rc.ToolOutput(os.Stderr), &stderr)
 		cmds[i] = cmd
+		runs[i].stdout = &stdout
+		runs[i].stderr = &stderr
 		runs[i].Subdir = subdir
 	}
 
@@ -97,6 +122,7 @@ func (runner) Run(ctx context.Context, rc *core.RunCtx, bag *core.Bag, trs []cor
 			if err := cmds[i].Run(); err != nil {
 				runs[i].RunErr = err.Error()
 				rc.Logger.Warn("kube-burner-ocp: run failed", "tr", runs[i].TRID, "err", err)
+				logSubprocessFailure(rc, runs[i])
 			}
 		}(i)
 	}
