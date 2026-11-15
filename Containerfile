@@ -18,20 +18,12 @@ LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
 COPY bin/harness /usr/bin/
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY container-entrypoint.sh /usr/local/bin/
-# Refresh UBI RPMs at build time; keep /var/lib/rpm so Trivy can detect OS packages.
-RUN python3 -m pip install --no-cache-dir --upgrade 'pip==26.2.1' 'setuptools>=78.1.1' \
-  && rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
+# OS RPM refresh runs in harness-builder (microdnf update); repeating it here
+# duplicates large package layers and fails Dive. Keep /var/lib/rpm for Trivy.
+RUN rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
-  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness \
-  && if command -v microdnf >/dev/null 2>&1; then \
-       microdnf update -y --nodocs; \
-       microdnf clean all; \
-     fi \
-  && if command -v dnf >/dev/null 2>&1; then \
-       dnf clean all; \
-     fi \
-  && rm -rf /var/lib/dnf/history* /var/cache/dnf
+  && chown -R 65532:65532 /opt/virtbench-runtime /home/harness
 ENV PATH="/opt/virtbench-venv/bin:${PATH}"
 ENV HOME=/home/harness
 ENV VIRTBENCH_REPO=/opt/virtbench-runtime
