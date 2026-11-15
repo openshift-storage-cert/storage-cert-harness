@@ -53,16 +53,16 @@ OCP-version-gated beyond the 4.20 baseline.
 
 ### Worker nodes (×3 or more)
 
-| Resource  | Minimum                 |
-| --------- | ----------------------- |
-| vCPU      | 16                      |
-| RAM       | 64 GB                   |
-| Root disk | 120 GB (OS + ephemeral) |
-| Network   | 10 Gbps                 |
+| Resource  | Minimum                                           |
+| --------- | ------------------------------------------------- |
+| CPU       | 64 physical cores (128 logical CPUs with SMT2/HT) |
+| RAM       | 256 GB                                            |
+| Root disk | 120 GB (OS + ephemeral)                          |
+| Network   | 10 Gbps                                           |
 
-> For performance-tier certification (e.g. latency / IOPS tests) 16 vCPU /
-> 64 GB RAM per worker is recommended to avoid CPU/RAM saturation masking
-> storage bottlenecks.
+> For performance-tier certification (e.g. latency / IOPS tests), 64 physical
+> CPU cores (128 logical CPUs with SMT2/HT) and 256 GB RAM per worker help avoid
+> CPU/RAM saturation masking storage bottlenecks.
 
 ### Storage Connectivity
 
