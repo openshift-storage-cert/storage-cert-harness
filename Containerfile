@@ -18,8 +18,7 @@ LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
 COPY bin/harness /usr/bin/
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY container-entrypoint.sh /usr/local/bin/
-# OS RPM refresh runs in harness-builder (microdnf update); repeating it here
-# duplicates large package layers and fails Dive. Keep /var/lib/rpm for Trivy.
+# OS RPM versions come from BUILD_IMAGE; promote a new builder digest for CVE fixes (/var/lib/rpm kept for Trivy).
 RUN rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \

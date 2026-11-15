@@ -338,12 +338,28 @@ In the supported GitHub Actions flow, `image-push` runs automatically on
 
 The `Containerfile` extends the digest-pinned **harness-builder** image
 (`FROM ${BUILD_IMAGE}`), adds `bin/harness`, the virtbench `ssh-pod.yaml` patch,
-and the entrypoint, then refreshes RPMs for Trivy. It does not re-copy the tool
+and the entrypoint. It does **not** run `microdnf update` or re-copy the tool
 tree onto a second `RUNTIME_IMAGE` rootfs (that pattern duplicated UBI layers and
 failed Dive). It does not download, compile, or relabel the packaged tools.
 `RUNTIME_IMAGE` in `images.env` must still match the builder base stream.
 Override `BUILD_IMAGE` in the environment only for local experiments;
 release CI uses the pinned digest from `images.env`.
+
+### OS and RPM security updates
+
+**RPM versions in the shipped harness image come from the pinned `BUILD_IMAGE`
+digest.** harness-builder runs `microdnf update` when it is built; the harness
+runtime layer does not refresh OS packages again.
+
+- To pick up **new RPM or UBI security fixes**, publish a new **harness-builder**
+  from `storage-cert-harness-images`, record its digest, bump
+  `HARNESS_BUILDER_VERSION` and `BUILD_IMAGE@sha256:…` in `ci/config/images.env`,
+  then rebuild the harness image (`make image-build` or CI).
+- Rebuilding only the **runtime** image (new `bin/harness` or harness tag) with
+  an **unchanged** `BUILD_IMAGE` digest **does not** apply new OS CVE fixes.
+- Trivy on the harness image may report OS CVEs against the builder snapshot;
+  non-gating image-scan jobs do not block publish—track builder promotion for
+  remediated RPMs.
 
 Use `IMAGE_BUILD_NO_CACHE=1` (or `make image-build-fresh`) when refreshing layers
 after a new builder digest. `make image-build-local` tags a unique local name;
@@ -577,7 +593,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `secret-scan.sh` | tracked reports (`report.json`/`.md`); editor/workspace tokens; gitleaks |
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
 | `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
-| `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (copies tools from digest-pinned `BUILD_IMAGE`). Local: **podman**. |
+| `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (extends digest-pinned `BUILD_IMAGE`). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
