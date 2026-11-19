@@ -1,4 +1,10 @@
+# Capture BUILD_IMAGE from the shell before images.env overwrites it (GNU make file
+# assignments beat the environment in recipe subprocesses).
+_EXPORTED_BUILD_IMAGE := $(BUILD_IMAGE)
 include ci/config/images.env
+ifneq ($(_EXPORTED_BUILD_IMAGE),)
+override BUILD_IMAGE := $(_EXPORTED_BUILD_IMAGE)
+endif
 
 BINARY := bin/harness
 PKG := ./...

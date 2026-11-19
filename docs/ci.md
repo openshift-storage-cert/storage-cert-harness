@@ -345,6 +345,33 @@ failed Dive). It does not download, compile, or relabel the packaged tools.
 Override `BUILD_IMAGE` in the environment only for local experiments;
 release CI uses the pinned digest from `images.env`.
 
+### Dev harness-builder (forked kube-burner / kube-burner-ocp)
+
+For diagnosing workload failures with **non-release** builder binaries, build
+**harness-builder** in [storage-cert-harness-images](../../storage-cert-harness-images/docs/dev-harness-builder.md)
+(git-mode forks), then point this repo at that image digest:
+
+```sh
+# images repo: source ci/config/examples/dev-kbo-hook-diagnostics.env && make image-build-harness-builder
+# optional Quay: PUSH=1 DEV_TAG=dev-kbo-hook-diagnostics make image-push-dev-harness-builder
+
+cd storage-cert-harness
+export BUILD_IMAGE="$(podman inspect quay.io/virtarraycert/harness-builder:local \
+  --format 'quay.io/virtarraycert/harness-builder@{{.Digest}}')"
+echo "BUILD_IMAGE=${BUILD_IMAGE}"
+source ci/scripts/images.sh
+make image-build-local
+podman run --rm --entrypoint '' "$(cat work/local-image-ref)" kube-burner-ocp version
+```
+
+Confirm `podman build` STEP 1 `FROM` matches that digest (not `f355bbf…` from
+`ci/config/images.env`). Export `BUILD_IMAGE` before `make`, or pass it on the make
+command line. The root `Makefile` `include`s `images.env`; a preserved shell export (or
+`make BUILD_IMAGE=…`) is required so the release pin does not win.
+
+Do not change `ci/config/images.env` on `main` for dev tags. See also
+[Docs/Design/kube-burner-ocp-dev-build-and-diagnostics.md](../../Docs/Design/kube-burner-ocp-dev-build-and-diagnostics.md).
+
 Use `IMAGE_BUILD_NO_CACHE=1` (or `make image-build-fresh`) when refreshing layers
 after a new builder digest. `make image-build-local` tags a unique local name;
 CI writes `dist/harness-image.tar` for scan jobs.
