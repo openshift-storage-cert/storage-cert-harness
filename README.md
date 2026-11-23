@@ -93,6 +93,21 @@ make build
 `thresholds.json` is supplied with the repository inputs and is passed at run
 time via `--thresholds <path>` or `HARNESS_THRESHOLDS`.
 
+### Preview selected executions
+
+Use the normal run inputs with `--inspect-plan` to print the selected test executions as JSON and exit before attestations or workloads:
+
+```sh
+./bin/harness run --catalog catalog.json --thresholds thresholds.json \
+  --plan plans/virtbench-fio-live-smoke.yaml --inspect-plan
+```
+
+The versioned JSON output lists each test ID, tool, and any named variant or scenario. Selection and filters use the same rules as `run`; CLI selection flags replace the plan selector. The command loads and validates the normal run inputs, including any selected backend, but does not run tool preflight, collect the cluster environment, or create reports. Backend resolution may read configured credentials. Standard output contains JSON; logs go to standard error.
+
+### Focus and skip selected tests
+
+Use `--focus TR-VIRT-010,TR-VIRT-011` to narrow the selected tests to exact TR IDs. All variants of a focused TR remain selected. IDs outside the effective selection produce a warning. If focus or skip leaves no tests, the command succeeds with an empty result; a base selection that matches no tests is an error. Unlike `--focus`, `--id` replaces the plan selector. Focus and skip narrow the effective selection, including any CLI selector overrides. Use `--all-tests` to explicitly select every catalog test instead of the plan selection; it can be combined with focus and skip, but not `--id`, `--tool`, or `--partner-level`. Without a plan or selector, the existing default still selects all catalog tests. `--skip TR-VIRT-012` excludes exact IDs from the effective selection. If the same ID is in both lists, focus takes precedence and a warning is logged. Pass the same `--focus` and `--skip` flags to `preflight` so it checks the intended tests. `--inspect-plan` uses the same selection as a run.
+
 ### Preflight checks
 
 Use the same catalog, plan, and backend options as the intended run:

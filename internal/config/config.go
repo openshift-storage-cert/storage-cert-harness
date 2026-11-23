@@ -7,6 +7,8 @@ package config
 type Filter struct {
 	Tools         []string
 	IDs           []string // TR ids
+	FocusIDs      []string // restrict the selected TRs by exact id
+	SkipIDs       []string // omit selected TRs unless explicitly focused
 	PartnerLevels []int
 }
 

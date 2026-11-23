@@ -14,11 +14,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/attestation"
 	"github.com/openshift-storage-cert/storage-cert-harness/internal/backend"
@@ -158,28 +161,40 @@ func newValidateCmd() *cobra.Command {
 
 func newPreflightCmd() *cobra.Command {
 	var (
-		catalogPath  string
-		filter       config.Filter
-		planPath     string
-		backendsPath string
-		backendName  string
+		catalogPath       string
+		filter            config.Filter
+		planPath          string
+		backendsPath      string
+		backendName       string
+		focusIDs, skipIDs []string
+		allTests          bool
 	)
 	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "preflight",
 		Short: "Run preflight checks for the tools selected by the catalog/filter",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateSelectionFlags(cmd); err != nil {
+				return err
+			}
 			logger := newLoggerTo(verbose, cmd.OutOrStdout(), nil)
 			cfg := config.Config{Filter: filter}
 			resolved, err := configureExecution(cmd, &cfg, planPath, backendsPath, &backendName, false, logger)
 			if err != nil {
 				return err
 			}
+			if allTests {
+				cfg.Filter = config.Filter{}
+			}
 			cat, err := catalog.Load(catalogPath)
 			if err != nil {
 				return err
 			}
-			trs, err := orchestrator.ResolveExecutions(kb.FromCatalog(cat), cfg)
+			catalogTRs := kb.FromCatalog(cat)
+			if err := configureFocusSkip(&cfg, catalogTRs, focusIDs, skipIDs, logger); err != nil {
+				return err
+			}
+			trs, err := orchestrator.ResolveExecutions(catalogTRs, cfg)
 			if err != nil {
 				return err
 			}
@@ -247,7 +262,10 @@ func newPreflightCmd() *cobra.Command {
 	cmd.Flags().StringVar(&backendName, "backend", "", "name of the active storage backend (overrides the plan)")
 	cmd.Flags().StringSliceVar(&filter.Tools, "tool", nil, "restrict to these automation tools")
 	cmd.Flags().StringSliceVar(&filter.IDs, "id", nil, "restrict to these TR ids")
+	cmd.Flags().BoolVar(&allTests, "all-tests", false, "select all catalog tests instead of the plan selection")
 	cmd.Flags().IntSliceVar(&filter.PartnerLevels, "partner-level", nil, "restrict to these partner levels (1|2|3)")
+	addFocusSkipFlags(cmd, &focusIDs, &skipIDs)
+	rejectEmptySelectorOccurrences(cmd)
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	_ = cmd.MarkFlagRequired("catalog")
 	return cmd
@@ -269,15 +287,22 @@ func newRunCmd() *cobra.Command {
 		continueFrom     string
 		retryFailed      bool
 		skipEnv          bool
+		inspectPlan      bool
+		allTests         bool
+		focusIDs         []string
+		skipIDs          []string
 		runTimeout       time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run selected certification tests and emit a report",
 		RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
+			if err := validateSelectionFlags(cmd); err != nil {
+				return err
+			}
 			var logFile io.WriteCloser
 			var closeLog func()
-			if outputDir != "" {
+			if outputDir != "" && !inspectPlan {
 				root, err := safefs.OpenRootDir(outputDir, 0o755)
 				if err != nil {
 					return err
@@ -303,6 +328,9 @@ func newRunCmd() *cobra.Command {
 			resolved, err := configureExecution(cmd, &cfg, planPath, backendsPath, &backendName, true, logger)
 			if err != nil {
 				return err
+			}
+			if allTests {
+				cfg.Filter = config.Filter{}
 			}
 			if cmd.Flags().Changed("scenario") {
 				cfg.Scenario = scenario
@@ -335,9 +363,12 @@ func newRunCmd() *cobra.Command {
 				trs = kb.FromCatalog(cat)
 			}
 
-			selected := orchestrator.SelectTRs(trs, cfg.Filter)
-			if len(selected) == 0 {
-				return fmt.Errorf("no test requirements selected")
+			if err := configureFocusSkip(&cfg, trs, focusIDs, skipIDs, logger); err != nil {
+				return err
+			}
+			selected, err := orchestrator.ResolveExecutions(trs, cfg)
+			if err != nil {
+				return err
 			}
 			// Refuse a run that needs SLA/check numbers without a bundle (5273).
 			if path == "" {
@@ -381,9 +412,32 @@ func newRunCmd() *cobra.Command {
 				before := len(selected)
 				selected = orchestrator.ResumeExecutionsWithOptions(selected, *prior, cfg.Scenario, retryFailed)
 				logger.Info("continue-from: selecting incomplete executions", "previously_selected", before, "resuming", len(selected), "skipped_completed", before-len(selected), "scenario", cfg.Scenario)
+				if len(selected) == 0 {
+					logger.Info("continue-from: no executions remain")
+				}
+			}
+			if inspectPlan {
+				executions := selected
+				type execution struct {
+					ID       string `json:"id"`
+					Tool     string `json:"tool"`
+					Variant  string `json:"variant,omitempty"`
+					Scenario string `json:"scenario,omitempty"`
+				}
+				preview := struct {
+					SchemaVersion string      `json:"schema_version"`
+					Executions    []execution `json:"executions"`
+				}{SchemaVersion: "1", Executions: make([]execution, 0, len(executions))}
+				for _, tr := range executions {
+					preview.Executions = append(preview.Executions, execution{ID: tr.ID, Tool: tr.AutomationTool, Variant: tr.Variant, Scenario: cfg.Scenario})
+				}
+				encoder := json.NewEncoder(cmd.OutOrStdout())
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(preview)
 			}
 			var attestations []core.Attestation
 			switch {
+			case len(selected) == 0 && prior == nil:
 			case prior != nil && len(prior.Attestations) > 0:
 				logger.Info("continue-from: inheriting attestations from prior report", "count", len(prior.Attestations))
 			case attestationsPath != "":
@@ -449,11 +503,7 @@ func newRunCmd() *cobra.Command {
 				runCtx, cancelRun = context.WithTimeout(ctx, runTimeout)
 				defer cancelRun()
 			}
-			// selected, not trs: --continue-from narrows this list to the
-			// executions still outstanding, and handing the orchestrator the
-			// full catalog instead would re-derive the selection and re-run
-			// everything the prior report had already completed.
-			rep, err := orchestrator.Run(runCtx, cfg, selected, cat.Provenance, cat.SchemaVersion, rc)
+			rep, err := orchestrator.RunResolved(runCtx, cfg, selected, cat.Provenance, cat.SchemaVersion, rc)
 			if err != nil {
 				return err
 			}
@@ -471,6 +521,8 @@ func newRunCmd() *cobra.Command {
 			switch {
 			case prior != nil:
 				logger.Info("continue-from: reusing environment from prior report", "path", continueFrom)
+			case len(selected) == 0:
+				logger.Info("skipping environment collection: no selected executions")
 			case skipEnv:
 				logger.Info("skipping environment collection (--skip-env)")
 			default:
@@ -535,10 +587,14 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&continueFrom, "continue-from", "", "path to a prior report.json to reuse its environment and merge this run into")
 	cmd.Flags().BoolVar(&retryFailed, "retry-failed", false, "with --continue-from, rerun previously completed fail/error executions")
 	cmd.Flags().BoolVar(&skipEnv, "skip-env", false, "skip cluster environment collection")
+	cmd.Flags().BoolVar(&inspectPlan, "inspect-plan", false, "print selected executions as JSON and exit before running tests")
 	cmd.Flags().DurationVar(&runTimeout, "timeout", 0, "cancel the run after this duration (0 means no harness timeout)")
 	cmd.Flags().StringSliceVar(&cfg.Filter.Tools, "tool", nil, "restrict to these automation tools")
 	cmd.Flags().StringSliceVar(&cfg.Filter.IDs, "id", nil, "restrict to these TR ids")
+	cmd.Flags().BoolVar(&allTests, "all-tests", false, "select all catalog tests instead of the plan selection")
 	cmd.Flags().IntSliceVar(&cfg.Filter.PartnerLevels, "partner-level", nil, "restrict to these partner levels (1|2|3)")
+	addFocusSkipFlags(cmd, &focusIDs, &skipIDs)
+	rejectEmptySelectorOccurrences(cmd)
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "debug logging")
 	_ = cmd.MarkFlagRequired("catalog")
 	return cmd
@@ -665,6 +721,95 @@ func loadAttestations(path string) ([]core.Attestation, error) {
 		out = append(out, core.Attestation{Claim: k, Value: doc.Claims[k], SignedBy: doc.SignedBy})
 	}
 	return out, nil
+}
+
+func addFocusSkipFlags(cmd *cobra.Command, focusIDs, skipIDs *[]string) {
+	cmd.Flags().StringSliceVar(focusIDs, "focus", nil, "restrict selected tests to these exact TR ids")
+	cmd.Flags().StringSliceVar(skipIDs, "skip", nil, "skip selected TR ids unless explicitly focused")
+}
+
+type nonEmptySelectorValue struct {
+	pflag.Value
+	pflag.SliceValue
+	name string
+}
+
+func (v nonEmptySelectorValue) Set(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("--%s requires nonempty values", v.name)
+	}
+	return v.Value.Set(value)
+}
+
+func rejectEmptySelectorOccurrences(cmd *cobra.Command) {
+	for _, name := range []string{"id", "tool", "focus", "skip"} {
+		flag := cmd.Flags().Lookup(name)
+		flag.Value = nonEmptySelectorValue{Value: flag.Value, SliceValue: flag.Value.(pflag.SliceValue), name: name}
+	}
+}
+
+func validateSelectionFlags(cmd *cobra.Command) error {
+	allTests, err := cmd.Flags().GetBool("all-tests")
+	if err != nil {
+		return err
+	}
+	if allTests {
+		for _, name := range []string{"id", "tool", "partner-level"} {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("--all-tests cannot be combined with --%s", name)
+			}
+		}
+	}
+	for _, name := range []string{"id", "tool", "focus", "skip"} {
+		if !cmd.Flags().Changed(name) {
+			continue
+		}
+		values, err := cmd.Flags().GetStringSlice(name)
+		if err != nil {
+			return err
+		}
+		if len(values) == 0 {
+			return fmt.Errorf("--%s requires nonempty values", name)
+		}
+		for _, value := range values {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("--%s requires nonempty values", name)
+			}
+		}
+	}
+	return nil
+}
+
+func configureFocusSkip(cfg *config.Config, trs []core.TestRequirement, focusIDs, skipIDs []string, logger *slog.Logger) error {
+	selected := orchestrator.SelectTRs(trs, cfg.Filter)
+	if len(selected) == 0 {
+		return fmt.Errorf("no test requirements selected: no tests match the plan or CLI selectors")
+	}
+	selectedIDs := make(map[string]bool, len(selected))
+	for _, tr := range selected {
+		selectedIDs[tr.ID] = true
+	}
+	for _, pair := range []struct {
+		name string
+		ids  []string
+	}{{"focus", focusIDs}, {"skip", skipIDs}} {
+		for _, id := range pair.ids {
+			if !selectedIDs[id] {
+				logger.Warn(pair.name+" ID is not in the selected tests", "id", id)
+			}
+		}
+	}
+	for _, id := range skipIDs {
+		if selectedIDs[id] && slices.Contains(focusIDs, id) {
+			logger.Warn("focus takes precedence over skip", "id", id)
+		}
+	}
+	cfg.Filter.FocusIDs = focusIDs
+	cfg.Filter.SkipIDs = skipIDs
+	if len(orchestrator.SelectTRs(trs, cfg.Filter)) == 0 {
+		logger.Info("no tests selected after focus and skip")
+	}
+	return nil
 }
 
 func configureExecution(cmd *cobra.Command, cfg *config.Config, planPath, backendsPath string, backendName *string, applyConcurrency bool, logger *slog.Logger) (*core.ResolvedBackend, error) {
