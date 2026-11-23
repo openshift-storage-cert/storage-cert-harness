@@ -13,8 +13,7 @@ import (
 
 // Scenario is the per-subcommand config that the generic engine (engine.go) is
 // parameterized over. Everything that differs between virtbench scenarios lives
-// here; everything that is the same lives in the engine. Adding a scenario is a
-// new row in scenarios below — no engine edits (decisions/0008).
+// in the scenario table; shared plumbing lives in the engine (decisions/0008).
 type Scenario struct {
 	VMRange  func(core.TestRequirement) (int, int, error)
 	Template vmTemplateConfig
@@ -114,12 +113,24 @@ const (
 	DetailCloneFileName = "vm_creation_results.json"
 )
 
-// scenarios is the registry-of-scenarios. Each becomes one ToolIntegration.
+var scenarioSpecs map[string]Scenario
+
+var scenarioOrder = []string{
+	"TR-VIRT-002",
+	"TR-VIRT-001",
+	"TR-STOR-001",
+	"TR-VIRT-018",
+	"TR-VIRT-008",
+	"TR-STOR-002",
+	"TR-VIRT-013",
+	"TR-VIRT-007",
+}
+
 var scenarios []Scenario
 
 func configureScenarios() {
-	scenarios = []Scenario{
-		{
+	scenarioSpecs = map[string]Scenario{
+		"TR-VIRT-002": {
 			AutomationTool: "virtbench datasource-clone",
 			ProvidesTR:     "TR-VIRT-002",
 			VMRange:        cloneVMRange,
@@ -130,7 +141,7 @@ func configureScenarios() {
 			Parse:          ParseSummary,
 			// all SLAs (clone_duration / time_to_running / time_to_ping) are measured.
 		},
-		{
+		"TR-VIRT-001": {
 			AutomationTool: "virtbench datasource-clone --boot-storm",
 			ProvidesTR:     "TR-VIRT-001",
 			VMRange:        cloneVMRange,
@@ -140,7 +151,7 @@ func configureScenarios() {
 			BuildArgs:      datasourceCloneArgs(true, "virtbench"),
 			Parse:          ParseBootStorm,
 		},
-		{
+		"TR-STOR-001": {
 			AutomationTool: "virtbench disk-ops",
 			ProvidesTR:     "TR-STOR-001",
 			VMRange:        diskOpsVMRange,
@@ -150,7 +161,7 @@ func configureScenarios() {
 			BuildArgs:      diskOpsArgs("disk-ops"),
 			Parse:          ParseDiskOps,
 		},
-		{
+		"TR-VIRT-018": {
 			// VDI Ready badge (TR-VIRT-018): clone VMs at scale with 2 disks each.
 			// Same datasource-clone parser as TR-VIRT-002, but its own BuildArgs
 			// (clone_at_scale.go): virtbench's --num-disks flag only labels output,
@@ -173,7 +184,7 @@ func configureScenarios() {
 			DetailFile:  DetailCloneFileName,
 			DetailParse: func(data []byte) ([]core.Metric, error) { return ClonePercentiles(data, []string{"p99"}) },
 		},
-		{
+		"TR-VIRT-008": {
 			AutomationTool:   "virtbench vm-ops drain-nodes",
 			ProvidesTR:       "TR-VIRT-008",
 			VMRange:          drainVMRange,
@@ -187,7 +198,7 @@ func configureScenarios() {
 			Teardown:         drainTeardown,
 			TolerateRunError: true, // drain-nodes exits 1 on timeout; grade the FAIL from the log
 		},
-		{
+		"TR-STOR-002": {
 			AutomationTool: "virtbench fio",
 			ProvidesTR:     "TR-STOR-002",
 			VMRange:        fioVMRange,
@@ -201,7 +212,7 @@ func configureScenarios() {
 			CommandCheck:   []string{"fio", "--help"},
 			Validate:       fioValidate,
 		},
-		{
+		"TR-VIRT-013": {
 			AutomationTool: "virtbench datasource-clone --single-node",
 			ProvidesTR:     "TR-VIRT-013",
 			VMRange:        singleNodeVMRange,
@@ -217,7 +228,7 @@ func configureScenarios() {
 			DeriveMetrics:    singleNodeLunMetric,
 			TolerateRunError: true, // virtbench exits 1 whenever any VM failed — expected here (singlenode.go)
 		},
-		{
+		"TR-VIRT-007": {
 			// HA badge (TR-VIRT-007): create VMs on the target node with node affinity,
 			// then monitor them recovering after a node failure.
 			AutomationTool: "virtbench failure-recovery",
@@ -233,6 +244,10 @@ func configureScenarios() {
 		},
 	}
 
+	scenarios = make([]Scenario, 0, len(scenarioOrder))
+	for _, id := range scenarioOrder {
+		scenarios = append(scenarios, scenarioSpecs[id])
+	}
 }
 
 // setupGroup is the shared-setup group key every virtbench scenario belongs to.
@@ -330,12 +345,8 @@ type vmTemplateConfig struct {
 }
 
 func scenarioFor(tr core.TestRequirement) (Scenario, bool) {
-	for _, sc := range scenarios {
-		if sc.ProvidesTR == tr.ID {
-			return sc, true
-		}
-	}
-	return Scenario{}, false
+	sc, ok := scenarioSpecs[tr.ID]
+	return sc, ok
 }
 
 func cloneVMRange(tr core.TestRequirement) (int, int, error) {
