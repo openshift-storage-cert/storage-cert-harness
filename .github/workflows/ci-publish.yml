@@ -79,8 +79,15 @@ jobs:
         run: gh pr review ${{ steps.cpr.outputs.pull-request-number }} --approve --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ secrets.ADMIN_PAT_TOKEN }}
-      - name: Auto-merge PR
+      - name: Merge PR when auto-merge is enabled
         if: steps.cpr.outputs.pull-request-number
-        run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --auto --squash --repo ${{ github.repository }}
+        run: |
+          auto_merge="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .allow_auto_merge)"
+          case "${auto_merge}" in
+            true) gh pr merge "${PR_NUMBER}" --auto --squash --repo "${GITHUB_REPOSITORY}" ;;
+            false) echo "::notice::Repository auto-merge is disabled; merge version-bump PR #${PR_NUMBER} manually after checks pass." ;;
+            *) echo "::error::Could not determine whether repository auto-merge is enabled."; exit 1 ;;
+          esac
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
