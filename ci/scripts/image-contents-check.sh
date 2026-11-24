@@ -19,6 +19,10 @@ if [[ -s "${local_ref_file}" ]]; then
 		die "local image ${ref} is missing (stale work/local-image-ref); run ci/scripts/image-build-local.sh first"
 	using_local_image=1
 	echo "using local image ${ref}"
+	local_image_version="$(podman image inspect --format '{{with index .Config.Labels "org.opencontainers.image.version"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_image_version}" != "${img_ver}" ]]; then
+		die "local image is stale: ${ref} contains image version ${local_image_version:-<missing>}, expected ${img_ver}; run make image-build-local"
+	fi
 else
 	ref="${QUAY_IMAGE}:${img_ver}"
 	[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
@@ -37,9 +41,19 @@ else
 fi
 
 errors=0
+require_runtime_utils="${REQUIRE_IMAGE_RUNTIME_UTILS:-false}"
 fail() {
 	echo "FAIL: $*"
 	errors=$((errors + 1))
+}
+
+runtime_utility_missing() {
+	local message="$1"
+	if [[ "${require_runtime_utils}" == "true" ]]; then
+		fail "${message}"
+	else
+		echo "WARN: ${message} (set REQUIRE_IMAGE_RUNTIME_UTILS=true after promoting a builder image with these utilities)"
+	fi
 }
 
 echo "==> checking dist/harness-image.tar"
@@ -111,12 +125,12 @@ echo "==> checking inherited runtime utilities"
 if run_cmd /usr/bin/jq --version >/dev/null 2>&1; then
 	echo "  jq: present (used by kube-burner-ocp hooks)"
 else
-	fail "/usr/bin/jq is missing; install it in the harness-builder runtime image"
+	runtime_utility_missing "/usr/bin/jq is missing; install it in the harness-builder runtime image"
 fi
 if run_cmd /usr/bin/ssh -V >/dev/null 2>&1; then
 	echo "  ssh: present"
 else
-	fail "/usr/bin/ssh is missing; install openssh-clients in the harness-builder runtime image"
+	runtime_utility_missing "/usr/bin/ssh is missing; install openssh-clients in the harness-builder runtime image"
 fi
 
 echo "==> checking /usr/bin/virtbench fio"

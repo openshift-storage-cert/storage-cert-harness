@@ -39,6 +39,19 @@ need() {
 	have "$1" || die "prerequisite not found: $1"
 }
 
+acquire_install_lock() {
+	[[ "${check_only}" -eq 1 ]] && return 0
+	if ! have flock; then
+		echo "warning: flock is unavailable; package installation retries remain enabled" >&2
+		return 0
+	fi
+	local lock_file="${XDG_RUNTIME_DIR:-/tmp}/storage-cert-harness-install-tools.lock"
+	# FD 9 is fixed because this script is Bash and the path is quoted directly.
+	exec 9>"${lock_file}"
+	flock -w 300 9 ||
+		die "could not acquire installer lock: ${lock_file}"
+}
+
 # PATH or ~/.local/bin. Empty if not installed.
 resolve_bin() {
 	local name="$1"
@@ -343,6 +356,29 @@ install_virtbench() {
 	echo "ok  virtbench  ${bin}  ${ver}  (VIRTBENCH_REPO=${repo_dir})"
 }
 
+apt_install() {
+	local package="$1"
+	local -a apt=(apt-get)
+	local attempt
+	if [[ "$(id -u)" -ne 0 ]]; then
+		have sudo || return 1
+		apt=(sudo apt-get)
+	fi
+	for attempt in 1 2 3 4 5; do
+		if "${apt[@]}" update -qq && "${apt[@]}" install -y "${package}"; then
+			return 0
+		fi
+		if have "${package}"; then
+			return 0
+		fi
+		if [[ "${attempt}" -lt 5 ]]; then
+			echo "warning: apt operation for ${package} failed; retrying shortly" >&2
+			sleep 3
+		fi
+	done
+	return 1
+}
+
 install_podman() {
 	skip_or_missing podman "(default container engine)" && return
 	if have dnf; then
@@ -357,8 +393,7 @@ install_podman() {
 	fi
 	if have apt-get; then
 		echo "installing podman (apt)"
-		sudo apt-get update -qq
-		sudo apt-get install -y podman
+		apt_install podman || die "could not install podman with apt"
 		echo "ok  podman  $(command -v podman)"
 		return
 	fi
@@ -379,8 +414,7 @@ install_jq() {
 		if have sudo; then sudo dnf install -y jq; else dnf install -y jq; fi
 	elif have apt-get; then
 		echo "installing jq (apt)"
-		sudo apt-get update -qq
-		sudo apt-get install -y jq
+		apt_install jq || die "could not install jq with apt"
 	elif have brew; then
 		echo "installing jq (brew)"
 		brew install jq
@@ -391,6 +425,7 @@ install_jq() {
 }
 
 echo "==> CI tools  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+acquire_install_lock
 need git
 if have go; then
 	echo "ok  go  $(go version)"

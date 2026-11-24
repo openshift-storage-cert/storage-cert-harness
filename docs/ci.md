@@ -325,6 +325,13 @@ atomic cluster-lease JSON updates, so `install-tools.sh` installs or validates
 it locally. Partner certification runs use the published image and do not
 require host `jq` installation.
 
+This builder-versus-harness dependency boundary is recorded in
+[`decisions/0021-builder-runtime-tool-dependency-boundary.md`](../decisions/0021-builder-runtime-tool-dependency-boundary.md).
+Until a builder digest containing `jq` and OpenSSH is promoted, image-content
+validation reports those missing utilities as warnings. Set
+`REQUIRE_IMAGE_RUNTIME_UTILS=true` after the builder update to make them
+blocking checks.
+
 The **ssh-helper** pod image is separate: digest pins in
 `internal/tools/virtbench/setup.go` and
 `container-patches/virtbench/examples/utilities/ssh-pod.yaml` (see
