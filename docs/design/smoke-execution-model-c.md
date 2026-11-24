@@ -119,8 +119,8 @@ Example URL: `https://smoke-results.lab.eng.tlv2.redhat.com/runs/<run-id>/`.
 | --- | --- |
 | GHA | `ubuntu-latest` only — lint, build, publish, optional PR bundle jobs |
 | `/run-live-smoke` | Enqueue on VM (future); no cluster steps on GitHub |
-| `main` regression | VM timer independent of GHA |
-| Secrets | Kubeconfig **only** on VM |
+| `main` regression | VM timer independent of GHA; or use [Model B](smoke-execution-model-b.md) GitLab smoke on `main` |
+| Secrets | Kubeconfig **only** on VM (or GitLab CI vars for Model B) |
 
 ## Validation checklist (before production cron)
 

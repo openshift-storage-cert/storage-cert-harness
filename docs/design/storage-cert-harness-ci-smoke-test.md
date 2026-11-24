@@ -54,9 +54,9 @@ GitHub Actions** against the lab. Adopt **Model C** — a **dedicated lab VM**
 that **polls** `main` on a schedule (and optionally PR smoke requests), builds or
 pulls the harness image, and runs the same portable scripts as local smoke.
 Model **A** (contributor laptop + VPN) remains required pre-PR validation;
-Model **B** (GHA self-hosted runner on a lab VM) is **not available** — do not
-block delivery on runner registration. Details:
-[smoke-execution-models.md](smoke-execution-models.md) (A / B / C).
+**Model B** (GitLab CI on GitHub `main`) is the adopted path for mirrored
+post-merge smoke; **Model GitHub** (GHA self-hosted runner) is **not applicable**.
+Details: [smoke-execution-models.md](smoke-execution-models.md).
 
 ### Jira validity (2026-11, Model C constraint)
 
@@ -178,8 +178,9 @@ entry point for CI and local runs.
 | Model | Document |
 | --- | --- |
 | A — Contributor laptop | [smoke-execution-model-a.md](smoke-execution-model-a.md) |
-| B — GHA self-hosted runner (blocked) | [smoke-execution-model-b.md](smoke-execution-model-b.md) |
+| B — GitLab smoke on GitHub `main` | [smoke-execution-model-b.md](smoke-execution-model-b.md) |
 | C — Lab smoke executor VM | [smoke-execution-model-c.md](smoke-execution-model-c.md) |
+| GitHub — GHA self-hosted runner | [smoke-execution-model-github.md](smoke-execution-model-github.md) (**not applicable**) |
 
 Index: [smoke-execution-models.md](smoke-execution-models.md).
 
@@ -533,8 +534,9 @@ release the lease so the next contributor on-demand run can proceed.
 | Model | Cluster access | CI integration |
 | --- | --- | --- |
 | **A — Laptop** | Manual VPN + kubeconfig | Pre-PR policy (§1.5) — [model A](smoke-execution-model-a.md) |
-| **B — GHA self-hosted runner** | Leg 1 + Leg 2 on runner host | **Not available** — [model B](smoke-execution-model-b.md) |
+| **B — GitLab smoke pipeline** | Leg 1 + Leg 2 on GitLab runner | **Adopted** (design) — [model B](smoke-execution-model-b.md) |
 | **C — Lab smoke executor VM** | Leg 1 + Leg 2 on dedicated VM | **Adopted** — [model C](smoke-execution-model-c.md) |
+| **GitHub self-hosted runner** | Leg 1 + Leg 2 on runner host | **Not applicable** — [model GitHub](smoke-execution-model-github.md) |
 | GHA `ubuntu-latest` | No lab API | Lint, test, build, publish only |
 
 GitHub **hosted** `ubuntu-latest` cannot reach a private OpenShift API; do not
@@ -559,7 +561,7 @@ store lab kubeconfig once Model C is active.
 
 | Name                               | Format                         | Used for                                                                                      |
 | ---------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `CI_CLUSTER_KUBECONFIG`            | Base64-encoded kubeconfig file | **Legacy Model B only** — use VM files for Model C                                            |
+| `CI_CLUSTER_KUBECONFIG`            | Base64-encoded kubeconfig file | **Legacy Model GitHub only** — use GitLab (B) or VM files (C); not on GHA                       |
 | `HARNESS_THRESHOLDS_JSON`          | Raw JSON string                | Write to `work/thresholds.json` (or path mounted in container)                                |
 | `HARNESS_BACKENDS_YAML`            | Raw YAML                       | CI cluster backend (`storage_class`, `snapshot_class`, array creds) → `work/backends.ci.yaml` |
 | `HARNESS_CATALOG_JSON`             | Optional if not in repo        | Only if catalog must stay private; default use git `catalog.json`                             |
@@ -1107,6 +1109,6 @@ Open work is tracked in the runbook (**A1–D3**); this section is a snapshot on
 - Plans: `storage-cert-harness/plans/level3-internal-minimal.yaml` (override reference)
 - FIO gather issue: [ECOPROJECT-5566](https://redhat.atlassian.net/browse/ECOPROJECT-5566)
 - Catalog: `storage-cert-harness/catalog.json`
-- Execution models: [smoke-execution-models.md](smoke-execution-models.md), [model A](smoke-execution-model-a.md), [model B](smoke-execution-model-b.md), [model C](smoke-execution-model-c.md)
+- Execution models: [smoke-execution-models.md](smoke-execution-models.md), [model A](smoke-execution-model-a.md), [model B](smoke-execution-model-b.md), [model C](smoke-execution-model-c.md), [model GitHub](smoke-execution-model-github.md) (N/A)
 - TLV2 lab VM networking (Leg 1/Leg 2): [storage-cert-harness-smoke-runner-tlv2.md](../../../Docs/Github/storage-cert-harness-smoke-runner-tlv2.md) — provisioning only; **skip** GitHub runner registration
 - Jira: [ECOPROJECT-5406](https://redhat.atlassian.net/browse/ECOPROJECT-5406), [ECOPROJECT-5612](https://redhat.atlassian.net/browse/ECOPROJECT-5612) (Model C), [ECOPROJECT-5462](https://redhat.atlassian.net/browse/ECOPROJECT-5462) (superseded)
