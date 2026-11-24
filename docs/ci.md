@@ -563,6 +563,10 @@ Go 1.26.10+ because `go.mod` is 1.26.10.
 | `jq` | `run-harness/run-image-tests.sh`, `run-harness/run-quay-image-tests.sh`, and cluster lease helpers | OS package (`dnf`, `apt`, or `brew`) via `install-tools.sh` |
 | `go`, `git`, `gofmt` | `lint-go.sh`, `unittest.sh`, `build.sh`, … | not installed here |
 
+`virtbench` is not installed by `install-tools.sh`. It is required on the host
+only when running `bin/harness` directly; container-based runs use the
+virtbench binary packaged in the harness image.
+
 Optional: `gitleaks` (secret-scan), `pre-commit` (yamllint + markdownlint +
 golangci-lint + secret-scan + version-lock). Hadolint runs from the pinned
 `HADOLINT_VERSION` release binary locally and from the pinned `CI_TOOLS_IMAGE`
@@ -617,7 +621,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (extends digest-pinned `BUILD_IMAGE`). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, inherited jq/ssh utilities, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
-| `image-version-info.sh` | Extract harness image metadata and packaged tool versions from inherited OCI labels (Podman only; no jq) |
+| `image-version-info.sh` | Extract harness image metadata and packaged tool versions from inherited OCI labels; pulls absent images (Podman only; no jq) |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |

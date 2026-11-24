@@ -41,15 +41,29 @@ need() {
 
 acquire_install_lock() {
 	[[ "${check_only}" -eq 1 ]] && return 0
-	if ! have flock; then
-		echo "warning: flock is unavailable; package installation retries remain enabled" >&2
+	local lock_root="${XDG_RUNTIME_DIR:-${HOME}/.cache}/storage-cert-harness"
+	[[ ! -L "${lock_root}" ]] || die "installer lock directory is a symlink: ${lock_root}"
+	mkdir -p "${lock_root}"
+	chmod 700 "${lock_root}"
+	if have flock; then
+		exec 9<"${lock_root}"
+		flock -w 300 9 || die "could not acquire installer lock: ${lock_root}"
 		return 0
 	fi
-	local lock_file="${XDG_RUNTIME_DIR:-/tmp}/storage-cert-harness-install-tools.lock"
-	# FD 9 is fixed because this script is Bash and the path is quoted directly.
-	exec 9>"${lock_file}"
-	flock -w 300 9 ||
-		die "could not acquire installer lock: ${lock_file}"
+	install_fallback_lock="${lock_root}/install.lock"
+	[[ ! -L "${install_fallback_lock}" ]] || die "installer lock is a symlink: ${install_fallback_lock}"
+	local deadline=$((SECONDS + 300))
+	while ! mkdir "${install_fallback_lock}" 2>/dev/null; do
+		if [[ -s "${install_fallback_lock}/pid" ]] && ! kill -0 "$(<"${install_fallback_lock}/pid")" 2>/dev/null; then
+			rm -f -- "${install_fallback_lock}/pid"
+			rmdir "${install_fallback_lock}" 2>/dev/null || true
+		elif (( SECONDS >= deadline )); then
+			die "could not acquire installer lock: ${install_fallback_lock}"
+		fi
+		sleep 1
+	done
+	printf '%s\n' "$$" >"${install_fallback_lock}/pid"
+	trap 'rm -f -- "${install_fallback_lock}/pid"; rmdir -- "${install_fallback_lock}" 2>/dev/null || true' EXIT
 }
 
 # PATH or ~/.local/bin. Empty if not installed.
@@ -323,39 +337,6 @@ install_markdownlint() {
 	echo "ok  markdownlint-cli2  $(command -v markdownlint-cli2)"
 }
 
-install_virtbench() {
-	local ver="${VIRTBENCH_VERSION}"
-	local repo_dir="${HOME}/.local/opt/virtbench"
-	local bin="${USER_BIN}/virtbench"
-	local profile_line="export VIRTBENCH_REPO=${repo_dir}"
-
-	if have virtbench && [[ -d "${repo_dir}" ]]; then
-		echo "ok  virtbench  $(command -v virtbench)  ${ver}"
-		return
-	fi
-	if [[ "${check_only}" -eq 1 ]]; then
-		echo "missing  virtbench  (want ${ver})"
-		return
-	fi
-	need curl
-	need python3
-	echo "installing virtbench ${ver}"
-	mkdir -p "${repo_dir}" "${USER_BIN}"
-	curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${ver}.tar.gz" \
-		| tar xz --strip-components=1 -C "${repo_dir}"
-	python3 -m pip install --user --quiet --disable-pip-version-check "${repo_dir}"
-	[[ -f "${bin}" ]] || ln -sf "$(python3 -m site --user-base)/bin/virtbench" "${bin}" 2>/dev/null || true
-	for rc in "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
-		[[ -f "${rc}" ]] || continue
-		grep -qF "VIRTBENCH_REPO" "${rc}" && continue
-		echo "${profile_line}" >>"${rc}"
-		echo "  added VIRTBENCH_REPO to ${rc}"
-		break
-	done
-	export VIRTBENCH_REPO="${repo_dir}"
-	echo "ok  virtbench  ${bin}  ${ver}  (VIRTBENCH_REPO=${repo_dir})"
-}
-
 apt_install() {
 	local package="$1"
 	local -a apt=(apt-get)
@@ -447,7 +428,6 @@ install_dive
 install_hadolint
 install_podman
 install_jq
-install_virtbench
 
 if [[ "${check_only}" -eq 1 ]]; then
 	missing=0

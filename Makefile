@@ -110,10 +110,9 @@ run-quay-image-tests:
 	$(MAKE) --no-print-directory -f $(RUN_HARNESS_MK) run-quay-image-tests \
 		VERSION="$(or $(VERSION),latest)" KUBECONFIG="$(or $(KUBECONFIG),work/kubeconfig)"
 
-# Print harness image metadata and packaged tool versions. Override IMAGE=... or
-# set HARNESS_IMAGE to inspect a different local image reference.
+# Print image metadata and packaged tool versions; pull the image when absent.
 image-info:
-	./ci/scripts/image-version-info.sh $(IMAGE)
+	./ci/scripts/image-version-info.sh "$(IMAGE)"
 
 # Partner certification against the published image (no local build).
 # Example:

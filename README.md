@@ -72,6 +72,11 @@ Red Hat. See
 - GNU Make
 - Go 1.26.9 or newer
 - `jq` for developer smoke/image tests and CI lease helpers
+- `virtbench` only when running `bin/harness` directly outside the container
+
+Container-based runs use the virtbench binary packaged in the harness image;
+the developer installer does not install virtbench on the host. Direct host
+runs must install virtbench separately and place it on `PATH`.
 
 Verify the required tools:
 

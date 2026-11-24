@@ -17,8 +17,7 @@
 #   make, tar, curl, podman — best-effort install via dnf / apt / brew
 #   git        — checked, but must be installed before cloning this repository
 #   oc         — not installed; OpenShift client from Red Hat only
-# jq is packaged in the harness image for kube-burner-ocp hooks; partners do not
-# need to install jq on the certification host.
+# jq is packaged in the harness image for kube-burner-ocp hooks; partners do not need host jq.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

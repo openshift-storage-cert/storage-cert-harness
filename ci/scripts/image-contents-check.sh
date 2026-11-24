@@ -4,6 +4,11 @@
 set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
+require_runtime_utils="${REQUIRE_IMAGE_RUNTIME_UTILS:-false}"
+case "${require_runtime_utils}" in
+	true | false) ;;
+	*) die "REQUIRE_IMAGE_RUNTIME_UTILS must be true or false" ;;
+esac
 ci_log_init "image-contents-check"
 acquire_local_image_lock
 
@@ -23,6 +28,14 @@ if [[ -s "${local_ref_file}" ]]; then
 	if [[ "${local_image_version}" != "${img_ver}" ]]; then
 		die "local image is stale: ${ref} contains image version ${local_image_version:-<missing>}, expected ${img_ver}; run make image-build-local"
 	fi
+	local_build_image="$(podman image inspect --format '{{with index .Config.Labels "io.storage-cert-harness.build-image"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_build_image}" != "${BUILD_IMAGE}" ]]; then
+		die "local image has builder ${local_build_image:-<missing>}, expected ${BUILD_IMAGE}; run make image-build-local"
+	fi
+	local_runtime_image="$(podman image inspect --format '{{with index .Config.Labels "io.storage-cert-harness.runtime-image"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_runtime_image}" != "${RUNTIME_IMAGE}" ]]; then
+		die "local image has runtime ${local_runtime_image:-<missing>}, expected ${RUNTIME_IMAGE}; run make image-build-local"
+	fi
 else
 	ref="${QUAY_IMAGE}:${img_ver}"
 	[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
@@ -41,7 +54,6 @@ else
 fi
 
 errors=0
-require_runtime_utils="${REQUIRE_IMAGE_RUNTIME_UTILS:-false}"
 fail() {
 	echo "FAIL: $*"
 	errors=$((errors + 1))
@@ -55,6 +67,20 @@ runtime_utility_missing() {
 		echo "WARN: ${message} (set REQUIRE_IMAGE_RUNTIME_UTILS=true after promoting a builder image with these utilities)"
 	fi
 }
+
+if [[ "${using_local_image}" -eq 0 ]]; then
+	if [[ "${eng}" == "buildah" ]]; then
+		inspect_label() { buildah inspect --format "{{index .OCIv1.Config.Labels \"$1\"}}" "${img_id}" 2>/dev/null || true; }
+	else
+		inspect_label() { podman image inspect --format "{{index .Config.Labels \"$1\"}}" "${ref}" 2>/dev/null || true; }
+	fi
+	loaded_build_image="$(inspect_label io.storage-cert-harness.build-image)"
+	[[ "${loaded_build_image}" == "${BUILD_IMAGE}" ]] ||
+		fail "image builder label (${loaded_build_image:-<missing>}) != BUILD_IMAGE (${BUILD_IMAGE})"
+	loaded_runtime_image="$(inspect_label io.storage-cert-harness.runtime-image)"
+	[[ "${loaded_runtime_image}" == "${RUNTIME_IMAGE}" ]] ||
+		fail "image runtime label (${loaded_runtime_image:-<missing>}) != RUNTIME_IMAGE (${RUNTIME_IMAGE})"
+fi
 
 echo "==> checking dist/harness-image.tar"
 if [[ "${using_local_image}" -eq 0 ]]; then
