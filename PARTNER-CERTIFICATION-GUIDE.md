@@ -132,7 +132,7 @@ you clone the repository or run `make partner-*`.
 | Platform | Support | Notes |
 | --- | --- | --- |
 | **Linux** (Fedora, RHEL, CentOS Stream, Rocky, Alma, Ubuntu, Debian) | **Supported** | Primary target for certification; use `dnf`/`apt` packages where noted below. |
-| **macOS** (Apple Silicon or Intel) | **Partial** | `oc`, `yq`, and `jq` work; Podman typically needs [Podman Machine](https://podman.io/docs/installation#macos). Not validated for every certification workload. |
+| **macOS** (Apple Silicon or Intel) | **Partial** | `oc` and `yq` work; Podman typically needs [Podman Machine](https://podman.io/docs/installation#macos). Not validated for every certification workload. |
 | **Windows** (native, CMD, PowerShell) | **Not supported** | Use a supported Linux VM or bare-metal host instead. WSL2 is not validated for partner runs. |
 
 ### Supported OpenShift Container Platform versions
@@ -161,7 +161,7 @@ host requirements as **`make partner-cert-load-80`**.
 | **oc** | yes | yes* | — | API reachability, nodes `Ready`, storage/snapshot classes, plan nodes |
 | **yq** | yes | yes | — | Parse `backends.yaml` and Level-3 plan overrides on the host |
 | **tar** | — | — | yes | Build `certification-results-level3.tar.gz` |
-| **curl** | — | — | — | Used only by the install script when downloading `yq` / `jq` binaries |
+| **curl** | — | — | — | Used only by the install script when downloading the `yq` binary |
 
 \* Set `SKIP_HOST_VALIDATE=true` only for exceptional debugging; normal
 certification runs must keep host `oc` checks enabled.
@@ -170,7 +170,7 @@ certification runs must keep host `oc` checks enabled.
 
 | Tool | Purpose |
 | --- | --- |
-| **jq** | Inspect `oc … -o json` output and `report.json` on the host |
+| **jq** | Not required for partner certification; the published image supplies jq for kube-burner-ocp hooks |
 | **python3** | Optional local automation; partner `make` targets do not call Python |
 
 ### Obtain the repository
@@ -205,28 +205,26 @@ export PATH="${HOME}/.local/bin:${PATH}"
 
 The script checks that **git** is present (it must be installed before cloning)
 and makes a best-effort attempt to install or verify **make**, **tar**,
-**curl** (when needed), **podman**, **yq**, and **jq**. It downloads `yq` and
-`jq` into `~/.local/bin` when needed and may use your OS package manager for
+**curl** (when needed), **podman**, and **yq**. It downloads `yq` into
+`~/.local/bin` when needed and may use your OS package manager for
 the other tools. It prints guidance for **oc**, which you must install from
 Red Hat (see below). It may use **python3** only to report status; partner
 runs do not require Python.
 
 > **Notice:** This is a best-effort installer for the current user. It installs
-> `yq` and `jq` under that user's `~/.local/bin` and may use the OS package
+> `yq` under that user's `~/.local/bin` and may use the OS package
 > manager for tools such as `make`, `tar`, `curl`, and Podman. Git must be
 > installed before cloning. For more control over installation and package
 > management, use
 > [Manual installation by platform](#manual-installation-by-platform).
 
 The installer uses **dnf** (Fedora/RHEL), **apt** (Debian/Ubuntu), or **brew**
-(macOS) for system packages; **yq** and **jq** are downloaded via **curl** into
-**`~/.local/bin` only** (per Linux/macOS user, not system-wide). The installer
-downloads **yq** and **jq** there when its partner copies are missing, even if
-`/usr/bin/jq` or an old `yq` exists. Other users or shells do not see them
+(macOS) for system packages; **yq** is downloaded via **curl** into
+**`~/.local/bin` only** (per Linux/macOS user, not system-wide). Other users or shells do not see it
 until you `export PATH` or run
 `source ./ci/scripts/partner-host-env.sh` in that shell. To remove only the
-partner copies, delete `~/.local/bin/yq` and `~/.local/bin/jq`, then run
-`./ci/scripts/install-partner-tools.sh` again to restore them.
+the partner copy, delete `~/.local/bin/yq`, then run
+`./ci/scripts/install-partner-tools.sh` again to restore it.
 
 If **`./ci/scripts/install-partner-tools.sh` fails** (unsupported OS package manager,
 no `sudo`, air-gapped host, or download errors), install each missing tool with
@@ -246,7 +244,6 @@ It is not the default path for storage partners running certification.
 | make | `sudo dnf install -y make` | `sudo apt install -y make` | Xcode CLT or `brew install make` |
 | podman | `sudo dnf install -y podman` | `sudo apt install -y podman` | `brew install podman` (+ `podman machine init`) |
 | yq | `sudo dnf install -y yq` or partner script | `sudo snap install yq` or partner script | `brew install yq` or partner script |
-| jq | `sudo dnf install -y jq` | `sudo apt install -y jq` | `brew install jq` |
 | python3 | `sudo dnf install -y python3` | `sudo apt install -y python3` | `brew install python` |
 
 ### OpenShift CLI (`oc`)
@@ -281,7 +278,7 @@ oc get nodes
 
 The installer runs the same checks at the end of `./ci/scripts/install-partner-tools.sh`
 and `./ci/scripts/install-partner-tools.sh --check` (version commands plus a short **yq**
-/**jq** smoke test). You can repeat them manually:
+smoke test). You can repeat them manually:
 
 ```bash
 # Prefer partner-host-env (PATH + clears stale bash hash to deleted /usr/bin/yq)
@@ -300,7 +297,6 @@ tar --version
 test -x "${HOME}/.local/bin/yq"
 "${HOME}/.local/bin/yq" --version
 printf 'probe: partner-yq\n' | yq e -r '.probe' -
-test -x "${HOME}/.local/bin/jq" && "${HOME}/.local/bin/jq" --version && echo '{}' | "${HOME}/.local/bin/jq" . >/dev/null
 python3 --version   # optional
 oc version --client
 

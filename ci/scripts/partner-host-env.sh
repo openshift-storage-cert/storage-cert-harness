@@ -1,7 +1,7 @@
 # Partner host PATH and yq resolution. Safe to source from scripts or an interactive shell:
 #   source ./ci/scripts/partner-host-env.sh
 #
-# Puts ~/.local/bin first (install-partner-tools drops yq/jq there) and clears bash's
+# Puts ~/.local/bin first (install-partner-tools drops yq there) and clears bash's
 # hashed path when /usr/bin/yq was removed but the shell still remembers it.
 : "${PARTNER_USER_BIN:=${HOME}/.local/bin}"
 
@@ -16,7 +16,6 @@ fi
 
 if [[ -n "${BASH_VERSION:-}" ]]; then
 	hash -d yq 2>/dev/null || true
-	hash -d jq 2>/dev/null || true
 fi
 
 # Resolve mikefarah yq for partner scripts (prefer YQ, then ~/.local/bin/yq, then PATH).

@@ -25,7 +25,7 @@ ci/
     images.sh            # load ci/config/images.env, derive tool refs
     build.sh             # bin/harness (binary_version ldflags)
     image-build.sh       # linux/amd64 container → dist/harness-image.tar
-    image-contents-check.sh  # verify harness + kubectl + virtctl + tool binaries
+    image-contents-check.sh  # verify harness + jq/ssh + cluster/tool binaries
     layout-check.sh      # verify ci/scripts + ci/config + version files
     set-next-version.sh  # human-driven version bumps
     advance-version.sh   # CI auto-advance on main push
@@ -292,8 +292,9 @@ Macs natively, and Apple Silicon via Docker/Podman Desktop Rosetta 2.
 | `oc`, `kubectl` | Cluster clients | Pre-built in **harness-builder** |
 | `virtctl` | KubeVirt CLI | Pre-built in **harness-builder** |
 | `virtbench` | virtbench adapter (local exec) | Pre-built venv + runtime tree in **harness-builder** |
+| `jq`, `ssh` | Runtime utilities used by kube-burner-ocp hooks and related workloads | Installed in the final **harness-builder** runtime image and inherited through `BUILD_IMAGE` |
 
-Certification tools are **not** downloaded or compiled in the harness
+Certification tools and their runtime utilities are **not** downloaded or compiled in the harness
 `Containerfile`. They are copied from the digest pinned as `BUILD_IMAGE` in
 `ci/config/images.env` (Quay `quay.io/virtarraycert/harness-builder@sha256:…`).
 The builder's OCI labels and packaged binaries are the source of truth for
@@ -311,6 +312,17 @@ All listed binaries must be on `PATH` under `/usr/bin/` (virtbench also uses
 `/opt/virtbench-venv`). The builder release owns their version pins.
 `image-contents-check.sh` verifies each binary and the datasource template after
 every image build (locally and in CI).
+
+`jq` is not a Go dependency of the harness adapters. The kube-burner adapters
+parse collected JSON with Go, but kube-burner-ocp hooks may execute shell
+helpers that call `jq`; therefore `jq` and the OpenSSH client are image-tool
+payload dependencies. Install and pin them in the final runtime stage of
+`storage-cert-harness-images/images/harness-builder/Containerfile`, then
+promote a new builder digest. Do not add them only to the harness runtime
+`Containerfile`. Developer smoke and image-test scripts also use host `jq` for
+atomic cluster-lease JSON updates, so `install-tools.sh` installs or validates
+it locally. Partner certification runs use the published image and do not
+require host `jq` installation.
 
 The **ssh-helper** pod image is separate: digest pins in
 `internal/tools/virtbench/setup.go` and
@@ -540,6 +552,7 @@ Go 1.26.10+ because `go.mod` is 1.26.10.
 | `trivy` | `supply-chain.sh`, `image-scan-trivy.sh` | GitHub release tarball → `~/.local/bin` |
 | `dive` | `image-scan-dive.sh` | GitHub release tarball → `~/.local/bin` |
 | `hadolint` | `image-lint.sh` | GitHub release binary (`HADOLINT_VERSION`) → `~/.local/bin` |
+| `jq` | `run-harness/run-image-tests.sh`, `run-harness/run-quay-image-tests.sh`, and cluster lease helpers | OS package (`dnf`, `apt`, or `brew`) via `install-tools.sh` |
 | `go`, `git`, `gofmt` | `lint-go.sh`, `unittest.sh`, `build.sh`, … | not installed here |
 
 Optional: `gitleaks` (secret-scan), `pre-commit` (yamllint + markdownlint +
@@ -554,7 +567,7 @@ engine for local image builds, scans, tests, and GitHub publication.
 
 ```sh
 pre-commit install          # yaml + md + go + secret-scan + version-lock → logs/pre-commit-*.log
-./ci/scripts/install-tools.sh       # one-time: yamllint, markdownlint, golangci-lint, …
+./ci/scripts/install-tools.sh       # one-time: jq, yamllint, markdownlint, golangci-lint, …
 make lint                   # lint-yaml (+ layout-check), lint-md, lint-go
 make lint-actions           # actionlint for GitHub Actions workflows
 make test                   # unittest, secret-scan, supply-chain
@@ -580,7 +593,7 @@ uploads `logs/*.log` when a job fails (not the README).
 
 | Script | Role |
 | -------- | ------ |
-| `install-tools.sh` | Local install of lint/scan tools + podman (idempotent; `--check`) |
+| `install-tools.sh` | Local install of jq, lint/scan tools + podman (idempotent; `--check`) |
 | `ci-utils.sh` | Shared helpers: `REPO_ROOT`, `CI_SCRIPTS_DIR`, `CI_CONFIG_DIR`, version functions, `container_engine`, logging |
 | `images.sh` | Load `ci/config/images.env`, derive tool refs |
 | `layout-check.sh` | Verify reorder layout: scripts, configs, version files, no leftovers |
@@ -594,7 +607,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `supply-chain.sh` | vendor/`go list`, govulncheck, gosec, `trivy fs`. **Gating on GitHub Actions.** |
 | `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (extends digest-pinned `BUILD_IMAGE`). Local: **podman**. |
-| `image-contents-check.sh` | Verify `harness`, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
+| `image-contents-check.sh` | Verify `harness`, inherited jq/ssh utilities, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |

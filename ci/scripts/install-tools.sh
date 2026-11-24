@@ -4,6 +4,7 @@
 #
 # Prerequisites (not installed here): Go 1.26.9+, git, python3, pip, npm.
 # Podman is the default container engine; OS-package it if missing.
+# jq is required by developer smoke/image tests, but not by partner certification hosts.
 #
 # Usage:
 #   ./ci/scripts/install-tools.sh          # install only what is missing or wrong version
@@ -364,6 +365,31 @@ install_podman() {
 	die "podman is the default container engine. Install it (Fedora: sudo dnf install -y podman) or set CONTAINER_ENGINE=docker|buildah"
 }
 
+install_jq() {
+	if have jq; then
+		echo "ok  jq  $(command -v jq)"
+		return
+	fi
+	if [[ "${check_only}" -eq 1 ]]; then
+		echo "missing  jq  (developer smoke/image tests require jq)"
+		return
+	fi
+	if have dnf; then
+		echo "installing jq (dnf)"
+		if have sudo; then sudo dnf install -y jq; else dnf install -y jq; fi
+	elif have apt-get; then
+		echo "installing jq (apt)"
+		sudo apt-get update -qq
+		sudo apt-get install -y jq
+	elif have brew; then
+		echo "installing jq (brew)"
+		brew install jq
+	else
+		die "jq is required by developer smoke/image tests; install it with your OS package manager"
+	fi
+	echo "ok  jq  $(command -v jq)"
+}
+
 echo "==> CI tools  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 need git
 if have go; then
@@ -385,11 +411,12 @@ install_trivy
 install_dive
 install_hadolint
 install_podman
+install_jq
 install_virtbench
 
 if [[ "${check_only}" -eq 1 ]]; then
 	missing=0
-	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive hadolint podman go git; do
+	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive hadolint podman jq go git; do
 		if [[ "${c}" == "golangci-lint" ]]; then
 			golangci_bin_ok "${USER_BIN}/golangci-lint" "${GOLANGCI_LINT_VERSION#v}" ||
 				{ have go && golangci_bin_ok "$(go_bin_dir)/golangci-lint" "${GOLANGCI_LINT_VERSION#v}"; } ||
