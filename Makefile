@@ -14,6 +14,7 @@ endif
 	image-build-fresh image-build-local prepare-smoke-env clean-smoke-env smoke-env smoke-ci \
 	run-harness-smoke run-quay-image-tests partner-preflight partner-cert-load-80 \
 	partner-cert-no-load-80 partner-package-results \
+	image-info \
 	image-contents-check image-scan-trivy image-scan-dive image-scan image-push \
 	secret-scan supply-chain install-tools mirror-ci-tools set-next-version
 
@@ -108,6 +109,11 @@ run-harness-smoke:
 run-quay-image-tests:
 	$(MAKE) --no-print-directory -f $(RUN_HARNESS_MK) run-quay-image-tests \
 		VERSION="$(or $(VERSION),latest)" KUBECONFIG="$(or $(KUBECONFIG),work/kubeconfig)"
+
+# Print harness image metadata and packaged tool versions. Override IMAGE=... or
+# set HARNESS_IMAGE to inspect a different local image reference.
+image-info:
+	./ci/scripts/image-version-info.sh $(IMAGE)
 
 # Partner certification against the published image (no local build).
 # Example:

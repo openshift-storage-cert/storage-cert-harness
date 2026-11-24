@@ -26,6 +26,7 @@ ci/
     build.sh             # bin/harness (binary_version ldflags)
     image-build.sh       # linux/amd64 container → dist/harness-image.tar
     image-contents-check.sh  # verify harness + jq/ssh + cluster/tool binaries
+    image-version-info.sh # print image metadata and packaged tool labels
     layout-check.sh      # verify ci/scripts + ci/config + version files
     set-next-version.sh  # human-driven version bumps
     advance-version.sh   # CI auto-advance on main push
@@ -572,6 +573,7 @@ make lint                   # lint-yaml (+ layout-check), lint-md, lint-go
 make lint-actions           # actionlint for GitHub Actions workflows
 make test                   # unittest, secret-scan, supply-chain
 make build                  # bin/harness + dist/binary-version.txt
+make image-info IMAGE=quay.io/virtarraycert/storage-cert-harness:main
 make unittest               # go test ./... only
 ./ci/scripts/ci.sh          # lint + test stages, then replay-smoke
 ./ci/scripts/ci.sh --image  # also build + contents-check + Trivy + Dive with podman (sequential)
@@ -608,6 +610,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `run-harness/replay-smoke.sh` | `harness validate` + `run` with example catalog/plan (no cluster). GitHub: skipped (opt-in via `CI_RUN_REPLAY_SMOKE`). |
 | `image-build.sh` | `linux/amd64` Containerfile → `dist/harness-image.tar` (extends digest-pinned `BUILD_IMAGE`). Local: **podman**. |
 | `image-contents-check.sh` | Verify `harness`, inherited jq/ssh utilities, cert tool binaries, virtbench fio, and `examples/vm-templates/rhel9-vm-datasource.yaml` |
+| `image-version-info.sh` | Extract harness image metadata and packaged tool versions from inherited OCI labels (Podman only; no jq) |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
 | `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
