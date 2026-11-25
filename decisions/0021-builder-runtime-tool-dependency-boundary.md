@@ -21,10 +21,8 @@ The harness image consumes them through its pinned `BUILD_IMAGE`; it does not
 download or install tool dependencies independently. The builder publishes the
 tool version OCI labels, and the harness preserves those inherited labels.
 
-The harness image-content check may report missing builder-owned utilities as
-warnings while the pinned builder digest does not contain them. Strict failure
-is enabled with `REQUIRE_IMAGE_RUNTIME_UTILS=true` after a builder image with
-the required utilities is published and `BUILD_IMAGE` is updated.
+The harness image-content check requires the builder-owned utilities in every
+validated image. The pinned builder digest contains the required utilities.
 
 ## Decision notes
 

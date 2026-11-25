@@ -4,11 +4,6 @@
 set -euo pipefail
 # shellcheck source=ci-utils.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-utils.sh"
-require_runtime_utils="${REQUIRE_IMAGE_RUNTIME_UTILS:-false}"
-case "${require_runtime_utils}" in
-	true | false) ;;
-	*) die "REQUIRE_IMAGE_RUNTIME_UTILS must be true or false" ;;
-esac
 ci_log_init "image-contents-check"
 acquire_local_image_lock
 
@@ -57,15 +52,6 @@ errors=0
 fail() {
 	echo "FAIL: $*"
 	errors=$((errors + 1))
-}
-
-runtime_utility_missing() {
-	local message="$1"
-	if [[ "${require_runtime_utils}" == "true" ]]; then
-		fail "${message}"
-	else
-		echo "WARN: ${message} (set REQUIRE_IMAGE_RUNTIME_UTILS=true after promoting a builder image with these utilities)"
-	fi
 }
 
 if [[ "${using_local_image}" -eq 0 ]]; then
@@ -151,12 +137,12 @@ echo "==> checking inherited runtime utilities"
 if run_cmd /usr/bin/jq --version >/dev/null 2>&1; then
 	echo "  jq: present (used by kube-burner-ocp hooks)"
 else
-	runtime_utility_missing "/usr/bin/jq is missing; install it in the harness-builder runtime image"
+	fail "/usr/bin/jq is missing; install it in the harness-builder runtime image"
 fi
 if run_cmd /usr/bin/ssh -V >/dev/null 2>&1; then
 	echo "  ssh: present"
 else
-	runtime_utility_missing "/usr/bin/ssh is missing; install openssh-clients in the harness-builder runtime image"
+	fail "/usr/bin/ssh is missing; install openssh-clients in the harness-builder runtime image"
 fi
 
 echo "==> checking /usr/bin/virtbench fio"

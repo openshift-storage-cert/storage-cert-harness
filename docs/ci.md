@@ -317,20 +317,16 @@ every image build (locally and in CI).
 `jq` is not a Go dependency of the harness adapters. The kube-burner adapters
 parse collected JSON with Go, but kube-burner-ocp hooks may execute shell
 helpers that call `jq`; therefore `jq` and the OpenSSH client are image-tool
-payload dependencies. Install and pin them in the final runtime stage of
-`storage-cert-harness-images/images/harness-builder/Containerfile`, then
-promote a new builder digest. Do not add them only to the harness runtime
-`Containerfile`. Developer smoke and image-test scripts also use host `jq` for
-atomic cluster-lease JSON updates, so `install-tools.sh` installs or validates
-it locally. Partner certification runs use the published image and do not
-require host `jq` installation.
+payload dependencies. They are included in the final runtime stage of the
+pinned `harness-builder` image and inherited through `BUILD_IMAGE`. Do not add
+them only to the harness runtime `Containerfile`. Developer smoke and
+image-test scripts also use host `jq` for atomic cluster-lease JSON updates,
+so `install-tools.sh` installs or validates it locally. Partner certification
+runs use the published image and do not require host `jq` installation.
 
 This builder-versus-harness dependency boundary is recorded in
 [`decisions/0021-builder-runtime-tool-dependency-boundary.md`](../decisions/0021-builder-runtime-tool-dependency-boundary.md).
-Until a builder digest containing `jq` and OpenSSH is promoted, image-content
-validation reports those missing utilities as warnings. Set
-`REQUIRE_IMAGE_RUNTIME_UTILS=true` after the builder update to make them
-blocking checks.
+The image-content check requires both utilities and fails if either is absent.
 
 The **ssh-helper** pod image is separate: digest pins in
 `internal/tools/virtbench/setup.go` and
