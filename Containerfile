@@ -2,7 +2,7 @@
 # binary must be built before this image build and is copied from bin/harness.
 # Pre-built cert tools live in the digest-pinned BUILD_IMAGE (harness-builder).
 # Extend that image instead of re-COPYing the tool tree onto a fresh RUNTIME_IMAGE,
-# which duplicates most of the UBI rootfs and fails Dive efficiency gates.
+# which duplicates most of the UBI rootfs and regresses Dive wasted-layer metrics.
 ARG HARNESS_VERSION=0.0.0-dev
 ARG IMAGE_VERSION=0.0.0-dev
 ARG BUILD_IMAGE

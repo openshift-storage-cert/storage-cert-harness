@@ -277,6 +277,20 @@ Trivy writes `dist/trivy-report.json`, `dist/trivy-report.txt`,
 logs and reports are available as job artifacts; it produces no Code scanning
 (SARIF) upload. Local `dist/` output remains available via `make image-scan`.
 
+**Dive wasted-byte cap.** `image-scan-dive.sh` sets `CI=true` and passes
+`--highestWastedBytes` from `DIVE_HIGHEST_WASTED_BYTES` in
+`ci/config/images.env` (default **64 MiB**, `67108864` bytes). That matches
+`storage-cert-harness-images` [`.dive-ci`](https://github.com/openshift-storage-cert/storage-cert-harness-images/blob/main/.dive-ci)
+on **harness-builder**. The cert image is `FROM` the digest-pinned builder plus a
+thin harness layer; Dive still attributes duplicated UBI/RPM metadata
+(`rpmdb.sqlite`, DNF history) across layers, so measured waste on the shipped
+image is typically **~45–48 MiB** after builder-owned runtime packages such as
+`jq` and `openssh-clients`. The previous **40 MiB** local default was below that
+reality and produced false failures after promoting those builder digests.
+`DIVE_HIGHEST_USER_WASTED_PERCENT` (default `0.1`) and `DIVE_LOWEST_EFFICIENCY`
+(default `0.9`) stay stricter than the builder repo’s ratio rules; override any
+of the three via the environment for experiments.
+
 The `secret-scan` job uses `fetch-depth: 0` so its merge-base diff scan can
 inspect the complete history.
 
@@ -505,7 +519,7 @@ Pins live in **`ci/config/images.env`**. Shell scripts source
 | lint-go, unittest, secret-scan, supply-chain, replay-smoke, build | Host Go on GitHub Actions (`setup-go`); `GO_IMAGE` is for local podman-based jobs |
 | image-build | `BUILD_IMAGE` (digest-pinned **harness-builder**) and `RUNTIME_IMAGE` |
 | image-scan-trivy | Trivy release binary (`TRIVY_VERSION`) + `dist/harness-image.tar` |
-| image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar` |
+| image-scan-dive | Dive release binary (`DIVE_VERSION`) + `dist/harness-image.tar`; `DIVE_HIGHEST_WASTED_BYTES` (64 MiB, aligned with harness-builder `.dive-ci`) |
 
 `GO_IMAGE` (UBI Go toolset **1.26.10** in `ci/config/images.env`, Go **1.26.10+**) is not used by the harness
 `Containerfile`. `BUILD_IMAGE` is **not** the UBI python builder base; it names
@@ -620,7 +634,7 @@ uploads `logs/*.log` when a job fails (not the README).
 | `image-version-info.sh` | Extract harness image metadata and packaged tool versions from inherited OCI labels; pulls absent images (Podman only; no jq) |
 | `image-lint.sh` | Native Hadolint check locally; pinned `CI_TOOLS_IMAGE` check in CI; reports privileged `USER 0` setup context. |
 | `image-scan-trivy.sh` | Trivy HIGH/CRITICAL `--ignore-unfixed`, secrets, misconfig, CycloneDX SBOM. |
-| `image-scan-dive.sh` | `CI=true dive` (wasted layers). |
+| `image-scan-dive.sh` | `CI=true dive` layer efficiency; `DIVE_HIGHEST_WASTED_BYTES` default 64 MiB (see `ci/config/images.env`). |
 | `image-push.sh` | Quay push; requires `PUSH=1`. GitHub: **automatic** on `main` push (or `workflow_dispatch` with `publish=true`). |
 | `mirror-ci-tools.sh` | Retag Trivy/Dive/Hadolint into `quay.io/virtarraycert/ci_tools`; run locally with Quay push access. |
 | `set-next-version.sh` | Set next binary/image version (`--binary`, `--image`, `--init`, `--self-test`) |
