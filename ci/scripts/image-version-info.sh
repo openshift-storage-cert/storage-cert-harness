@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Usage: ./ci/scripts/image-version-info.sh [IMAGE]
+# Or set HARNESS_IMAGE (e.g. make image-info IMAGE=ref exports it without shell interpolation).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

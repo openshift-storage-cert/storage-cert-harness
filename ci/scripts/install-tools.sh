@@ -54,7 +54,9 @@ acquire_install_lock() {
 	[[ ! -L "${install_fallback_lock}" ]] || die "installer lock is a symlink: ${install_fallback_lock}"
 	local deadline=$((SECONDS + 300))
 	while ! mkdir "${install_fallback_lock}" 2>/dev/null; do
-		if [[ -s "${install_fallback_lock}/pid" ]] && ! kill -0 "$(<"${install_fallback_lock}/pid")" 2>/dev/null; then
+		if [[ ! -f "${install_fallback_lock}/pid" ]] || [[ ! -s "${install_fallback_lock}/pid" ]]; then
+			rmdir "${install_fallback_lock}" 2>/dev/null || true
+		elif ! kill -0 "$(<"${install_fallback_lock}/pid")" 2>/dev/null; then
 			rm -f -- "${install_fallback_lock}/pid"
 			rmdir "${install_fallback_lock}" 2>/dev/null || true
 		elif (( SECONDS >= deadline )); then

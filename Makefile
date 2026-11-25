@@ -111,8 +111,12 @@ run-quay-image-tests:
 		VERSION="$(or $(VERSION),latest)" KUBECONFIG="$(or $(KUBECONFIG),work/kubeconfig)"
 
 # Print image metadata and packaged tool versions; pull the image when absent.
+# Override with make image-info IMAGE=ref (exported as HARNESS_IMAGE; not passed via the shell recipe).
+ifneq ($(origin IMAGE),undefined)
+image-info: export HARNESS_IMAGE := $(IMAGE)
+endif
 image-info:
-	./ci/scripts/image-version-info.sh "$(IMAGE)"
+	./ci/scripts/image-version-info.sh
 
 # Partner certification against the published image (no local build).
 # Example:
