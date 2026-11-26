@@ -219,9 +219,10 @@ GitHub's `version-bump` job has `contents: write` and `pull-requests: write`.
 It runs `advance-version.sh` with `VERSION_BUMP_PR=1`, which stages the four
 files without committing. `peter-evans/create-pull-request` creates or updates
 `chore/version-bump` against `main`, then `gh pr review` approves it using the
-`ADMIN_PAT_TOKEN` secret and `gh pr merge --auto --squash` queues the merge using
-the workflow's `GITHUB_TOKEN`. The PR is merged only after branch protection
-requirements pass.
+`ADMIN_PAT_TOKEN` secret. If repository auto-merge is enabled,
+`gh pr merge --auto --squash` queues the merge using the workflow's
+`GITHUB_TOKEN`. Otherwise, the job leaves a notice and the PR must be merged
+manually after branch protection requirements pass.
 
 ## GitHub Actions
 
