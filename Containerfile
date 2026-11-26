@@ -2,7 +2,7 @@
 # binary must be built before this image build and is copied from bin/harness.
 # Pre-built cert tools live in the digest-pinned BUILD_IMAGE (harness-builder).
 # Extend that image instead of re-COPYing the tool tree onto a fresh RUNTIME_IMAGE,
-# which duplicates most of the UBI rootfs and fails Dive efficiency gates.
+# which duplicates most of the UBI rootfs and regresses Dive wasted-layer metrics.
 ARG HARNESS_VERSION=0.0.0-dev
 ARG IMAGE_VERSION=0.0.0-dev
 ARG BUILD_IMAGE
@@ -10,11 +10,15 @@ ARG BUILD_IMAGE
 ARG RUNTIME_IMAGE
 
 FROM ${BUILD_IMAGE}
+ARG BUILD_IMAGE
+ARG RUNTIME_IMAGE
 ARG IMAGE_VERSION
 ARG HARNESS_VERSION
 USER 0
 LABEL org.opencontainers.image.version="${IMAGE_VERSION}"
 LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
+LABEL io.storage-cert-harness.build-image="${BUILD_IMAGE}"
+LABEL io.storage-cert-harness.runtime-image="${RUNTIME_IMAGE}"
 COPY bin/harness /usr/bin/
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY container-entrypoint.sh /usr/local/bin/

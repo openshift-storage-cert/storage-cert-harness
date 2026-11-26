@@ -46,7 +46,8 @@ network access):
 | **Podman** | Local harness container (`make image-build-local`) |
 | **Go toolchain** | `make build` (image build embeds the binary) |
 | **`oc`** (OpenShift CLI) | Preflight and cluster coordination lease |
-| **`yq`**, **`jq`** | Plan/backend validation and lease metadata |
+| **`yq`** | Plan/backend validation |
+| **`jq`** | Lease metadata updates; developer prerequisite, not a partner host prerequisite |
 | **Readable kubeconfig** | Cluster API access with RBAC for smoke workloads and lease namespace `storage-cert-ci` |
 
 One-time repo setup:

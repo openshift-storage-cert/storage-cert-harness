@@ -13,11 +13,11 @@
 # For Red Hat developer CI tooling (Go, linters, scanners), use ./ci/scripts/install-tools.sh instead.
 #
 # Package management used by this script:
-#   yq, jq     — curl download into ~/.local/bin only (per user; not shared across OS users or shells until PATH is set)
+#   yq         — curl download into ~/.local/bin only (per user; not shared across OS users or shells until PATH is set)
 #   make, tar, curl, podman — best-effort install via dnf / apt / brew
 #   git        — checked, but must be installed before cloning this repository
 #   oc         — not installed; OpenShift client from Red Hat only
-# Partner yq/jq live under ~/.local/bin only; remove with rm when testing locally.
+# jq is packaged in the harness image for kube-burner-ocp hooks; partners do not need host jq.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -28,7 +28,6 @@ source "${REPO_ROOT}/ci/scripts/partner-host-env.sh"
 
 USER_BIN="${PARTNER_USER_BIN}"
 YQ_VERSION="${PARTNER_YQ_VERSION:-v4.44.6}"
-JQ_VERSION="${PARTNER_JQ_VERSION:-jq-1.7.1}"
 check_only=0
 if [[ "${1:-}" == "--check" ]]; then
 	check_only=1
@@ -81,7 +80,7 @@ check_platform() {
 	esac
 }
 
-# Map uname -m to GitHub release asset suffixes for yq / jq.
+# Map uname -m to GitHub release asset suffixes for yq.
 release_arch() {
 	local mach="$1"
 	local os="$2"
@@ -127,10 +126,6 @@ fetch_release_binary() {
 
 partner_local_yq_ok() {
 	[[ -x "${USER_BIN}/yq" ]] && "${USER_BIN}/yq" --version 2>&1 | grep -q mikefarah
-}
-
-partner_local_jq_ok() {
-	[[ -x "${USER_BIN}/jq" ]] && "${USER_BIN}/jq" --version >/dev/null 2>&1
 }
 
 run_as_admin() {
@@ -271,43 +266,6 @@ install_yq() {
 	echo "ok  yq  ${dest}"
 }
 
-install_jq() {
-	local dest="${USER_BIN}/jq"
-	if partner_local_jq_ok; then
-		echo "ok  jq  ${dest}"
-		return 0
-	fi
-	if [[ "${check_only}" -eq 1 ]]; then
-		echo "optional-missing  jq  (${dest}; re-run without --check to download)"
-		return 0
-	fi
-	ensure_system_tool curl || return 1
-	local os mach name url
-	os="$(os_family)"
-	[[ "${os}" == "macos" ]] || [[ "${os}" == "linux" ]] || die "cannot auto-install jq on this OS"
-	mach="$(uname -m)"
-	case "${mach}" in
-	x86_64 | amd64)
-		[[ "${os}" == "linux" ]] && name="jq-linux-amd64" || name="jq-macos-amd64"
-		;;
-	aarch64 | arm64)
-		[[ "${os}" == "linux" ]] && name="jq-linux-arm64" || name="jq-macos-arm64"
-		;;
-	*) die "unsupported architecture for jq: ${mach}" ;;
-	esac
-	url="https://github.com/jqlang/jq/releases/download/${JQ_VERSION}/${name}"
-	ensure_path
-	echo "installing jq ${JQ_VERSION} (${name}) -> ${dest}"
-	fetch_release_binary "${url}" "${dest}" "jq" || return 1
-	if ! "${dest}" --version >/dev/null 2>&1; then
-		rm -f "${dest}"
-		echo "error: installed jq at ${dest} does not run (--version failed)" >&2
-		return 1
-	fi
-	hash -d jq 2>/dev/null || true
-	echo "ok  jq  ${dest}"
-}
-
 ensure_git() {
 	if have git; then
 		echo "ok  git  $(command -v git)"
@@ -377,7 +335,7 @@ ensure_podman() {
 
 # Run a smoke command for each tool; used after install and with --check.
 verify_partner_tools() {
-	local failed=0 yq_bin jq_bin out
+	local failed=0 yq_bin out
 	echo "==> verifying tool binaries"
 
 	verify_one() {
@@ -421,25 +379,6 @@ verify_partner_tools() {
 		fi
 	fi
 
-	if partner_local_jq_ok; then
-		jq_bin="${USER_BIN}/jq"
-	else
-		jq_bin=""
-	fi
-	if [[ -n "${jq_bin}" ]]; then
-		verify_one jq "${jq_bin}" --version || true
-		if [[ "${failed}" -eq 0 ]]; then
-			if printf '%s' '{}' | "${jq_bin}" . >/dev/null 2>&1; then
-				echo "verify ok  jq-expression  JSON parse"
-			else
-				echo "verify FAIL  jq  (JSON parse smoke test)" >&2
-				failed=1
-			fi
-		fi
-	else
-		echo "verify skip jq  (optional; recommended for troubleshooting)"
-	fi
-
 	if have python3; then
 		verify_one python3 python3 --version || true
 	else
@@ -478,7 +417,7 @@ print_oc_guidance() {
 }
 
 echo "==> partner host tools  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "notice: best-effort setup; yq/jq go in ~/.local/bin, while make/tar/curl/Podman may use the OS package manager."
+echo "notice: best-effort setup; yq goes in ~/.local/bin, while make/tar/curl/Podman may use the OS package manager."
 echo "        For more control over installation and package management, see PARTNER-CERTIFICATION-GUIDE.md#manual-installation-by-platform."
 check_platform
 ensure_path
@@ -489,7 +428,6 @@ ensure_make || missing_required=1
 ensure_tar || missing_required=1
 ensure_podman || missing_required=1
 install_yq || missing_required=1
-install_jq || true
 ensure_python3 || true
 print_oc_guidance || missing_required=1
 

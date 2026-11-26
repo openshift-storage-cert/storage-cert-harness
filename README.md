@@ -50,13 +50,13 @@ See **Verify prerequisites** in [PARTNER-CERTIFICATION-GUIDE.md](PARTNER-CERTIFI
 to install missing **make**, **tar**, **curl** (when needed), and **podman**
 using **dnf** or **apt** on Linux, or **brew** on macOS. On macOS, Homebrew
 installs GNU Make as `gmake`; the script makes it available as `make` under
-`~/.local/bin`. **yq** and **jq** are downloaded from GitHub into
-**`~/.local/bin`** for your user, not `/usr/bin`. New terminals do not pick
-that up until you run
+`~/.local/bin`. **yq** is downloaded from GitHub into **`~/.local/bin`** for
+your user, not `/usr/bin`. New terminals do not pick that up until you run
 `source ./ci/scripts/partner-host-env.sh` (or put `~/.local/bin` on `PATH`).
-**git** must be installed before cloning; **oc** must be installed from Red
-Hat. Re-run `./ci/scripts/install-partner-tools.sh` if you removed
-`~/.local/bin/yq` or `~/.local/bin/jq` while testing. See
+`jq` is not required on a partner certification host: it is packaged in the
+harness image for kube-burner-ocp hooks and used by developer smoke/image
+tests. **git** must be installed before cloning; **oc** must be installed from
+Red Hat. See
 [PARTNER-CERTIFICATION-GUIDE.md](PARTNER-CERTIFICATION-GUIDE.md) Prerequisites.
 
 ---
@@ -71,6 +71,12 @@ Hat. Re-run `./ci/scripts/install-partner-tools.sh` if you removed
 
 - GNU Make
 - Go 1.26.9 or newer
+- `jq` for developer smoke/image tests and CI lease helpers
+- `virtbench` only when running `bin/harness` directly outside the container
+
+Container-based runs use the virtbench binary packaged in the harness image;
+the developer installer does not install virtbench on the host. Direct host
+runs must install virtbench separately and place it on `PATH`.
 
 Verify the required tools:
 

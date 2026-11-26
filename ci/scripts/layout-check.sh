@@ -18,7 +18,7 @@ for f in ci-utils.sh build.sh ci.sh image-build.sh image-push.sh \
 	lint-go.sh lint-md.sh lint-yaml.sh mirror-ci-tools.sh \
 	secret-scan.sh supply-chain.sh unittest.sh \
 	set-next-version.sh advance-version.sh layout-check.sh image-contents-check.sh \
-	install-partner-tools.sh partner-host-env.sh; do
+	image-version-info.sh install-partner-tools.sh partner-host-env.sh; do
 	[[ -f "${REPO_ROOT}/ci/scripts/${f}" ]] || fail "missing ci/scripts/${f}"
 done
 

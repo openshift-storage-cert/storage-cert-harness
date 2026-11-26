@@ -4,6 +4,7 @@
 #
 # Prerequisites (not installed here): Go 1.26.9+, git, python3, pip, npm.
 # Podman is the default container engine; OS-package it if missing.
+# jq is required by developer smoke/image tests, but not by partner certification hosts.
 #
 # Usage:
 #   ./ci/scripts/install-tools.sh          # install only what is missing or wrong version
@@ -36,6 +37,35 @@ have() {
 
 need() {
 	have "$1" || die "prerequisite not found: $1"
+}
+
+acquire_install_lock() {
+	[[ "${check_only}" -eq 1 ]] && return 0
+	local lock_root="${XDG_RUNTIME_DIR:-${HOME}/.cache}/storage-cert-harness"
+	[[ ! -L "${lock_root}" ]] || die "installer lock directory is a symlink: ${lock_root}"
+	mkdir -p "${lock_root}"
+	chmod 700 "${lock_root}"
+	if have flock; then
+		exec 9<"${lock_root}"
+		flock -w 300 9 || die "could not acquire installer lock: ${lock_root}"
+		return 0
+	fi
+	install_fallback_lock="${lock_root}/install.lock"
+	[[ ! -L "${install_fallback_lock}" ]] || die "installer lock is a symlink: ${install_fallback_lock}"
+	local deadline=$((SECONDS + 300))
+	while ! mkdir "${install_fallback_lock}" 2>/dev/null; do
+		if [[ ! -f "${install_fallback_lock}/pid" ]] || [[ ! -s "${install_fallback_lock}/pid" ]]; then
+			rmdir "${install_fallback_lock}" 2>/dev/null || true
+		elif ! kill -0 "$(<"${install_fallback_lock}/pid")" 2>/dev/null; then
+			rm -f -- "${install_fallback_lock}/pid"
+			rmdir "${install_fallback_lock}" 2>/dev/null || true
+		elif (( SECONDS >= deadline )); then
+			die "could not acquire installer lock: ${install_fallback_lock}"
+		fi
+		sleep 1
+	done
+	printf '%s\n' "$$" >"${install_fallback_lock}/pid"
+	trap 'rm -f -- "${install_fallback_lock}/pid"; rmdir -- "${install_fallback_lock}" 2>/dev/null || true' EXIT
 }
 
 # PATH or ~/.local/bin. Empty if not installed.
@@ -309,37 +339,27 @@ install_markdownlint() {
 	echo "ok  markdownlint-cli2  $(command -v markdownlint-cli2)"
 }
 
-install_virtbench() {
-	local ver="${VIRTBENCH_VERSION}"
-	local repo_dir="${HOME}/.local/opt/virtbench"
-	local bin="${USER_BIN}/virtbench"
-	local profile_line="export VIRTBENCH_REPO=${repo_dir}"
-
-	if have virtbench && [[ -d "${repo_dir}" ]]; then
-		echo "ok  virtbench  $(command -v virtbench)  ${ver}"
-		return
+apt_install() {
+	local package="$1"
+	local -a apt=(apt-get)
+	local attempt
+	if [[ "$(id -u)" -ne 0 ]]; then
+		have sudo || return 1
+		apt=(sudo apt-get)
 	fi
-	if [[ "${check_only}" -eq 1 ]]; then
-		echo "missing  virtbench  (want ${ver})"
-		return
-	fi
-	need curl
-	need python3
-	echo "installing virtbench ${ver}"
-	mkdir -p "${repo_dir}" "${USER_BIN}"
-	curl -sSfL "https://github.com/portworx/kubevirt-benchmark/archive/refs/tags/${ver}.tar.gz" \
-		| tar xz --strip-components=1 -C "${repo_dir}"
-	python3 -m pip install --user --quiet --disable-pip-version-check "${repo_dir}"
-	[[ -f "${bin}" ]] || ln -sf "$(python3 -m site --user-base)/bin/virtbench" "${bin}" 2>/dev/null || true
-	for rc in "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.profile"; do
-		[[ -f "${rc}" ]] || continue
-		grep -qF "VIRTBENCH_REPO" "${rc}" && continue
-		echo "${profile_line}" >>"${rc}"
-		echo "  added VIRTBENCH_REPO to ${rc}"
-		break
+	for attempt in 1 2 3 4 5; do
+		if "${apt[@]}" update -qq && "${apt[@]}" install -y "${package}"; then
+			return 0
+		fi
+		if have "${package}"; then
+			return 0
+		fi
+		if [[ "${attempt}" -lt 5 ]]; then
+			echo "warning: apt operation for ${package} failed; retrying shortly" >&2
+			sleep 3
+		fi
 	done
-	export VIRTBENCH_REPO="${repo_dir}"
-	echo "ok  virtbench  ${bin}  ${ver}  (VIRTBENCH_REPO=${repo_dir})"
+	return 1
 }
 
 install_podman() {
@@ -356,15 +376,39 @@ install_podman() {
 	fi
 	if have apt-get; then
 		echo "installing podman (apt)"
-		sudo apt-get update -qq
-		sudo apt-get install -y podman
+		apt_install podman || die "could not install podman with apt"
 		echo "ok  podman  $(command -v podman)"
 		return
 	fi
 	die "podman is the default container engine. Install it (Fedora: sudo dnf install -y podman) or set CONTAINER_ENGINE=docker|buildah"
 }
 
+install_jq() {
+	if have jq; then
+		echo "ok  jq  $(command -v jq)"
+		return
+	fi
+	if [[ "${check_only}" -eq 1 ]]; then
+		echo "missing  jq  (developer smoke/image tests require jq)"
+		return
+	fi
+	if have dnf; then
+		echo "installing jq (dnf)"
+		if have sudo; then sudo dnf install -y jq; else dnf install -y jq; fi
+	elif have apt-get; then
+		echo "installing jq (apt)"
+		apt_install jq || die "could not install jq with apt"
+	elif have brew; then
+		echo "installing jq (brew)"
+		brew install jq
+	else
+		die "jq is required by developer smoke/image tests; install it with your OS package manager"
+	fi
+	echo "ok  jq  $(command -v jq)"
+}
+
 echo "==> CI tools  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+acquire_install_lock
 need git
 if have go; then
 	echo "ok  go  $(go version)"
@@ -385,11 +429,11 @@ install_trivy
 install_dive
 install_hadolint
 install_podman
-install_virtbench
+install_jq
 
 if [[ "${check_only}" -eq 1 ]]; then
 	missing=0
-	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive hadolint podman go git; do
+	for c in yamllint markdownlint-cli2 golangci-lint actionlint govulncheck gosec trivy dive hadolint podman jq go git; do
 		if [[ "${c}" == "golangci-lint" ]]; then
 			golangci_bin_ok "${USER_BIN}/golangci-lint" "${GOLANGCI_LINT_VERSION#v}" ||
 				{ have go && golangci_bin_ok "$(go_bin_dir)/golangci-lint" "${GOLANGCI_LINT_VERSION#v}"; } ||

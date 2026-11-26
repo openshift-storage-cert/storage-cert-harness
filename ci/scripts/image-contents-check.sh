@@ -19,21 +19,47 @@ if [[ -s "${local_ref_file}" ]]; then
 		die "local image ${ref} is missing (stale work/local-image-ref); run ci/scripts/image-build-local.sh first"
 	using_local_image=1
 	echo "using local image ${ref}"
+	local_image_version="$(podman image inspect --format '{{with index .Config.Labels "org.opencontainers.image.version"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_image_version}" != "${img_ver}" ]]; then
+		die "local image is stale: ${ref} contains image version ${local_image_version:-<missing>}, expected ${img_ver}; run make image-build-local"
+	fi
+	local_build_image="$(podman image inspect --format '{{with index .Config.Labels "io.storage-cert-harness.build-image"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_build_image}" != "${BUILD_IMAGE}" ]]; then
+		die "local image has builder ${local_build_image:-<missing>}, expected ${BUILD_IMAGE}; run make image-build-local"
+	fi
+	local_runtime_image="$(podman image inspect --format '{{with index .Config.Labels "io.storage-cert-harness.runtime-image"}}{{.}}{{end}}' "${ref}")"
+	if [[ "${local_runtime_image}" != "${RUNTIME_IMAGE}" ]]; then
+		die "local image has runtime ${local_runtime_image:-<missing>}, expected ${RUNTIME_IMAGE}; run make image-build-local"
+	fi
 else
 	ref="${QUAY_IMAGE}:${img_ver}"
 	[[ -f "${IMAGE_TAR}" ]] || die "missing ${IMAGE_TAR}; run ci/scripts/image-build.sh first"
 fi
 
+loaded_inspect_target="${ref}"
 # Load the image if not already available
 if [[ "${using_local_image}" -eq 1 ]]; then
 	require_cmd podman
 	run_cmd() { podman run --rm --entrypoint "" "${ref}" "$@"; }
 elif [[ "${eng}" == "buildah" ]]; then
-	img_id="$(buildah pull "docker-archive:${IMAGE_TAR}" 2>/dev/null || true)"
+	img_id="$(buildah pull "docker-archive:${IMAGE_TAR}")" ||
+		die "failed to load ${IMAGE_TAR} with buildah"
+	loaded_inspect_target="${img_id}"
 	run_cmd() { buildah run "${img_id}" -- "$@"; }
 else
-	"${eng}" load -i "${IMAGE_TAR}" >/dev/null 2>&1 || true
-	run_cmd() { "${eng}" run --rm --platform linux/amd64 --entrypoint "" "${ref}" "$@"; }
+	load_out="$("${eng}" load -i "${IMAGE_TAR}" 2>&1)" ||
+		die "failed to load ${IMAGE_TAR} with ${eng}: ${load_out}"
+	loaded_ref="$(printf '%s\n' "${load_out}" | awk '/^Loaded image/ { line=$0; sub(/^Loaded image(\(s\))?: /, "", line); ref=line } END { print ref }')"
+	[[ -n "${loaded_ref}" ]] ||
+		die "could not determine image loaded from ${IMAGE_TAR}"
+	if command -v skopeo >/dev/null 2>&1; then
+		tar_id="$(skopeo inspect --format '{{.Id}}' "docker-archive:${IMAGE_TAR}")"
+		engine_id="$("${eng}" image inspect --format '{{.Id}}' "${loaded_ref}")"
+		[[ "${tar_id}" == "${engine_id}" ]] ||
+			die "loaded image ${loaded_ref} does not match ${IMAGE_TAR} (archive ${tar_id}, engine ${engine_id})"
+	fi
+	loaded_inspect_target="${loaded_ref}"
+	run_cmd() { "${eng}" run --rm --platform linux/amd64 --entrypoint "" "${loaded_inspect_target}" "$@"; }
 fi
 
 errors=0
@@ -41,6 +67,20 @@ fail() {
 	echo "FAIL: $*"
 	errors=$((errors + 1))
 }
+
+if [[ "${using_local_image}" -eq 0 ]]; then
+	if [[ "${eng}" == "buildah" ]]; then
+		inspect_label() { buildah inspect --format "{{index .OCIv1.Config.Labels \"$1\"}}" "${loaded_inspect_target}" 2>/dev/null || true; }
+	else
+		inspect_label() { "${eng}" image inspect --format "{{index .Config.Labels \"$1\"}}" "${loaded_inspect_target}" 2>/dev/null || true; }
+	fi
+	loaded_build_image="$(inspect_label io.storage-cert-harness.build-image)"
+	[[ "${loaded_build_image}" == "${BUILD_IMAGE}" ]] ||
+		fail "image builder label (${loaded_build_image:-<missing>}) != BUILD_IMAGE (${BUILD_IMAGE})"
+	loaded_runtime_image="$(inspect_label io.storage-cert-harness.runtime-image)"
+	[[ "${loaded_runtime_image}" == "${RUNTIME_IMAGE}" ]] ||
+		fail "image runtime label (${loaded_runtime_image:-<missing>}) != RUNTIME_IMAGE (${RUNTIME_IMAGE})"
+fi
 
 echo "==> checking dist/harness-image.tar"
 if [[ "${using_local_image}" -eq 0 ]]; then
@@ -105,6 +145,18 @@ if run_cmd /usr/bin/virtctl version >/dev/null 2>&1 || run_cmd /usr/bin/virtctl 
 	echo "  virtctl: present"
 else
 	fail "/usr/bin/virtctl is missing or cannot run"
+fi
+
+echo "==> checking inherited runtime utilities"
+if run_cmd /usr/bin/jq --version >/dev/null 2>&1; then
+	echo "  jq: present (used by kube-burner-ocp hooks)"
+else
+	fail "/usr/bin/jq is missing; install it in the harness-builder runtime image"
+fi
+if run_cmd /usr/bin/ssh -V >/dev/null 2>&1; then
+	echo "  ssh: present"
+else
+	fail "/usr/bin/ssh is missing; install openssh-clients in the harness-builder runtime image"
 fi
 
 echo "==> checking /usr/bin/virtbench fio"
